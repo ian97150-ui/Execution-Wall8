@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { 
-  ArrowLeft, TrendingUp, TrendingDown, 
-  CheckCircle2, XCircle, Clock, AlertTriangle 
+import {
+  ArrowLeft, TrendingUp, TrendingDown,
+  CheckCircle2, XCircle, Clock, AlertTriangle
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import api from "@/api/apiClient";
 
 export default function ExecutionHistory() {
   const [statusFilter, setStatusFilter] = useState("all");
@@ -18,10 +18,12 @@ export default function ExecutionHistory() {
   const { data: executions = [], isLoading } = useQuery({
     queryKey: ['executionHistory', statusFilter],
     queryFn: async () => {
-      const query = statusFilter === "all" 
-        ? {} 
-        : { status: statusFilter };
-      return await base44.entities.TradeIntent.filter(query, '-created_date', 200);
+      const params = {};
+      if (statusFilter !== "all") {
+        params.status = statusFilter;
+      }
+      const response = await api.get('/trade-intents', { params });
+      return response.data || [];
     },
     refetchInterval: 10000
   });
@@ -145,15 +147,15 @@ export default function ExecutionHistory() {
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div>
                     <p className="text-xs text-slate-500 uppercase mb-1">Action</p>
-                    <p className="font-medium text-white text-sm">{exec.order_action?.toUpperCase()}</p>
+                    <p className="font-medium text-white text-sm">{exec.order_action?.toUpperCase() || exec.dir}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500 uppercase mb-1">Qty</p>
-                    <p className="font-medium text-white text-sm">{exec.quantity || 1}</p>
+                    <p className="text-xs text-slate-500 uppercase mb-1">Quality</p>
+                    <p className="font-medium text-white text-sm">{exec.quality_tier} ({exec.quality_score})</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500 uppercase mb-1">Limit</p>
-                    <p className="font-medium text-white text-sm">{formatPrice(exec.limit_price)}</p>
+                    <p className="text-xs text-slate-500 uppercase mb-1">Price</p>
+                    <p className="font-medium text-white text-sm">{formatPrice(exec.price)}</p>
                   </div>
                 </div>
 

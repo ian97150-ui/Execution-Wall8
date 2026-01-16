@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(curl:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nComplete migration to self-hosted backend with all features\n\n- Backend: Node.js/Express + SQLite with Prisma ORM\n- Execution scheduler: auto-executes orders when delay expires \\(runs without browser\\)\n- Blocked tickers: separate view with revive functionality\n- Red X overlay for OFF/Deny actions\n- Execution queue: auto-removes completed orders\n- Broker webhook forwarding with configurable URL\n- Gate scoring and quality tiers for WALL signals\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}

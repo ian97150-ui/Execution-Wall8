@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
 import QualityBadge from "./QualityBadge";
 
-export default function TradeCard({ 
-  intent, 
+export default function TradeCard({
+  intent,
   hasLiveOrder = false,
-  onSwipeOn, 
+  onSwipeOn,
   onSwipeOff,
   onDeny,
   isTopCard = false,
@@ -20,12 +20,16 @@ export default function TradeCard({
   isEnabled = false
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [showCheckmark, setShowCheckmark] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(null); // 'success' | 'rejected' | null
 
   const handleAction = async (action) => {
-    // Show checkmark
-    setShowCheckmark(true);
-    
+    // Show appropriate overlay based on action
+    if (action === 'on') {
+      setShowOverlay('success');
+    } else if (action === 'off' || action === 'deny') {
+      setShowOverlay('rejected');
+    }
+
     // Wait a bit then trigger the action
     setTimeout(() => {
       if (action === 'on') onSwipeOn?.(intent);
@@ -57,21 +61,28 @@ export default function TradeCard({
         style={style}
         className="absolute inset-0 z-10"
       >
-      {/* Checkmark overlay */}
+      {/* Action overlay - green checkmark for ON, red X for OFF/Deny */}
       <AnimatePresence>
-        {showCheckmark && (
+        {showOverlay && (
           <motion.div
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex items-center justify-center bg-emerald-500/20 backdrop-blur-sm rounded-3xl"
+            className={cn(
+              "absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm rounded-3xl",
+              showOverlay === 'success' ? "bg-emerald-500/20" : "bg-red-500/20"
+            )}
           >
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
             >
-              <CheckCircle2 className="w-32 h-32 text-emerald-400" strokeWidth={3} />
+              {showOverlay === 'success' ? (
+                <CheckCircle2 className="w-32 h-32 text-emerald-400" strokeWidth={3} />
+              ) : (
+                <X className="w-32 h-32 text-red-400" strokeWidth={3} />
+              )}
             </motion.div>
           </motion.div>
         )}
@@ -203,7 +214,7 @@ export default function TradeCard({
                 onClick={(e) => { e.stopPropagation(); handleAction('off'); }}
                 variant="outline"
                 className="flex-1 h-14 border-red-500/50 text-red-400 hover:bg-red-500/20"
-                disabled={showCheckmark}
+                disabled={showOverlay}
               >
                 <PowerOff className="w-5 h-5 mr-2" />
                 OFF
@@ -211,7 +222,7 @@ export default function TradeCard({
               <Button 
                 onClick={(e) => { e.stopPropagation(); handleAction('on'); }}
                 className="flex-1 h-14 bg-emerald-500 hover:bg-emerald-600 text-emerald-950 font-bold"
-                disabled={showCheckmark}
+                disabled={showOverlay}
               >
                 <Power className="w-5 h-5 mr-2" />
                 ON
@@ -221,7 +232,7 @@ export default function TradeCard({
               onClick={(e) => { e.stopPropagation(); handleAction('deny'); }}
               variant="outline"
               className="w-full h-12 border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
-              disabled={showCheckmark}
+              disabled={showOverlay}
             >
               <X className="w-4 h-4 mr-2" />
               Deny Order

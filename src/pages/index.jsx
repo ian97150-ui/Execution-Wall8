@@ -6,16 +6,20 @@ import ExecutionHistory from "./ExecutionHistory";
 
 import Settings from "./Settings";
 
+import WebhookLogs from "./WebhookLogs";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
-    
+
     Dashboard: Dashboard,
-    
+
     ExecutionHistory: ExecutionHistory,
-    
+
     Settings: Settings,
-    
+
+    WebhookLogs: WebhookLogs,
+
 }
 
 function _getCurrentPage(url) {
@@ -48,7 +52,9 @@ function PagesContent() {
                 <Route path="/ExecutionHistory" element={<ExecutionHistory />} />
                 
                 <Route path="/Settings" element={<Settings />} />
-                
+
+                <Route path="/WebhookLogs" element={<WebhookLogs />} />
+
             </Routes>
         </Layout>
     );

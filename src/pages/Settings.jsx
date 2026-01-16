@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { 
-  ArrowLeft, Save, Clock, Shield, Sliders, 
-  Webhook, Bell, BarChart3, AlertTriangle, Info, Zap, Plus, Trash2
+import {
+  ArrowLeft, Save, Clock, Shield, Sliders,
+  Webhook, Bell, BarChart3, AlertTriangle, Info, Zap, Plus, Trash2,
+  ExternalLink, Send
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 
 import ExecutionModeToggle from "../components/trading/ExecutionModeToggle";
+import api from "@/api/apiClient";
 
-const ExecutionSettings = base44.entities.ExecutionSettings;
+// Get the backend API URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -26,19 +28,23 @@ export default function Settings() {
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => {
-      const list = await ExecutionSettings.list();
-      if (list.length === 0) {
-        return await ExecutionSettings.create({
-          setting_key: 'global',
-          execution_mode: 'safe',
-          default_delay_bars: 2,
-          gate_threshold_default: 5,
-          gates_total_default: 7,
-          limit_edit_window_seconds: 120,
-          limit_adjustment_max_percent: 2.0
-        });
+      try {
+        const response = await api.get('/settings');
+        return response.data;
+      } catch (error) {
+        // If no settings exist, create default
+        if (error.response?.status === 404) {
+          const createResponse = await api.post('/settings', {
+            execution_mode: 'safe',
+            default_delay_bars: 2,
+            gate_threshold: 5,
+            limit_edit_window: 120,
+            max_adjustment_pct: 2.0
+          });
+          return createResponse.data;
+        }
+        throw error;
       }
-      return list[0];
     }
   });
 
@@ -49,30 +55,24 @@ export default function Settings() {
       setFormData({
         execution_mode: settings.execution_mode || 'safe',
         default_delay_bars: settings.default_delay_bars || 2,
-        gate_threshold_default: settings.gate_threshold_default || 5,
-        gates_total_default: settings.gates_total_default || 7,
-        limit_edit_window_seconds: settings.limit_edit_window_seconds || 120,
-        limit_adjustment_max_percent: settings.limit_adjustment_max_percent || 2.0,
+        gate_threshold: settings.gate_threshold || 5,
+        limit_edit_window: settings.limit_edit_window || 120,
+        max_adjustment_pct: settings.max_adjustment_pct || 2.0,
         broker_webhook_url: settings.broker_webhook_url || '',
-        bypass_enabled: settings.bypass_enabled || false,
-        bypass_intervals: settings.bypass_intervals || [],
-        email_notifications_enabled: settings.email_notifications_enabled !== false,
+        broker_webhook_enabled: settings.broker_webhook_enabled || false,
+        email_notifications: settings.email_notifications || false,
         notification_email: settings.notification_email || '',
-        notify_on_signal_approved: settings.notify_on_signal_approved !== false,
-        notify_on_signal_rejected: settings.notify_on_signal_rejected || false,
-        notify_on_entry_executed: settings.notify_on_entry_executed !== false,
-        notify_on_exit_executed: settings.notify_on_exit_executed !== false,
-        notify_on_position_closed: settings.notify_on_position_closed !== false,
-        notify_on_high_quality: settings.notify_on_high_quality !== false
+        notify_on_approval: settings.notify_on_approval !== false,
+        notify_on_execution: settings.notify_on_execution !== false,
+        notify_on_close: settings.notify_on_close !== false
       });
     }
   }, [settings]);
 
   const updateMutation = useMutation({
     mutationFn: async (data) => {
-      if (settings?.id) {
-        await ExecutionSettings.update(settings.id, data);
-      }
+      const response = await api.put('/settings', data);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
@@ -83,37 +83,46 @@ export default function Settings() {
     }
   });
 
+  const testBrokerMutation = useMutation({
+    mutationFn: async (url) => {
+      const response = await api.post('/settings/test-broker-webhook', { url });
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success('Broker webhook test successful!');
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.error || 'Broker webhook test failed');
+    }
+  });
+
   const validateSettings = () => {
     const errors = [];
 
     // Email validation
-    if (formData.email_notifications_enabled && formData.notification_email) {
+    if (formData.email_notifications && formData.notification_email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.notification_email)) {
         errors.push('Invalid email address');
       }
     }
 
-    // Bypass intervals validation
-    if (formData.bypass_enabled && formData.bypass_intervals?.length > 0) {
-      formData.bypass_intervals.forEach((interval, idx) => {
-        if (interval.start_time >= interval.end_time) {
-          errors.push(`Bypass interval ${idx + 1}: Start time must be before end time`);
-        }
-      });
+    // Broker webhook URL validation
+    if (formData.broker_webhook_enabled && formData.broker_webhook_url) {
+      try {
+        new URL(formData.broker_webhook_url);
+      } catch {
+        errors.push('Invalid broker webhook URL');
+      }
     }
 
     // Numeric validations
-    if (formData.limit_adjustment_max_percent < 0.1 || formData.limit_adjustment_max_percent > 10) {
+    if (formData.max_adjustment_pct < 0.1 || formData.max_adjustment_pct > 10) {
       errors.push('Max adjustment percent must be between 0.1% and 10%');
     }
 
-    if (formData.limit_edit_window_seconds < 30 || formData.limit_edit_window_seconds > 600) {
+    if (formData.limit_edit_window < 30 || formData.limit_edit_window > 600) {
       errors.push('Edit window must be between 30 and 600 seconds');
-    }
-
-    if (formData.gate_threshold_default > formData.gates_total_default) {
-      errors.push('Gate threshold cannot exceed total gates');
     }
 
     return errors;
@@ -152,7 +161,7 @@ export default function Settings() {
             </Link>
             <h1 className="font-bold text-white text-lg">Settings</h1>
           </div>
-          <Button 
+          <Button
             onClick={handleSave}
             disabled={updateMutation.isPending}
             className="bg-blue-500 hover:bg-blue-600"
@@ -233,32 +242,16 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <Label className="text-slate-300">Gate Threshold</Label>
                 <span className="text-lg font-bold text-white">
-                  {formData.gate_threshold_default} / {formData.gates_total_default}
+                  {formData.gate_threshold}
                 </span>
               </div>
               <Slider
-                value={[formData.gate_threshold_default]}
+                value={[formData.gate_threshold]}
                 min={1}
-                max={formData.gates_total_default}
+                max={10}
                 step={1}
-                onValueChange={(v) => setFormData(f => ({ ...f, gate_threshold_default: v[0] }))}
+                onValueChange={(v) => setFormData(f => ({ ...f, gate_threshold: v[0] }))}
                 className="[&_[role=slider]]:bg-emerald-400"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-slate-300">Total Gates</Label>
-              <Input
-                type="number"
-                min={1}
-                max={20}
-                value={formData.gates_total_default}
-                onChange={(e) => setFormData(f => ({ 
-                  ...f, 
-                  gates_total_default: parseInt(e.target.value) || 7,
-                  gate_threshold_default: Math.min(f.gate_threshold_default, parseInt(e.target.value) || 7)
-                }))}
-                className="bg-slate-800 border-slate-700 text-white"
               />
             </div>
           </CardContent>
@@ -283,8 +276,8 @@ export default function Settings() {
                   type="number"
                   min={30}
                   max={600}
-                  value={formData.limit_edit_window_seconds}
-                  onChange={(e) => setFormData(f => ({ ...f, limit_edit_window_seconds: parseInt(e.target.value) || 120 }))}
+                  value={formData.limit_edit_window}
+                  onChange={(e) => setFormData(f => ({ ...f, limit_edit_window: parseInt(e.target.value) || 120 }))}
                   className="bg-slate-800 border-slate-700 text-white"
                 />
               </div>
@@ -295,8 +288,8 @@ export default function Settings() {
                   min={0.1}
                   max={10}
                   step={0.1}
-                  value={formData.limit_adjustment_max_percent}
-                  onChange={(e) => setFormData(f => ({ ...f, limit_adjustment_max_percent: parseFloat(e.target.value) || 2 }))}
+                  value={formData.max_adjustment_pct}
+                  onChange={(e) => setFormData(f => ({ ...f, max_adjustment_pct: parseFloat(e.target.value) || 2 }))}
                   className="bg-slate-800 border-slate-700 text-white"
                 />
               </div>
@@ -311,111 +304,70 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Bypass Mode Configuration */}
+        {/* Broker Webhook */}
         <Card className="bg-slate-900/50 border-slate-800">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
-              <Zap className="w-5 h-5 text-orange-400" />
-              Bypass Mode
+              <Send className="w-5 h-5 text-orange-400" />
+              Broker Webhook
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Configure time-based instant execution windows
+              Forward approved orders to your broker via webhook
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
               <div>
-                <Label className="text-slate-300">Enable Bypass Mode</Label>
+                <Label className="text-slate-300">Enable Broker Webhook</Label>
                 <p className="text-xs text-slate-500 mt-1">
-                  Bypass delays during configured time intervals
+                  Orders will be forwarded to your broker when executed
                 </p>
               </div>
               <Switch
-                checked={formData.bypass_enabled}
-                onCheckedChange={(checked) => setFormData(f => ({ ...f, bypass_enabled: checked }))}
+                checked={formData.broker_webhook_enabled}
+                onCheckedChange={(checked) => setFormData(f => ({ ...f, broker_webhook_enabled: checked }))}
               />
             </div>
 
-            {formData.bypass_enabled && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-slate-300">Time Intervals</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setFormData(f => ({
-                      ...f,
-                      bypass_intervals: [
-                        ...(f.bypass_intervals || []),
-                        { start_time: "09:30", end_time: "16:00", enabled: true }
-                      ]
-                    }))}
-                    className="border-slate-700 text-slate-300"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Add Interval
-                  </Button>
-                </div>
-
-                {(formData.bypass_intervals || []).map((interval, index) => (
-                  <div key={index} className="flex items-center gap-2 p-3 rounded-lg bg-slate-800/50">
+            {formData.broker_webhook_enabled && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Broker Webhook URL</Label>
+                  <div className="flex gap-2">
                     <Input
-                      type="time"
-                      value={interval.start_time}
-                      onChange={(e) => {
-                        const newIntervals = [...formData.bypass_intervals];
-                        newIntervals[index].start_time = e.target.value;
-                        setFormData(f => ({ ...f, bypass_intervals: newIntervals }));
-                      }}
-                      className="bg-slate-700 border-slate-600 text-white"
-                    />
-                    <span className="text-slate-500">to</span>
-                    <Input
-                      type="time"
-                      value={interval.end_time}
-                      onChange={(e) => {
-                        const newIntervals = [...formData.bypass_intervals];
-                        newIntervals[index].end_time = e.target.value;
-                        setFormData(f => ({ ...f, bypass_intervals: newIntervals }));
-                      }}
-                      className="bg-slate-700 border-slate-600 text-white"
-                    />
-                    <Switch
-                      checked={interval.enabled}
-                      onCheckedChange={(checked) => {
-                        const newIntervals = [...formData.bypass_intervals];
-                        newIntervals[index].enabled = checked;
-                        setFormData(f => ({ ...f, bypass_intervals: newIntervals }));
-                      }}
+                      type="url"
+                      placeholder="https://your-broker.com/webhook"
+                      value={formData.broker_webhook_url}
+                      onChange={(e) => setFormData(f => ({ ...f, broker_webhook_url: e.target.value }))}
+                      className="bg-slate-800 border-slate-700 text-white"
                     />
                     <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        const newIntervals = formData.bypass_intervals.filter((_, i) => i !== index);
-                        setFormData(f => ({ ...f, bypass_intervals: newIntervals }));
-                      }}
-                      className="text-red-400 hover:text-red-300"
+                      onClick={() => testBrokerMutation.mutate(formData.broker_webhook_url)}
+                      disabled={!formData.broker_webhook_url || testBrokerMutation.isPending}
+                      variant="outline"
+                      className="border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {testBrokerMutation.isPending ? 'Testing...' : 'Test'}
                     </Button>
                   </div>
-                ))}
+                </div>
 
-                {formData.bypass_intervals?.length === 0 && (
-                  <p className="text-xs text-slate-500 text-center py-4">
-                    No intervals configured. Add time windows when bypass mode should activate.
-                  </p>
-                )}
-              </div>
+                <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info className="w-4 h-4 text-orange-400" />
+                    <span className="text-xs font-semibold text-orange-300">Order Payload Format</span>
+                  </div>
+                  <pre className="bg-slate-800/50 p-2 rounded text-[10px] text-orange-200 overflow-x-auto">
+{`{
+  "symbol": "AAPL",
+  "action": "buy",
+  "quantity": 100,
+  "limit_price": 150.25
+}`}
+                  </pre>
+                </div>
+              </>
             )}
-
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
-              <Info className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-orange-300">
-                During bypass intervals, executions forward immediately to broker regardless of the execution mode setting.
-              </p>
-            </div>
           </CardContent>
         </Card>
 
@@ -439,12 +391,12 @@ export default function Settings() {
                 </p>
               </div>
               <Switch
-                checked={formData.email_notifications_enabled}
-                onCheckedChange={(checked) => setFormData(f => ({ ...f, email_notifications_enabled: checked }))}
+                checked={formData.email_notifications}
+                onCheckedChange={(checked) => setFormData(f => ({ ...f, email_notifications: checked }))}
               />
             </div>
 
-            {formData.email_notifications_enabled && (
+            {formData.email_notifications && (
               <>
                 <div className="space-y-2">
                   <Label className="text-slate-300">Notification Email</Label>
@@ -459,53 +411,29 @@ export default function Settings() {
 
                 <div className="space-y-3 pt-2">
                   <Label className="text-slate-300">Event Preferences</Label>
-                  
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
                       <span className="text-sm text-slate-300">Signal Approved</span>
                       <Switch
-                        checked={formData.notify_on_signal_approved}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_signal_approved: checked }))}
+                        checked={formData.notify_on_approval}
+                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_approval: checked }))}
                       />
                     </div>
-                    
+
                     <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Signal Rejected</span>
+                      <span className="text-sm text-slate-300">Order Executed</span>
                       <Switch
-                        checked={formData.notify_on_signal_rejected}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_signal_rejected: checked }))}
+                        checked={formData.notify_on_execution}
+                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_execution: checked }))}
                       />
                     </div>
-                    
+
                     <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Entry Order Executed</span>
+                      <span className="text-sm text-slate-300">Position Closed</span>
                       <Switch
-                        checked={formData.notify_on_entry_executed}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_entry_executed: checked }))}
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Exit Order Executed</span>
-                      <Switch
-                        checked={formData.notify_on_exit_executed}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_exit_executed: checked }))}
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Position Marked Flat</span>
-                      <Switch
-                        checked={formData.notify_on_position_closed}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_position_closed: checked }))}
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">High Quality Signals (A+/A)</span>
-                      <Switch
-                        checked={formData.notify_on_high_quality}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_high_quality: checked }))}
+                        checked={formData.notify_on_close}
+                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_close: checked }))}
                       />
                     </div>
                   </div>
@@ -515,15 +443,15 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* TradingView Webhook URL */}
+        {/* Unified Webhook URL */}
         <Card className="bg-slate-900/50 border-slate-800">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
               <Webhook className="w-5 h-5 text-emerald-400" />
-              TradingView Webhook URL
+              Webhook URL
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Configure this URL in TradingView alerts
+              Single endpoint for all TradingView signals (WALL, ORDER, EXIT)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -533,12 +461,12 @@ export default function Settings() {
                 <Input
                   type="text"
                   readOnly
-                  value={`${window.location.origin}/functions/inboundWebhook`}
+                  value={`${API_BASE_URL.replace('/api', '')}/api/webhook`}
                   className="bg-slate-800 border-slate-700 text-emerald-400 font-mono text-sm"
                 />
                 <Button
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/functions/inboundWebhook`);
+                    navigator.clipboard.writeText(`${API_BASE_URL.replace('/api', '')}/api/webhook`);
                     toast.success('Webhook URL copied!');
                   }}
                   variant="outline"
@@ -548,110 +476,109 @@ export default function Settings() {
                 </Button>
               </div>
             </div>
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-              <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-emerald-300 space-y-1">
-                <p className="font-medium">Use this single URL for all TradingView alerts:</p>
-                <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li>WALL events (signal quality)</li>
-                  <li>ORDER events (executions)</li>
-                  <li>EXIT events (position closes)</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Zapier Webhook URL */}
-        <Card className="bg-slate-900/50 border-slate-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Webhook className="w-5 h-5 text-orange-400" />
-              Zapier Webhook URL
-            </CardTitle>
-            <CardDescription className="text-slate-400">
-              Use this URL in Zapier "Webhooks by Zapier" actions
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-slate-300">Zapier Webhook URL</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  readOnly
-                  value={`${window.location.origin}/functions/zapier`}
-                  className="bg-slate-800 border-slate-700 text-orange-400 font-mono text-sm"
-                />
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/functions/zapier`);
-                    toast.success('Zapier URL copied!');
-                  }}
-                  variant="outline"
-                  className="border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
-                >
-                  Copy
-                </Button>
-              </div>
-            </div>
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
-              <Info className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-orange-300 space-y-2">
-                <p className="font-medium">Supported Actions:</p>
-                <div className="space-y-1.5 ml-2">
-                  <div>
-                    <p className="font-semibold">1. Send Order</p>
-                    <code className="text-[10px] bg-slate-800/50 px-1.5 py-0.5 rounded">
-                      {`{"action": "send_order", "data": {"symbol": "TSLA", "action": "buy", "quantity": 100}}`}
-                    </code>
-                  </div>
-                  <div>
-                    <p className="font-semibold">2. Create Trade Intent</p>
-                    <code className="text-[10px] bg-slate-800/50 px-1.5 py-0.5 rounded">
-                      {`{"action": "create_trade_intent", "data": {"ticker": "AAPL", "dir": "Long"}}`}
-                    </code>
-                  </div>
-                  <div>
-                    <p className="font-semibold">3. Log Data</p>
-                    <code className="text-[10px] bg-slate-800/50 px-1.5 py-0.5 rounded">
-                      {`{"action": "log", "data": {...}}`}
-                    </code>
-                  </div>
+            {/* Signal Types */}
+            <div className="space-y-3">
+              {/* WALL Signal */}
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-semibold text-blue-300">WALL Signal (Candidate Cards)</span>
+                </div>
+                <p className="text-[10px] text-blue-200 mb-2">Creates a card for review with gate-based confidence scoring</p>
+                <pre className="bg-slate-800/50 p-2 rounded text-[10px] text-blue-200 overflow-x-auto whitespace-pre-wrap">
+{`{
+  "event": "WALL",
+  "ticker": "AAPL",
+  "dir": "Short",
+  "price": 189.34,
+  "strategy_id": "scalper",
+  "tf": "1m",
+  "intent": {
+    "dvtpShortTrig": false,
+    "shortArmed": false,
+    "testMode": "NEW_LOW"
+  },
+  "gates": {
+    "rule2_Fire": true,
+    "Ovr60": true,
+    "gatedShort_1": true,
+    "VolumeGate": true
+  }
+}`}
+                </pre>
+                <div className="mt-2 text-[9px] text-blue-300/80">
+                  <p><strong>Gate Scoring:</strong> confidence = gates_hit / gates_total</p>
+                  <p>Quality derived: A+ (90%+), A (80%+), B (70%+), C (60%+), D (&lt;60%)</p>
                 </div>
               </div>
+
+              {/* ORDER Signal */}
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-semibold text-emerald-300">ORDER Signal (Direct Execution)</span>
+                </div>
+                <p className="text-[10px] text-emerald-200 mb-2">Creates execution directly (bypasses review)</p>
+                <pre className="bg-slate-800/50 p-2 rounded text-[10px] text-emerald-200 overflow-x-auto">
+{`{
+  "event": "ORDER",
+  "ticker": "AAPL",
+  "dir": "Long",
+  "price": 150.50,
+  "limit_price": 150.25,
+  "quantity": 100
+}`}
+                </pre>
+              </div>
+
+              {/* EXIT Signal */}
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-semibold text-amber-300">EXIT Signal (Close Position)</span>
+                </div>
+                <p className="text-[10px] text-amber-200 mb-2">Creates exit order to close position</p>
+                <pre className="bg-slate-800/50 p-2 rounded text-[10px] text-amber-200 overflow-x-auto">
+{`{
+  "event": "EXIT",
+  "ticker": "AAPL",
+  "dir": "Long",
+  "price": 155.00,
+  "quantity": 100
+}`}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-slate-700/30 border border-slate-600/30">
+              <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-300 space-y-1">
+                <p><strong>Note:</strong> If no "event" is specified, signals default to WALL.</p>
+                <p>Raw payloads are stored verbatim for replay, audits, and ML labeling.</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Broker Webhook Configuration */}
+        {/* Database Info */}
         <Card className="bg-slate-900/50 border-slate-800">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
-              <Webhook className="w-5 h-5 text-blue-400" />
-              Broker Webhook
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              Database Status
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Endpoint for forwarding approved orders
+              Local SQLite database with 80 MB limit
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-slate-300">Broker Webhook URL</Label>
-              <Input
-                type="url"
-                placeholder="https://api.signalstack.com/webhook/..."
-                value={formData.broker_webhook_url}
-                onChange={(e) => setFormData(f => ({ ...f, broker_webhook_url: e.target.value }))}
-                className="bg-slate-800 border-slate-700 text-white font-mono text-sm"
-              />
-            </div>
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-300">
-                Approved orders will be forwarded to this URL with the original payload,
-                optionally modified with limit price overrides.
-              </p>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+              <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-cyan-300">
+                <p>Your data is stored locally in a SQLite database.</p>
+                <p className="mt-1">Automatic cleanup runs hourly to maintain the 80 MB size limit.</p>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -1,0 +1,179 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model TradeIntent {
+  id             String   @id @default(uuid())
+  ticker         String
+  dir            String   // "Long" or "Short"
+  price          String   // Decimal as string for SQLite
+
+  // Strategy metadata
+  strategy_id    String?  // e.g., "scalper"
+  timeframe      String?  // e.g., "1m", "5m"
+
+  // Gate scoring (derived from gates object)
+  gates_hit      Int      @default(0)
+  gates_total    Int      @default(0)
+  confidence     Float    @default(0)  // gates_hit / gates_total
+
+  // Legacy quality fields (can be derived from confidence)
+  quality_tier   String   @default("C")
+  quality_score  Int      @default(50)
+
+  // State management
+  card_state     String   // ARMED, ELIGIBLE, WAITING_DIP, EXECUTED, INVALIDATED
+  status         String   // pending, swiped_on, swiped_off, swiped_deny, cancelled
+  primary_blocker String?
+
+  // Raw payload storage (immutable truth layer)
+  intent_data    String?  // JSON: intent object from webhook
+  gates_data     String?  // JSON: gates object from webhook
+  raw_payload    String?  // JSON: entire original payload
+
+  expires_at     DateTime
+  created_date   DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([card_state])
+  @@index([status])
+  @@index([ticker])
+  @@index([strategy_id])
+  @@index([confidence])
+  @@index([expires_at])
+  @@map("trade_intents")
+}
+
+model TickerConfig {
+  id            String    @id @default(uuid())
+  ticker        String    @unique
+  enabled       Boolean   @default(true)
+  blocked_until DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  @@index([ticker])
+  @@map("ticker_configs")
+}
+
+model ExecutionSettings {
+  id                   String  @id @default(uuid())
+  execution_mode       String  @default("safe") // off, safe, full
+  default_delay_bars   Int     @default(2)
+  gate_threshold       Int     @default(3)
+  limit_edit_window    Int     @default(120) // seconds
+  max_adjustment_pct   Decimal @default(2.0)
+
+  // Broker webhook settings
+  broker_webhook_url   String?  // URL to forward approved orders to broker
+  broker_webhook_enabled Boolean @default(false)
+
+  // Email notification settings
+  email_notifications  Boolean @default(false)
+  notification_email   String?
+  notify_on_approval   Boolean @default(true)
+  notify_on_execution  Boolean @default(true)
+  notify_on_close      Boolean @default(true)
+
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@map("execution_settings")
+}
+
+model Execution {
+  id               String    @id @default(uuid())
+  intent_id        String?   // Link to source TradeIntent (if created from WALL)
+  ticker           String
+  dir              String?   // "Long" or "Short"
+  order_action     String    // buy, sell
+  quantity         Int
+  limit_price      Decimal?
+  status           String    @default("pending") // pending, executing, executed, failed, cancelled
+  delay_expires_at DateTime?
+  executed_at      DateTime?
+  error_message    String?
+
+  // Raw payload for broker forwarding (TradingView ORDER format)
+  raw_payload      String?   // JSON: original/constructed order payload
+
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  @@index([ticker])
+  @@index([status])
+  @@index([intent_id])
+  @@map("executions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  event_type String   // intent_created, swiped_on, swiped_off, executed, position_closed, etc.
+  ticker     String?
+  details    String   // JSON stored as string
+  timestamp  DateTime @default(now())
+
+  @@index([event_type])
+  @@index([ticker])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model Position {
+  id          String    @id @default(uuid())
+  ticker      String
+  side        String    // Long, Short
+  quantity    Int
+  entry_price Decimal
+  opened_at   DateTime  @default(now())
+  closed_at   DateTime?
+  updated_at  DateTime  @updatedAt
+
+  @@index([ticker])
+  @@index([closed_at])
+  @@map("positions")
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  source    String   // tradingview, zapier
+  payload   String   // JSON stored as string
+  status    String   // processing, success, error
+  error     String?
+  timestamp DateTime @default(now())
+
+  @@index([source])
+  @@index([status])
+  @@index([timestamp])
+  @@map("webhook_logs")
+}
+
+model WallEvent {
+  id         String   @id @default(uuid())
+  event_type String
+  ticker     String?
+  data       String   // JSON stored as string
+  timestamp  DateTime @default(now())
+
+  @@index([event_type])
+  @@index([ticker])
+  @@map("wall_events")
+}

@@ -97,7 +97,7 @@ export default function ExecutionQueue({
                     </span>
                   </div>
                   <span className="text-xs text-slate-500">
-                    {exec.created_date && format(new Date(exec.created_date), "HH:mm:ss")}
+                    {(exec.created_at || exec.created_date) && format(new Date(exec.created_at || exec.created_date), "HH:mm:ss")}
                   </span>
                 </div>
               </div>

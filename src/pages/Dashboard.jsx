@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Layers, Send, History, Settings, X, 
-  RefreshCw, Bell, Shield, TrendingUp
+import {
+  Layers, Send, History, Settings, X,
+  RefreshCw, Bell, Shield, TrendingUp, Webhook
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -23,40 +22,41 @@ import TickerList from "../components/trading/TickerList";
 import LimitPriceEditor from "../components/trading/LimitPriceEditor";
 import CandidatesList from "../components/trading/CandidatesList";
 import PositionsList from "../components/trading/PositionsList";
+import BlockedTickersList from "../components/trading/BlockedTickersList";
 import ErrorBoundary from "../components/ErrorBoundary";
 
-const TradeIntent = base44.entities.TradeIntent;
-const TickerConfig = base44.entities.TickerConfig;
-const ExecutionSettings = base44.entities.ExecutionSettings;
-const AuditLog = base44.entities.AuditLog;
-const Position = base44.entities.Position;
+// Import new REST API client
+import api from "@/api/apiClient";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("candidates");
   const [editingIntent, setEditingIntent] = useState(null);
   const [limitEditorOpen, setLimitEditorOpen] = useState(false);
   const [viewMode, setViewMode] = useState("deck"); // "deck" or "list"
-  
+
   const queryClient = useQueryClient();
 
   // Fetch settings
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => {
-      const list = await ExecutionSettings.list();
-      if (list.length === 0) {
-        // Create default settings
-        return await ExecutionSettings.create({
-          setting_key: 'global',
-          execution_mode: 'safe',
-          default_delay_bars: 2,
-          gate_threshold_default: 5,
-          gates_total_default: 7,
-          limit_edit_window_seconds: 120,
-          limit_adjustment_max_percent: 2.0
-        });
+      try {
+        const response = await api.get('/settings');
+        return response.data;
+      } catch (error) {
+        // If no settings exist, create default
+        if (error.response?.status === 404) {
+          const createResponse = await api.post('/settings', {
+            execution_mode: 'safe',
+            default_delay_bars: 2,
+            gate_threshold: 5,
+            limit_edit_window: 120,
+            max_adjustment_pct: 2.0
+          });
+          return createResponse.data;
+        }
+        throw error;
       }
-      return list[0];
     }
   });
 
@@ -64,42 +64,53 @@ export default function Dashboard() {
   const { data: candidates = [], isLoading: candidatesLoading, refetch: refetchCandidates } = useQuery({
     queryKey: ['candidates'],
     queryFn: async () => {
-      const now = new Date().toISOString();
-      const intents = await TradeIntent.filter({ 
-        card_state: { $in: ['ARMED', 'ELIGIBLE', 'WAITING_DIP'] },
-        status: { $in: ['pending', 'swiped_on', 'cancelled'] },
-        expires_at: { $gt: now }
-      }, '-created_date', 50);
-      
-      return intents;
+      const response = await api.get('/trade-intents', {
+        params: {
+          card_state: 'ARMED,ELIGIBLE,WAITING_DIP',
+          status: 'pending,swiped_on,cancelled'
+        }
+      });
+      // Filter out expired intents
+      const now = new Date();
+      return (response.data || []).filter(intent => new Date(intent.expires_at) > now);
     },
     enabled: !!settings,
     refetchInterval: 5000
   });
 
-  // Fetch executions (both entry and exit intents)
+  // Fetch blocked intents (swiped_off status - for revive section)
+  const { data: blockedIntents = [], refetch: refetchBlockedIntents } = useQuery({
+    queryKey: ['blockedIntents'],
+    queryFn: async () => {
+      const response = await api.get('/trade-intents', {
+        params: {
+          status: 'swiped_off'
+        }
+      });
+      // Filter out expired intents
+      const now = new Date();
+      return (response.data || []).filter(intent => new Date(intent.expires_at) > now);
+    },
+    enabled: !!settings,
+    refetchInterval: 10000
+  });
+
+  // Fetch executions from the Execution table (only pending/executing - active queue)
   const { data: executions = [], refetch: refetchExecutions } = useQuery({
     queryKey: ['executions'],
-    queryFn: () => {
-      const now = new Date().toISOString();
-      return TradeIntent.filter({ 
-        card_state: 'EXECUTED',
-        status: { $in: ['pending', 'executing', 'executed', 'cancelled', 'failed'] },
-        expires_at: { $gt: now }
-      }, '-created_date', 50);
+    queryFn: async () => {
+      const response = await api.get('/executions', {
+        params: { status: 'pending,executing' }
+      });
+      return response.data || [];
     },
     refetchInterval: 3000
   });
 
-  // Auto-execute when delay completes
+  // Force execute an order
   const forceExecuteMutation = useMutation({
     mutationFn: async (exec) => {
-      const response = await base44.functions.invoke('inboundWebhook', {
-        symbol: exec.ticker,
-        action: exec.order_action,
-        quantity: exec.quantity,
-        limit_price: exec.limit_price
-      });
+      const response = await api.post(`/executions/${exec.id}/execute`);
       return response.data;
     },
     onSuccess: () => {
@@ -110,40 +121,43 @@ export default function Dashboard() {
     }
   });
 
-  // Watch for completed delays and auto-execute
-  useEffect(() => {
-    if (settings?.execution_mode !== 'safe') return;
-    
-    const pendingExecs = executions.filter(e => e.status === 'pending' && e.delay_expires_at);
-    const now = new Date();
-    
-    pendingExecs.forEach(exec => {
-      const expiryTime = new Date(exec.delay_expires_at);
-      
-      if (now >= expiryTime) {
-        // Delay complete - auto execute
-        forceExecuteMutation.mutate(exec);
-      }
-    });
-  }, [executions, settings?.execution_mode]);
+  // Note: Auto-execute on delay expiry is now handled by backend scheduler
+  // This ensures orders execute even when browser is closed
 
   // Fetch ticker configs
   const { data: tickers = [], refetch: refetchTickers } = useQuery({
     queryKey: ['tickers'],
-    queryFn: () => TickerConfig.list('-last_intent_at', 100)
+    queryFn: async () => {
+      const response = await api.get('/ticker-configs');
+      return response.data || [];
+    }
   });
 
   // Fetch audit logs
   const { data: auditLogs = [] } = useQuery({
     queryKey: ['auditLogs'],
-    queryFn: () => AuditLog.list('-created_date', 100),
+    queryFn: async () => {
+      const response = await api.get('/audit-logs', {
+        params: { limit: 100 }
+      });
+      // Parse details if it's a string
+      return (response.data || []).map(log => ({
+        ...log,
+        details: typeof log.details === 'string' ? JSON.parse(log.details) : log.details
+      }));
+    },
     refetchInterval: 10000
   });
 
   // Fetch open positions
   const { data: positions = [], refetch: refetchPositions } = useQuery({
     queryKey: ['positions'],
-    queryFn: () => Position.filter({ status: 'open' }, '-created_date', 100),
+    queryFn: async () => {
+      const response = await api.get('/positions', {
+        params: { open_only: true }
+      });
+      return response.data || [];
+    },
     refetchInterval: 5000
   });
 
@@ -163,71 +177,67 @@ export default function Dashboard() {
   // Mutations
   const updateSettingsMutation = useMutation({
     mutationFn: async (data) => {
-      if (settings?.id) {
-        await ExecutionSettings.update(settings.id, data);
-        // Log mode change
-        if (data.execution_mode) {
-          await AuditLog.create({
-            event_type: 'mode_change',
-            previous_value: settings.execution_mode,
-            new_value: data.execution_mode,
-            execution_mode: data.execution_mode
-          });
-        }
-      }
+      const response = await api.put('/settings', data);
+      return response.data;
+    },
+    onMutate: async (newData) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['settings'] });
+
+      // Snapshot the previous value
+      const previousSettings = queryClient.getQueryData(['settings']);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData(['settings'], (old) => ({
+        ...old,
+        ...newData
+      }));
+
+      // Return context with the previous value
+      return { previousSettings };
+    },
+    onError: (err, newData, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      queryClient.setQueryData(['settings'], context.previousSettings);
+      toast.error('Failed to update settings');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success('Settings updated');
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
     }
   });
 
   const swipeOnMutation = useMutation({
     mutationFn: async (intent) => {
-      await TradeIntent.update(intent.id, { status: 'swiped_on' });
-      
+      // Update intent status
+      await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'approve' });
+
       // Ensure ticker config exists and is enabled
       const existing = tickers.find(t => t.ticker === intent.ticker);
       if (!existing) {
-        await TickerConfig.create({ 
-          ticker: intent.ticker, 
-          enabled: true,
-          last_intent_at: new Date().toISOString()
+        await api.post('/ticker-configs', {
+          ticker: intent.ticker,
+          enabled: true
         });
       } else {
-        await TickerConfig.update(existing.id, { 
-          enabled: true,
-          last_intent_at: new Date().toISOString()
+        await api.put(`/ticker-configs/${intent.ticker}`, {
+          enabled: true
         });
       }
-      
-      await AuditLog.create({
+
+      // Create audit log
+      await api.post('/audit-logs', {
         event_type: 'swipe_on',
         ticker: intent.ticker,
-        side: intent.side,
-        intent_id: intent.id
+        details: JSON.stringify({
+          side: intent.dir,
+          intent_id: intent.id
+        })
       });
 
-      // Send email notification
-      if (settings?.email_notifications_enabled && settings?.notification_email) {
-        try {
-          await base44.integrations.Core.SendEmail({
-            to: settings.notification_email,
-            subject: `✅ Approved: ${intent.ticker} ${intent.dir}`,
-            body: `
-              <h2>Signal Approved</h2>
-              <p><strong>Ticker:</strong> ${intent.ticker}</p>
-              <p><strong>Direction:</strong> ${intent.dir}</p>
-              <p><strong>Quality:</strong> ${intent.quality_tier} (${intent.quality_score}/100)</p>
-              <p><strong>Limit Price:</strong> $${intent.limit_price || 'N/A'}</p>
-              <p><em>Awaiting execution in ${settings.execution_mode} mode</em></p>
-            `
-          });
-        } catch (error) {
-          console.error('Email failed:', error);
-        }
-      }
-      
       return intent.id;
     },
     onSuccess: (intentId) => {
@@ -237,7 +247,7 @@ export default function Dashboard() {
         const actioned = old.find(i => i.id === intentId);
         return actioned ? [...filtered, actioned] : filtered;
       });
-      
+
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
       toast.success('Approved - awaiting execution');
@@ -246,77 +256,61 @@ export default function Dashboard() {
 
   const swipeOffMutation = useMutation({
     mutationFn: async (intent) => {
-      await TradeIntent.update(intent.id, { status: 'swiped_off' });
-      
+      // Update intent status
+      await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'off' });
+
       // Disable ticker
       const existing = tickers.find(t => t.ticker === intent.ticker);
       if (existing) {
-        await TickerConfig.update(existing.id, { 
-          enabled: false,
-          total_blocked: (existing.total_blocked || 0) + 1
+        await api.put(`/ticker-configs/${intent.ticker}`, {
+          enabled: false
         });
       } else {
-        await TickerConfig.create({ 
-          ticker: intent.ticker, 
-          enabled: false,
-          total_blocked: 1
+        await api.post('/ticker-configs', {
+          ticker: intent.ticker,
+          enabled: false
         });
       }
-      
-      await AuditLog.create({
+
+      // Create audit log
+      await api.post('/audit-logs', {
         event_type: 'swipe_off',
         ticker: intent.ticker,
-        side: intent.dir,
-        intent_id: intent.id
+        details: JSON.stringify({
+          side: intent.dir,
+          intent_id: intent.id
+        })
       });
 
-      // Send email notification
-            if (settings?.email_notifications_enabled && settings?.notification_email && settings?.notify_on_signal_rejected) {
-              try {
-                await base44.integrations.Core.SendEmail({
-                  to: settings.notification_email,
-                  subject: `🚫 Rejected: ${intent.ticker} ${intent.dir}`,
-                  body: `
-                    <h2>Signal Rejected</h2>
-                    <p><strong>Ticker:</strong> ${intent.ticker}</p>
-                    <p><strong>Direction:</strong> ${intent.dir}</p>
-                    <p><strong>Quality:</strong> ${intent.quality_tier} (${intent.quality_score}/100)</p>
-                    <p><em>Ticker disabled - no future signals will execute</em></p>
-                  `
-                });
-              } catch (error) {
-                console.error('Email failed:', error);
-              }
-            }
-      
       return intent.id;
     },
     onSuccess: (intentId) => {
-      // Move the actioned card to the back of the deck
+      // Remove the card from candidates list (it's now blocked)
       queryClient.setQueryData(['candidates'], (old = []) => {
-        const filtered = old.filter(i => i.id !== intentId);
-        const actioned = old.find(i => i.id === intentId);
-        return actioned ? [...filtered, actioned] : filtered;
+        return old.filter(i => i.id !== intentId);
       });
-      
+
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['blockedIntents'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
-      toast.success('Ticker disabled');
+      toast.success('Ticker disabled - moved to blocked');
     }
   });
 
   const denyOrderMutation = useMutation({
     mutationFn: async (intent) => {
-      await TradeIntent.update(intent.id, { status: 'cancelled' });
-      
-      await AuditLog.create({
+      await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'deny' });
+
+      await api.post('/audit-logs', {
         event_type: 'cancelled',
         ticker: intent.ticker,
-        side: intent.dir,
-        intent_id: intent.id,
-        details: { reason: 'Manually denied by user' }
+        details: JSON.stringify({
+          side: intent.dir,
+          intent_id: intent.id,
+          reason: 'Manually denied by user'
+        })
       });
-      
+
       return intent.id;
     },
     onSuccess: (intentId) => {
@@ -324,7 +318,7 @@ export default function Dashboard() {
       queryClient.setQueryData(['candidates'], (old = []) => {
         return old.filter(i => i.id !== intentId);
       });
-      
+
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
       toast.success('Order denied');
     }
@@ -332,14 +326,14 @@ export default function Dashboard() {
 
   const toggleTickerMutation = useMutation({
     mutationFn: async ({ ticker, enabled }) => {
-      const existing = tickers.find(t => t.ticker === ticker);
-      if (existing) {
-        await TickerConfig.update(existing.id, { enabled });
-      }
-      await AuditLog.create({
+      await api.put(`/ticker-configs/${ticker}`, { enabled });
+
+      await api.post('/audit-logs', {
         event_type: 'ticker_toggle',
         ticker,
-        new_value: enabled ? 'enabled' : 'disabled'
+        details: JSON.stringify({
+          new_value: enabled ? 'enabled' : 'disabled'
+        })
       });
     },
     onSuccess: () => {
@@ -350,47 +344,37 @@ export default function Dashboard() {
 
   const saveLimitOverrideMutation = useMutation({
     mutationFn: async ({ intent, newPrice }) => {
-      const existing = tickers.find(t => t.ticker === intent.ticker);
       const originalPrice = intent.limit_price;
-      
-      if (existing) {
-        await TickerConfig.update(existing.id, {
-          limit_price_override: newPrice,
-          limit_override_expires: new Date(Date.now() + (settings?.limit_edit_window_seconds || 120) * 1000).toISOString(),
-          limit_override_applied: false
-        });
-      }
-      
-      await AuditLog.create({
+
+      // Update the execution's limit_price directly so broker gets the new price
+      await api.put(`/executions/${intent.id}`, {
+        limit_price: newPrice
+      });
+
+      await api.post('/audit-logs', {
         event_type: 'limit_edit',
         ticker: intent.ticker,
-        side: intent.dir,
-        intent_id: intent.id,
-        previous_value: String(originalPrice),
-        new_value: String(newPrice),
-        details: {
+        details: JSON.stringify({
+          execution_id: intent.id,
+          side: intent.dir,
+          previous_value: String(originalPrice),
+          new_value: String(newPrice),
           original_price: originalPrice,
           new_price: newPrice,
           change_percent: ((newPrice - originalPrice) / originalPrice) * 100
-        }
+        })
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
-      toast.success('Limit price override applied');
+      toast.success('Limit price updated - broker will receive new price');
     }
   });
 
   const cancelExecutionMutation = useMutation({
     mutationFn: async (exec) => {
-      await TradeIntent.update(exec.id, { status: 'cancelled' });
-      await AuditLog.create({
-        event_type: 'cancelled',
-        ticker: exec.ticker,
-        side: exec.dir,
-        intent_id: exec.id
-      });
+      await api.post(`/executions/${exec.id}/cancel`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['executions'] });
@@ -401,19 +385,8 @@ export default function Dashboard() {
 
   const retryExecutionMutation = useMutation({
     mutationFn: async (exec) => {
-      // Reset retry count and status, then retry execution
-      await TradeIntent.update(exec.id, { 
-        status: 'pending',
-        retry_count: 0,
-        failure_reason: null
-      });
-      
-      const response = await base44.functions.invoke('inboundWebhook', {
-        symbol: exec.ticker,
-        action: exec.order_action,
-        quantity: exec.quantity,
-        limit_price: exec.limit_price
-      });
+      // Re-execute the order
+      const response = await api.post(`/executions/${exec.id}/execute`);
       return response.data;
     },
     onSuccess: () => {
@@ -429,38 +402,37 @@ export default function Dashboard() {
 
   const blockSignalsMutation = useMutation({
     mutationFn: async (position) => {
-      const existing = tickers.find(t => t.ticker === position.ticker);
-      
       // Calculate 1am next day
       const now = new Date();
       const nextDay1am = new Date();
       nextDay1am.setDate(now.getDate() + 1);
       nextDay1am.setHours(1, 0, 0, 0);
-      
+
+      const existing = tickers.find(t => t.ticker === position.ticker);
       if (existing) {
-        await TickerConfig.update(existing.id, { 
+        await api.put(`/ticker-configs/${position.ticker}`, {
           enabled: false,
-          signals_blocked_until: nextDay1am.toISOString()
+          blocked_until: nextDay1am.toISOString()
         });
       } else {
-        await TickerConfig.create({ 
-          ticker: position.ticker, 
+        await api.post('/ticker-configs', {
+          ticker: position.ticker,
           enabled: false,
-          signals_blocked_until: nextDay1am.toISOString()
+          blocked_until: nextDay1am.toISOString()
         });
       }
 
-      // Close the position so it disappears from the list
-      await Position.update(position.id, { status: 'closed' });
+      // Close the position
+      await api.post(`/positions/${position.id}/mark-flat`);
 
-      await AuditLog.create({
+      await api.post('/audit-logs', {
         event_type: 'ticker_toggle',
         ticker: position.ticker,
-        new_value: 'disabled',
-        details: { 
+        details: JSON.stringify({
+          new_value: 'disabled',
           reason: 'Blocked from position management',
           blocked_until: nextDay1am.toISOString()
-        }
+        })
       });
     },
     onSuccess: () => {
@@ -473,37 +445,7 @@ export default function Dashboard() {
 
   const markFlatMutation = useMutation({
     mutationFn: async (position) => {
-      const response = await base44.functions.invoke('markFlat', {
-        ticker: position.ticker,
-        dir: position.side === 'long' ? 'Long' : 'Short',
-        tf: '2m',
-        cooldown_minutes: 5
-      });
-      
-      // Close the position in UI
-      await Position.update(position.id, { status: 'closed' });
-
-      // Send email notification
-            if (settings?.email_notifications_enabled && settings?.notification_email && settings?.notify_on_position_closed) {
-              try {
-                await base44.integrations.Core.SendEmail({
-                  to: settings.notification_email,
-                  subject: `📍 Position Marked Flat: ${position.ticker}`,
-                  body: `
-                    <h2>Position Marked Flat</h2>
-                    <p><strong>Ticker:</strong> ${position.ticker}</p>
-                    <p><strong>Side:</strong> ${position.side}</p>
-                    <p><strong>Quantity:</strong> ${position.quantity}</p>
-                    <p><strong>Entry Price:</strong> $${position.avg_entry_price || 'N/A'}</p>
-                    <p><strong>Cooldown:</strong> 5 minutes</p>
-                    <p><em>Position manually closed - cooldown active</em></p>
-                  `
-                });
-              } catch (error) {
-                console.error('Email failed:', error);
-              }
-            }
-      
+      const response = await api.post(`/positions/${position.id}/mark-flat`);
       return response.data;
     },
     onSuccess: () => {
@@ -514,12 +456,26 @@ export default function Dashboard() {
     }
   });
 
-
+  // Revive a blocked ticker (move back to candidates)
+  const reviveTickerMutation = useMutation({
+    mutationFn: async (intent) => {
+      // Use the 'revive' action which resets status to 'pending' and enables ticker
+      await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'revive' });
+      return intent.id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['blockedIntents'] });
+      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Ticker revived - moved back to candidates');
+    }
+  });
 
   // Check if limit edit is available for an intent
   const canEditLimit = useCallback((intent) => {
     if (!intent.limit_price) return false;
-    const windowSeconds = settings?.limit_edit_window_seconds || 120;
+    const windowSeconds = settings?.limit_edit_window || 120;
     const createdAt = new Date(intent.created_date).getTime();
     const now = Date.now();
     return (now - createdAt) < (windowSeconds * 1000);
@@ -528,7 +484,7 @@ export default function Dashboard() {
   // Get remaining time for limit edit
   const getLimitEditTimeRemaining = useCallback((intent) => {
     if (!intent.limit_price) return 0;
-    const windowSeconds = settings?.limit_edit_window_seconds || 120;
+    const windowSeconds = settings?.limit_edit_window || 120;
     const createdAt = new Date(intent.created_date).getTime();
     const expiresAt = createdAt + (windowSeconds * 1000);
     const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
@@ -546,223 +502,259 @@ export default function Dashboard() {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
-        <div className="flex items-center justify-between px-4 h-16">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-white" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        {/* Header */}
+        <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+          <div className="flex items-center justify-between px-4 h-16">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-white text-lg leading-tight">Execution Wall</h1>
+                <p className="text-xs text-slate-500">Trade Firewall</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-bold text-white text-lg leading-tight">Execution Wall</h1>
-              <p className="text-xs text-slate-500">Trade Firewall</p>
+
+            <div className="flex items-center gap-2">
+              <Link to={createPageUrl("WebhookLogs")}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-slate-400"
+                  title="Webhook Logs"
+                >
+                  <Webhook className="w-5 h-5" />
+                </Button>
+              </Link>
+
+              <Link to={createPageUrl("ExecutionHistory")}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-slate-400"
+                >
+                  <History className="w-5 h-5" />
+                </Button>
+              </Link>
+
+              <Link to={createPageUrl("Settings")}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-slate-400"
+                >
+                  <Settings className="w-5 h-5" />
+                </Button>
+              </Link>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  refetchCandidates();
+                  refetchExecutions();
+                }}
+                className="text-slate-400"
+              >
+                <RefreshCw className={cn("w-5 h-5", candidatesLoading && "animate-spin")} />
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Link to={createPageUrl("ExecutionHistory")}>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="text-slate-400"
-              >
-                <History className="w-5 h-5" />
-              </Button>
-            </Link>
+          {/* Execution mode indicator */}
+          <div className={cn(
+            "h-1",
+            settings?.execution_mode === 'off' ? "bg-red-500" :
+              settings?.execution_mode === 'safe' ? "bg-amber-500" :
+                "bg-emerald-500"
+          )} />
+        </header>
 
-            <Link to={createPageUrl("Settings")}>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="text-slate-400"
-              >
-                <Settings className="w-5 h-5" />
-              </Button>
-            </Link>
-
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={() => {
-                refetchCandidates();
-                refetchExecutions();
-              }}
-              className="text-slate-400"
-            >
-              <RefreshCw className={cn("w-5 h-5", candidatesLoading && "animate-spin")} />
-            </Button>
+        {/* Main content */}
+        <main className="pb-24">
+          {/* Execution Mode Selector - Always Visible */}
+          <div className="px-4 pt-3 md:pb-2 pb-8">
+            <ExecutionModeToggle
+              mode={settings?.execution_mode || 'safe'}
+              onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
+            />
           </div>
-        </div>
 
-        {/* Execution mode indicator */}
-        <div className={cn(
-          "h-1",
-          settings?.execution_mode === 'off' ? "bg-red-500" :
-          settings?.execution_mode === 'safe' ? "bg-amber-500" :
-          "bg-emerald-500"
-        )} />
-      </header>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsContent value="candidates" className="mt-0 overflow-y-auto" style={{ height: 'calc(100vh - 240px)' }}>
+              {/* View mode toggle */}
+              <div className="flex justify-end gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4">
+                <button
+                  onClick={() => setViewMode("deck")}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    viewMode === "deck"
+                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/50"
+                      : "bg-slate-800/50 text-slate-400 hover:text-slate-300"
+                  )}
+                >
+                  Swipe
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    viewMode === "list"
+                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/50"
+                      : "bg-slate-800/50 text-slate-400 hover:text-slate-300"
+                  )}
+                >
+                  Review All ({candidates.length})
+                </button>
+                <button
+                  onClick={() => setViewMode("blocked")}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    viewMode === "blocked"
+                      ? "bg-red-500/20 text-red-400 border border-red-500/50"
+                      : "bg-slate-800/50 text-slate-400 hover:text-slate-300",
+                    blockedIntents.length === 0 && "opacity-50"
+                  )}
+                  disabled={blockedIntents.length === 0}
+                >
+                  Blocked ({blockedIntents.length})
+                </button>
+              </div>
 
-      {/* Main content */}
-      <main className="pb-24">
-        {/* Execution Mode Selector - Always Visible */}
-        <div className="px-4 pt-3 md:pb-2 pb-8">
-          <ExecutionModeToggle
-            mode={settings?.execution_mode || 'safe'}
-            onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
-          />
-        </div>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsContent value="candidates" className="mt-0 h-[calc(100vh-240px)]">
-            {/* View mode toggle */}
-            <div className="flex justify-end gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4">
-              <button
-                onClick={() => setViewMode("deck")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                  viewMode === "deck" 
-                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/50"
-                    : "bg-slate-800/50 text-slate-400 hover:text-slate-300"
-                )}
-              >
-                Swipe
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                  viewMode === "list" 
-                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/50"
-                    : "bg-slate-800/50 text-slate-400 hover:text-slate-300"
-                )}
-              >
-                Review All ({candidates.length})
-              </button>
-            </div>
-
-            {viewMode === "deck" ? (
-              <SwipeDeck
-                intents={candidates}
-                executions={executions}
-                onSwipeOn={(intent) => swipeOnMutation.mutate(intent)}
-                onSwipeOff={(intent) => swipeOffMutation.mutate(intent)}
-                onDeny={(intent) => denyOrderMutation.mutate(intent)}
-                onRefresh={refetchCandidates}
-                isLoading={candidatesLoading}
-                tickers={tickers}
-              />
-            ) : (
-              <div className="px-4 pb-6 overflow-y-auto h-[calc(100vh-250px)] md:mt-0 mt-8">
-                <CandidatesList
-                  candidates={candidates}
-                  onApprove={(intent) => swipeOnMutation.mutate(intent)}
-                  onReject={(intent) => swipeOffMutation.mutate(intent)}
+              {viewMode === "deck" && (
+                <SwipeDeck
+                  intents={candidates}
+                  executions={executions}
+                  onSwipeOn={(intent) => swipeOnMutation.mutate(intent)}
+                  onSwipeOff={(intent) => swipeOffMutation.mutate(intent)}
                   onDeny={(intent) => denyOrderMutation.mutate(intent)}
+                  onRefresh={refetchCandidates}
+                  isLoading={candidatesLoading}
                   tickers={tickers}
                 />
-              </div>
-            )}
-          </TabsContent>
+              )}
 
-          <TabsContent value="executions" className="mt-0 px-4 py-6">
-            <ExecutionQueue
-              executions={executions}
-              executionMode={settings?.execution_mode || 'safe'}
-              onCancel={(exec) => cancelExecutionMutation.mutate(exec)}
-              onForceExecute={(exec) => forceExecuteMutation.mutate(exec)}
-              onRetry={(exec) => retryExecutionMutation.mutate(exec)}
-              onEditLimit={handleEditLimit}
-            />
-          </TabsContent>
+              {viewMode === "list" && (
+                <div className="px-4 pb-6 md:mt-0 mt-8">
+                  <CandidatesList
+                    candidates={candidates}
+                    onApprove={(intent) => swipeOnMutation.mutate(intent)}
+                    onReject={(intent) => swipeOffMutation.mutate(intent)}
+                    onDeny={(intent) => denyOrderMutation.mutate(intent)}
+                    tickers={tickers}
+                  />
+                </div>
+              )}
 
-          <TabsContent value="positions" className="mt-0 px-4 py-6">
-            <PositionsList
-              positions={positions}
-              onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
-              onMarkFlat={(position) => markFlatMutation.mutate(position)}
-              tickers={tickers}
-            />
-          </TabsContent>
+              {viewMode === "blocked" && (
+                <div className="px-4 pb-6 md:mt-0 mt-8">
+                  <BlockedTickersList
+                    blockedIntents={blockedIntents}
+                    onRevive={(intent) => reviveTickerMutation.mutate(intent)}
+                    isLoading={reviveTickerMutation.isPending}
+                  />
+                </div>
+              )}
+            </TabsContent>
 
-          <TabsContent value="history" className="mt-0 px-4 py-6">
-            <AuditTimeline logs={auditLogs} />
-          </TabsContent>
+            <TabsContent value="executions" className="mt-0 px-4 py-6">
+              <ExecutionQueue
+                executions={executions}
+                executionMode={settings?.execution_mode || 'safe'}
+                onCancel={(exec) => cancelExecutionMutation.mutate(exec)}
+                onForceExecute={(exec) => forceExecuteMutation.mutate(exec)}
+                onRetry={(exec) => retryExecutionMutation.mutate(exec)}
+                onEditLimit={handleEditLimit}
+              />
+            </TabsContent>
 
-          {/* Bottom navigation */}
-          <div className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800 z-50">
-            <TabsList className="w-full h-20 bg-transparent grid grid-cols-4 gap-0 p-0 rounded-none">
-              <TabsTrigger 
-                value="candidates" 
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
-                  "data-[state=active]:text-blue-400 text-slate-500"
-                )}
-              >
-                <Layers className="w-6 h-6" />
-                <span className="text-xs font-medium">Candidates</span>
-                {candidates.length > 0 && (
-                  <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">
-                    {candidates.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger 
-                value="executions" 
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
-                  "data-[state=active]:text-emerald-400 text-slate-500"
-                )}
-              >
-                <Send className="w-6 h-6" />
-                <span className="text-xs font-medium">Executions</span>
-                {stats.pending > 0 && (
-                  <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-emerald-500 text-emerald-950 text-xs flex items-center justify-center font-bold">
-                    {stats.pending}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger 
-                value="positions" 
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
-                  "data-[state=active]:text-amber-400 text-slate-500"
-                )}
-              >
-                <TrendingUp className="w-6 h-6" />
-                <span className="text-xs font-medium">Positions</span>
-                {positions.length > 0 && (
-                  <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-amber-500 text-amber-950 text-xs flex items-center justify-center font-bold">
-                    {positions.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger 
-                value="history" 
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
-                  "data-[state=active]:text-purple-400 text-slate-500"
-                )}
-              >
-                <History className="w-6 h-6" />
-                <span className="text-xs font-medium">History</span>
-              </TabsTrigger>
-            </TabsList>
-          </div>
-        </Tabs>
-      </main>
+            <TabsContent value="positions" className="mt-0 px-4 py-6">
+              <PositionsList
+                positions={positions}
+                onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
+                onMarkFlat={(position) => markFlatMutation.mutate(position)}
+                tickers={tickers}
+              />
+            </TabsContent>
 
-      {/* Limit Price Editor Modal */}
-      <LimitPriceEditor
-        open={limitEditorOpen}
-        onOpenChange={setLimitEditorOpen}
-        intent={editingIntent}
-        maxAdjustmentPercent={settings?.limit_adjustment_max_percent || 2}
-        timeRemaining={editingIntent ? getLimitEditTimeRemaining(editingIntent) : 0}
-        onSave={handleSaveLimit}
-      />
-    </div>
+            <TabsContent value="history" className="mt-0 px-4 py-6">
+              <AuditTimeline logs={auditLogs} />
+            </TabsContent>
+
+            {/* Bottom navigation */}
+            <div className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800 z-50">
+              <TabsList className="w-full h-20 bg-transparent grid grid-cols-4 gap-0 p-0 rounded-none">
+                <TabsTrigger
+                  value="candidates"
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "data-[state=active]:text-blue-400 text-slate-500"
+                  )}
+                >
+                  <Layers className="w-6 h-6" />
+                  <span className="text-xs font-medium">Candidates</span>
+                  {candidates.length > 0 && (
+                    <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">
+                      {candidates.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="executions"
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "data-[state=active]:text-emerald-400 text-slate-500"
+                  )}
+                >
+                  <Send className="w-6 h-6" />
+                  <span className="text-xs font-medium">Executions</span>
+                  {stats.pending > 0 && (
+                    <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-emerald-500 text-emerald-950 text-xs flex items-center justify-center font-bold">
+                      {stats.pending}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="positions"
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "data-[state=active]:text-amber-400 text-slate-500"
+                  )}
+                >
+                  <TrendingUp className="w-6 h-6" />
+                  <span className="text-xs font-medium">Positions</span>
+                  {positions.length > 0 && (
+                    <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-amber-500 text-amber-950 text-xs flex items-center justify-center font-bold">
+                      {positions.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="history"
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "data-[state=active]:text-purple-400 text-slate-500"
+                  )}
+                >
+                  <History className="w-6 h-6" />
+                  <span className="text-xs font-medium">History</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </Tabs>
+        </main>
+
+        {/* Limit Price Editor Modal */}
+        <LimitPriceEditor
+          open={limitEditorOpen}
+          onOpenChange={setLimitEditorOpen}
+          intent={editingIntent}
+          maxAdjustmentPercent={settings?.max_adjustment_pct || 2}
+          timeRemaining={editingIntent ? getLimitEditTimeRemaining(editingIntent) : 0}
+          onSave={handleSaveLimit}
+        />
+      </div>
     </ErrorBoundary>
   );
 }
