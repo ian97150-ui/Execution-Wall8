@@ -120,6 +120,23 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
           enabled: false
         }
       });
+
+      // Also invalidate any other pending intents for this ticker to prevent duplicates
+      const otherIntents = await prisma.tradeIntent.updateMany({
+        where: {
+          ticker: intent.ticker,
+          id: { not: id },
+          status: { in: ['pending', 'swiped_on'] }
+        },
+        data: {
+          status: 'cancelled',
+          card_state: 'INVALIDATED'
+        }
+      });
+
+      if (otherIntents.count > 0) {
+        console.log(`   ↳ Invalidated ${otherIntents.count} other intents for ${intent.ticker}`);
+      }
     }
 
     // Create audit log

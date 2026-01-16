@@ -13,7 +13,25 @@ export default function BlockedTickersList({
   onRevive,
   isLoading = false
 }) {
-  if (blockedIntents.length === 0) {
+  // Deduplicate by ticker - keep only the most recent intent per ticker
+  const uniqueBlockedIntents = React.useMemo(() => {
+    const tickerMap = new Map();
+
+    // Sort by created_date descending so we process newest first
+    const sorted = [...blockedIntents].sort((a, b) =>
+      new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at)
+    );
+
+    for (const intent of sorted) {
+      if (!tickerMap.has(intent.ticker)) {
+        tickerMap.set(intent.ticker, intent);
+      }
+    }
+
+    return Array.from(tickerMap.values());
+  }, [blockedIntents]);
+
+  if (uniqueBlockedIntents.length === 0) {
     return null;
   }
 
@@ -22,13 +40,13 @@ export default function BlockedTickersList({
       <div className="flex items-center gap-2 px-1">
         <Ban className="w-4 h-4 text-red-400" />
         <h3 className="text-sm font-semibold text-slate-400">
-          Blocked Tickers ({blockedIntents.length})
+          Blocked Tickers ({uniqueBlockedIntents.length})
         </h3>
       </div>
 
       <div className="space-y-2">
         <AnimatePresence mode="popLayout">
-          {blockedIntents.map((intent) => {
+          {uniqueBlockedIntents.map((intent) => {
             const isLong = intent.dir === "Long";
             const SideIcon = isLong ? TrendingUp : TrendingDown;
 

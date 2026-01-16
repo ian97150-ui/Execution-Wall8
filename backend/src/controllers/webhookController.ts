@@ -234,9 +234,12 @@ function deriveQualityTier(confidence: number): string {
 }
 
 /**
- * Handle WALL signal - creates a candidate card for review
+ * Handle WALL signal - creates or updates a candidate card for review
  *
- * Design rule: Never reinterpret raw fields. Only derive new fields.
+ * Design rules:
+ * - Never reinterpret raw fields. Only derive new fields.
+ * - If ticker already has a pending/approved intent, UPDATE it instead of creating duplicate
+ * - If ticker is blocked (swiped_off), reject the signal
  */
 async function handleWallSignal(data: {
   ticker: string;
@@ -281,6 +284,32 @@ async function handleWallSignal(data: {
     throw new Error(`Invalid direction: ${dir}. Must be "Long" or "Short"`);
   }
 
+  const tickerUpper = ticker.toUpperCase();
+
+  // Check if ticker is blocked
+  const tickerConfig = await prisma.tickerConfig.findUnique({
+    where: { ticker: tickerUpper }
+  });
+
+  if (tickerConfig && tickerConfig.enabled === false) {
+    console.log(`⚠️ WALL signal rejected: ${tickerUpper} is blocked`);
+    return {
+      intent_id: null,
+      message: `Ticker ${tickerUpper} is blocked - signal rejected`,
+      rejected: true
+    };
+  }
+
+  // Check for existing pending or approved intent for this ticker
+  const existingIntent = await prisma.tradeIntent.findFirst({
+    where: {
+      ticker: tickerUpper,
+      status: { in: ['pending', 'swiped_on'] },
+      expires_at: { gt: new Date() }
+    },
+    orderBy: { created_date: 'desc' }
+  });
+
   // Step 2: Normalization - derive gate scoring from gates object
   const { gatesHit, gatesTotal, confidence, gateVector } = calculateGateScore(gates);
 
@@ -294,49 +323,70 @@ async function handleWallSignal(data: {
   const finalQualityScore = quality_score ?? Math.round(finalConfidence * 100);
   const finalQualityTier = quality_tier ?? deriveQualityTier(finalConfidence);
 
-  // Create normalized WallEvent (TradeIntent)
-  const tradeIntent = await prisma.tradeIntent.create({
-    data: {
-      ticker: ticker.toUpperCase(),
-      dir,
-      price: (limit_price || price || 0).toString(),
+  let tradeIntent;
+  let isUpdate = false;
 
-      // Strategy metadata
-      strategy_id: strategy_id || null,
-      timeframe: tf || null,
-
-      // Gate scoring (derived)
-      gates_hit: finalGatesHit,
-      gates_total: finalGatesTotal,
-      confidence: finalConfidence,
-
-      // Quality (derived from confidence)
-      quality_tier: finalQualityTier,
-      quality_score: finalQualityScore,
-
-      // State
-      card_state: card_state || 'ARMED',
-      status: 'pending',
-      primary_blocker: primary_blocker || null,
-
-      // Raw payload storage (immutable truth layer)
-      intent_data: intent ? JSON.stringify(intent) : null,
-      gates_data: gates ? JSON.stringify(gates) : null,
-      raw_payload: raw_payload ? JSON.stringify(raw_payload) : null,
-
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-    }
-  });
+  if (existingIntent) {
+    // UPDATE existing intent with new data
+    tradeIntent = await prisma.tradeIntent.update({
+      where: { id: existingIntent.id },
+      data: {
+        dir,
+        price: (limit_price || price || 0).toString(),
+        strategy_id: strategy_id || existingIntent.strategy_id,
+        timeframe: tf || existingIntent.timeframe,
+        gates_hit: finalGatesHit,
+        gates_total: finalGatesTotal,
+        confidence: finalConfidence,
+        quality_tier: finalQualityTier,
+        quality_score: finalQualityScore,
+        card_state: card_state || existingIntent.card_state,
+        primary_blocker: primary_blocker || null,
+        intent_data: intent ? JSON.stringify(intent) : existingIntent.intent_data,
+        gates_data: gates ? JSON.stringify(gates) : existingIntent.gates_data,
+        raw_payload: raw_payload ? JSON.stringify(raw_payload) : existingIntent.raw_payload,
+        // Extend expiry on update
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      }
+    });
+    isUpdate = true;
+    console.log(`🔄 Updated existing intent for ${tickerUpper} (id: ${tradeIntent.id})`);
+  } else {
+    // CREATE new intent
+    tradeIntent = await prisma.tradeIntent.create({
+      data: {
+        ticker: tickerUpper,
+        dir,
+        price: (limit_price || price || 0).toString(),
+        strategy_id: strategy_id || null,
+        timeframe: tf || null,
+        gates_hit: finalGatesHit,
+        gates_total: finalGatesTotal,
+        confidence: finalConfidence,
+        quality_tier: finalQualityTier,
+        quality_score: finalQualityScore,
+        card_state: card_state || 'ARMED',
+        status: 'pending',
+        primary_blocker: primary_blocker || null,
+        intent_data: intent ? JSON.stringify(intent) : null,
+        gates_data: gates ? JSON.stringify(gates) : null,
+        raw_payload: raw_payload ? JSON.stringify(raw_payload) : null,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      }
+    });
+    console.log(`✨ Created new intent for ${tickerUpper} (id: ${tradeIntent.id})`);
+  }
 
   // Create audit log
   await prisma.auditLog.create({
     data: {
-      event_type: 'intent_created',
-      ticker: ticker.toUpperCase(),
+      event_type: isUpdate ? 'intent_updated' : 'intent_created',
+      ticker: tickerUpper,
       details: JSON.stringify({
         intent_id: tradeIntent.id,
         source: 'webhook',
         type: 'WALL',
+        is_update: isUpdate,
         strategy_id,
         timeframe: tf,
         gates_hit: finalGatesHit,
@@ -356,7 +406,8 @@ async function handleWallSignal(data: {
     gates_hit: finalGatesHit,
     gates_total: finalGatesTotal,
     quality_tier: finalQualityTier,
-    message: 'Trade intent created - awaiting review'
+    updated: isUpdate,
+    message: isUpdate ? 'Trade intent updated' : 'Trade intent created - awaiting review'
   };
 }
 
