@@ -212,32 +212,8 @@ export default function Dashboard() {
 
   const swipeOnMutation = useMutation({
     mutationFn: async (intent) => {
-      // Update intent status
+      // Backend handles ticker config update and audit log creation
       await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'approve' });
-
-      // Ensure ticker config exists and is enabled
-      const existing = tickers.find(t => t.ticker === intent.ticker);
-      if (!existing) {
-        await api.post('/ticker-configs', {
-          ticker: intent.ticker,
-          enabled: true
-        });
-      } else {
-        await api.put(`/ticker-configs/${intent.ticker}`, {
-          enabled: true
-        });
-      }
-
-      // Create audit log
-      await api.post('/audit-logs', {
-        event_type: 'swipe_on',
-        ticker: intent.ticker,
-        details: JSON.stringify({
-          side: intent.dir,
-          intent_id: intent.id
-        })
-      });
-
       return intent.id;
     },
     onSuccess: (intentId) => {
@@ -256,32 +232,8 @@ export default function Dashboard() {
 
   const swipeOffMutation = useMutation({
     mutationFn: async (intent) => {
-      // Update intent status
+      // Backend handles ticker config update, other intent invalidation, and audit log
       await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'off' });
-
-      // Disable ticker
-      const existing = tickers.find(t => t.ticker === intent.ticker);
-      if (existing) {
-        await api.put(`/ticker-configs/${intent.ticker}`, {
-          enabled: false
-        });
-      } else {
-        await api.post('/ticker-configs', {
-          ticker: intent.ticker,
-          enabled: false
-        });
-      }
-
-      // Create audit log
-      await api.post('/audit-logs', {
-        event_type: 'swipe_off',
-        ticker: intent.ticker,
-        details: JSON.stringify({
-          side: intent.dir,
-          intent_id: intent.id
-        })
-      });
-
       return intent.id;
     },
     onSuccess: (intentId) => {
@@ -299,18 +251,8 @@ export default function Dashboard() {
 
   const denyOrderMutation = useMutation({
     mutationFn: async (intent) => {
+      // Backend handles audit log creation
       await api.post(`/trade-intents/${intent.id}/swipe`, { action: 'deny' });
-
-      await api.post('/audit-logs', {
-        event_type: 'cancelled',
-        ticker: intent.ticker,
-        details: JSON.stringify({
-          side: intent.dir,
-          intent_id: intent.id,
-          reason: 'Manually denied by user'
-        })
-      });
-
       return intent.id;
     },
     onSuccess: (intentId) => {
@@ -326,15 +268,8 @@ export default function Dashboard() {
 
   const toggleTickerMutation = useMutation({
     mutationFn: async ({ ticker, enabled }) => {
+      // Backend handles audit log creation
       await api.put(`/ticker-configs/${ticker}`, { enabled });
-
-      await api.post('/audit-logs', {
-        event_type: 'ticker_toggle',
-        ticker,
-        details: JSON.stringify({
-          new_value: enabled ? 'enabled' : 'disabled'
-        })
-      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
