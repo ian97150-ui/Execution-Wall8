@@ -48,7 +48,9 @@ export async function handleWebhook(req: Request, res: Response) {
       // New WALL format fields
       event,
       ticker,
+      symbol,  // TradingView alternative for ticker
       dir,
+      action,  // TradingView alternative for dir (buy/sell)
       price,
       strategy_id,
       tf,
@@ -68,19 +70,26 @@ export async function handleWebhook(req: Request, res: Response) {
       card_state
     } = req.body;
 
+    // Normalize TradingView format to internal format
+    // symbol -> ticker, action -> dir, infer event from action
+    const normalizedTicker = ticker || symbol;
+    const normalizedDir = dir || (action === 'sell' ? 'Short' : action === 'buy' ? 'Long' : null);
+    const normalizedAction = order_action || action;
+
     // Step 1: Validation - verify required fields
-    if (!ticker) {
-      throw new Error('Missing required field: ticker');
+    if (!normalizedTicker) {
+      throw new Error('Missing required field: ticker or symbol');
     }
 
-    // Determine signal type: "event" field takes priority, then "type", default to WALL
-    const signalType = (event || type || 'WALL').toUpperCase();
+    // Determine signal type: "event" field takes priority, then "type"
+    // If action (buy/sell) is present without event, infer ORDER
+    const signalType = (event || type || (action ? 'ORDER' : 'WALL')).toUpperCase();
 
     // Validate event type
     if (signalType === 'WALL' || signalType === 'SIGNAL') {
-      if (!ticker || !tf || !dir) {
+      if (!normalizedTicker || !tf || !normalizedDir) {
         // Log validation warning but continue (be lenient)
-        console.warn(`⚠️ WALL signal missing recommended fields: ticker=${ticker}, tf=${tf}, dir=${dir}`);
+        console.warn(`⚠️ WALL signal missing recommended fields: ticker=${normalizedTicker}, tf=${tf}, dir=${normalizedDir}`);
       }
     }
 
@@ -91,8 +100,8 @@ export async function handleWebhook(req: Request, res: Response) {
       case 'SIGNAL':
         // Create a candidate card for review
         result = await handleWallSignal({
-          ticker,
-          dir,
+          ticker: normalizedTicker,
+          dir: normalizedDir,
           price,
           strategy_id,
           tf,
@@ -114,12 +123,12 @@ export async function handleWebhook(req: Request, res: Response) {
       case 'ENTRY':
         // Create direct execution (bypasses review)
         result = await handleOrderSignal({
-          ticker,
-          dir,
+          ticker: normalizedTicker,
+          dir: normalizedDir,
           price,
           limit_price,
           quantity,
-          order_action,
+          order_action: normalizedAction,
           quality_tier,
           quality_score
         });
@@ -128,8 +137,8 @@ export async function handleWebhook(req: Request, res: Response) {
       case 'EXIT':
         // Handle exit/close position signal
         result = await handleExitSignal({
-          ticker,
-          dir,
+          ticker: normalizedTicker,
+          dir: normalizedDir,
           price,
           limit_price,
           quantity
@@ -139,8 +148,8 @@ export async function handleWebhook(req: Request, res: Response) {
       default:
         // Default to WALL signal if type not specified
         result = await handleWallSignal({
-          ticker,
-          dir,
+          ticker: normalizedTicker,
+          dir: normalizedDir,
           price,
           strategy_id,
           tf,
@@ -163,7 +172,7 @@ export async function handleWebhook(req: Request, res: Response) {
       data: { status: 'success' }
     });
 
-    console.log(`✅ Webhook processed: ${signalType} ${ticker} ${dir || ''}`);
+    console.log(`✅ Webhook processed: ${signalType} ${normalizedTicker} ${normalizedDir || ''}`);
 
     res.status(200).json({
       success: true,
