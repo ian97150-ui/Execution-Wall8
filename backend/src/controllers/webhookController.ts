@@ -406,6 +406,12 @@ async function handleOrderSignal(data: {
     order_action: action
   });
 
+  // Get settings for delay configuration
+  const settings = await prisma.executionSettings.findFirst();
+  const delayBars = settings?.default_delay_bars || 2;
+  const delayMinutes = delayBars * 5; // 1 bar = 5 minutes
+  const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+
   // Create Execution directly
   const execution = await prisma.execution.create({
     data: {
@@ -415,6 +421,7 @@ async function handleOrderSignal(data: {
       quantity: quantity || 1,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
       status: 'pending',
+      delay_expires_at: delayExpiresAt,
       raw_payload: orderPayload
     }
   });
@@ -471,6 +478,12 @@ async function handleExitSignal(data: {
     order_action: action
   });
 
+  // Get settings for delay configuration
+  const settings = await prisma.executionSettings.findFirst();
+  const delayBars = settings?.default_delay_bars || 2;
+  const delayMinutes = delayBars * 5; // 1 bar = 5 minutes
+  const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+
   // Create Execution for exit
   const execution = await prisma.execution.create({
     data: {
@@ -480,6 +493,7 @@ async function handleExitSignal(data: {
       quantity: quantity || 1,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
       status: 'pending',
+      delay_expires_at: delayExpiresAt,
       raw_payload: orderPayload
     }
   });
