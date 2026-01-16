@@ -32,9 +32,7 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(helmet()); // Security headers
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL
-    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+  origin: true, // Allow all origins
   credentials: true
 }));
 app.use(express.json()); // Parse JSON bodies
