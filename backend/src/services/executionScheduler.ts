@@ -19,6 +19,8 @@ async function processExpiredDelays() {
     const now = new Date();
 
     // Find pending executions with expired delays
+    // IMPORTANT: In safe mode, EXIT signals should NOT auto-execute
+    // They require manual confirmation
     const expiredExecutions = await prisma.execution.findMany({
       where: {
         status: 'pending',
@@ -28,13 +30,30 @@ async function processExpiredDelays() {
       }
     });
 
-    if (expiredExecutions.length === 0) {
+    // Filter out EXIT signals in safe mode - they require manual confirmation
+    const executionsToProcess = expiredExecutions.filter(exec => {
+      // Parse the raw_payload to check if it's an EXIT signal
+      if (exec.raw_payload) {
+        try {
+          const payload = JSON.parse(exec.raw_payload);
+          if (payload.event === 'EXIT') {
+            console.log(`   ⏸️ Skipping EXIT signal for ${exec.ticker} - requires manual confirmation in safe mode`);
+            return false;
+          }
+        } catch (e) {
+          // If we can't parse, continue with execution
+        }
+      }
+      return true;
+    });
+
+    if (executionsToProcess.length === 0) {
       return;
     }
 
-    console.log(`⏰ Found ${expiredExecutions.length} expired delay(s) - auto-executing...`);
+    console.log(`⏰ Found ${executionsToProcess.length} expired delay(s) - auto-executing...`);
 
-    for (const execution of expiredExecutions) {
+    for (const execution of executionsToProcess) {
       try {
         // Forward to broker
         const brokerResult = await forwardToBroker(execution);

@@ -18,6 +18,7 @@ import databaseRoutes from './routes/database';
 // Import services
 import { startCleanupScheduler } from './services/databaseCleanup';
 import { startExecutionScheduler, stopExecutionScheduler } from './services/executionScheduler';
+import { startDailyResetScheduler, stopDailyResetScheduler } from './services/dailyReset';
 
 // Load environment variables
 dotenv.config();
@@ -80,12 +81,16 @@ app.listen(PORT, () => {
 
   // Start execution scheduler (auto-executes orders when delay expires)
   startExecutionScheduler();
+
+  // Start daily reset scheduler (resets ticker configs at midnight or app startup)
+  startDailyResetScheduler();
 });
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\\n🛑 Shutting down gracefully...');
   stopExecutionScheduler();
+  stopDailyResetScheduler();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -93,6 +98,7 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   console.log('\\n🛑 Shutting down gracefully...');
   stopExecutionScheduler();
+  stopDailyResetScheduler();
   await prisma.$disconnect();
   process.exit(0);
 });
