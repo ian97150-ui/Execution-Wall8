@@ -7,13 +7,14 @@ const router = express.Router();
 // Get executions (with filters)
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { status, ticker } = req.query;
+    const status = req.query.status as string | undefined;
+    const ticker = req.query.ticker as string | undefined;
 
     const where: any = {};
 
     // Support comma-separated status filter (e.g., "pending,executing")
     if (status) {
-      if (typeof status === 'string' && status.includes(',')) {
+      if (status.includes(',')) {
         where.status = { in: status.split(',') };
       } else {
         where.status = status;
@@ -105,7 +106,7 @@ router.post('/', async (req: Request, res: Response) => {
 // Execute (force execute)
 router.post('/:id/execute', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const execution = await prisma.execution.findUnique({
       where: { id }
@@ -207,7 +208,7 @@ router.post('/:id/execute', async (req: Request, res: Response) => {
 // Update execution (e.g., limit price)
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { limit_price, quantity } = req.body;
 
     const updateData: any = {};
@@ -235,7 +236,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 // Cancel execution
 router.post('/:id/cancel', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const execution = await prisma.execution.update({
       where: { id },

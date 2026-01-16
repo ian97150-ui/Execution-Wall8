@@ -20,7 +20,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Get single ticker config
 router.get('/:ticker', async (req: Request, res: Response) => {
   try {
-    const { ticker } = req.params;
+    const ticker = req.params.ticker as string;
 
     const config = await prisma.tickerConfig.findUnique({
       where: { ticker: ticker.toUpperCase() }
@@ -40,7 +40,7 @@ router.get('/:ticker', async (req: Request, res: Response) => {
 // Update ticker config
 router.put('/:ticker', async (req: Request, res: Response) => {
   try {
-    const { ticker } = req.params;
+    const ticker = req.params.ticker as string;
     const { enabled, blocked_until } = req.body;
 
     const config = await prisma.tickerConfig.upsert({
@@ -60,7 +60,7 @@ router.put('/:ticker', async (req: Request, res: Response) => {
       data: {
         event_type: 'ticker_config_updated',
         ticker: ticker.toUpperCase(),
-        details: { enabled, blocked_until }
+        details: JSON.stringify({ enabled, blocked_until })
       }
     });
 

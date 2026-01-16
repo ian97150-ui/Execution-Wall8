@@ -6,26 +6,20 @@ const router = express.Router();
 // Get trade intents (with filters)
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { card_state, status, ticker } = req.query;
+    const card_state = req.query.card_state as string | undefined;
+    const status = req.query.status as string | undefined;
+    const ticker = req.query.ticker as string | undefined;
 
     const where: any = {};
 
     // Filter by card_state
     if (card_state) {
-      if (Array.isArray(card_state)) {
-        where.card_state = { in: card_state };
-      } else if (typeof card_state === 'string') {
-        where.card_state = { in: card_state.split(',') };
-      }
+      where.card_state = { in: card_state.split(',') };
     }
 
     // Filter by status
     if (status) {
-      if (Array.isArray(status)) {
-        where.status = { in: status };
-      } else if (typeof status === 'string') {
-        where.status = { in: status.split(',') };
-      }
+      where.status = { in: status.split(',') };
     }
 
     // Filter by ticker
@@ -52,7 +46,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Get single trade intent by ID
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const intent = await prisma.tradeIntent.findUnique({
       where: { id }
@@ -72,7 +66,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Swipe action on trade intent
 router.post('/:id/swipe', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { action } = req.body; // 'approve', 'deny', 'off', 'revive'
 
     const intent = await prisma.tradeIntent.findUnique({
@@ -133,12 +127,12 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
       data: {
         event_type: `swiped_${action}`,
         ticker: intent.ticker,
-        details: {
+        details: JSON.stringify({
           intent_id: id,
           action,
           previous_status: intent.status,
           new_status: newStatus
-        }
+        })
       }
     });
 
@@ -154,7 +148,7 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
 // Invalidate trade intent
 router.post('/:id/invalidate', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const intent = await prisma.tradeIntent.update({
       where: { id },
@@ -168,7 +162,7 @@ router.post('/:id/invalidate', async (req: Request, res: Response) => {
       data: {
         event_type: 'intent_invalidated',
         ticker: intent.ticker,
-        details: { intent_id: id }
+        details: JSON.stringify({ intent_id: id })
       }
     });
 

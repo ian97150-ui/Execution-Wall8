@@ -6,7 +6,8 @@ const router = express.Router();
 // Get all positions (open and closed)
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { open_only, ticker } = req.query;
+    const open_only = req.query.open_only as string | undefined;
+    const ticker = req.query.ticker as string | undefined;
 
     const where: any = {};
     if (ticker) where.ticker = ticker;
@@ -27,7 +28,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Get single position
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const position = await prisma.position.findUnique({
       where: { id }
@@ -47,7 +48,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Mark position as flat (close it)
 router.post('/:id/mark-flat', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const position = await prisma.position.findUnique({
       where: { id }
@@ -84,12 +85,12 @@ router.post('/:id/mark-flat', async (req: Request, res: Response) => {
       data: {
         event_type: 'position_closed',
         ticker: position.ticker,
-        details: {
+        details: JSON.stringify({
           position_id: id,
           quantity: position.quantity,
           side: position.side,
           blocked_until: blockUntil.toISOString()
-        }
+        })
       }
     });
 
