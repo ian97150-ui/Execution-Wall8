@@ -67,8 +67,28 @@ export async function handleWebhook(req: Request, res: Response) {
       gates_hit,
       gates_total,
       primary_blocker,
-      card_state
+      card_state,
+      // Tick-based pricing fields (for TradingView integer cents workaround)
+      price_ticks,        // Integer ticks for price (WALL signals)
+      limit_price_ticks,  // Integer ticks for limit_price (ORDER/EXIT signals)
+      mintick             // Tick size multiplier (e.g., 0.01)
     } = req.body;
+
+    // Helper: Reconstruct price from ticks: limitPx = ticks * mintick
+    const reconstructPrice = (
+      ticks: number | undefined,
+      mintickValue: number | undefined,
+      fallbackPrice: number | undefined
+    ): number => {
+      if (ticks !== undefined && mintickValue !== undefined && mintickValue > 0) {
+        return ticks * mintickValue;
+      }
+      return fallbackPrice || 0;
+    };
+
+    // Normalize prices - prefer tick-based reconstruction, fall back to direct values
+    const normalizedPrice = reconstructPrice(price_ticks, mintick, price);
+    const normalizedLimitPrice = reconstructPrice(limit_price_ticks, mintick, limit_price);
 
     // Normalize TradingView format to internal format
     // symbol -> ticker, action -> dir, infer event from action
@@ -102,7 +122,7 @@ export async function handleWebhook(req: Request, res: Response) {
         result = await handleWallSignal({
           ticker: normalizedTicker,
           dir: normalizedDir,
-          price,
+          price: normalizedPrice,  // Use reconstructed price (from ticks or direct)
           strategy_id,
           tf,
           intent,
@@ -114,7 +134,7 @@ export async function handleWebhook(req: Request, res: Response) {
           gates_total,
           primary_blocker,
           card_state,
-          limit_price,
+          limit_price: normalizedLimitPrice,  // Use reconstructed limit price
           raw_payload: req.body
         });
         break;
@@ -125,8 +145,8 @@ export async function handleWebhook(req: Request, res: Response) {
         result = await handleOrderSignal({
           ticker: normalizedTicker,
           dir: normalizedDir,
-          price,
-          limit_price,
+          price: normalizedPrice,  // Use reconstructed price
+          limit_price: normalizedLimitPrice,  // Use reconstructed limit price (from ticks or direct)
           quantity,
           order_action: normalizedAction,
           quality_tier,
@@ -139,8 +159,8 @@ export async function handleWebhook(req: Request, res: Response) {
         result = await handleExitSignal({
           ticker: normalizedTicker,
           dir: normalizedDir,
-          price,
-          limit_price,
+          price: normalizedPrice,  // Use reconstructed price
+          limit_price: normalizedLimitPrice,  // Use reconstructed limit price
           quantity
         });
         break;
@@ -150,7 +170,7 @@ export async function handleWebhook(req: Request, res: Response) {
         result = await handleWallSignal({
           ticker: normalizedTicker,
           dir: normalizedDir,
-          price,
+          price: normalizedPrice,  // Use reconstructed price
           strategy_id,
           tf,
           intent,
@@ -161,7 +181,7 @@ export async function handleWebhook(req: Request, res: Response) {
           gates_total,
           primary_blocker,
           card_state,
-          limit_price,
+          limit_price: normalizedLimitPrice,  // Use reconstructed limit price
           raw_payload: req.body
         });
     }
