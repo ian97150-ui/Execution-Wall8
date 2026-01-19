@@ -162,7 +162,7 @@ export default function ExecutionQueue({
                         className="w-full border-amber-500/50 text-amber-400 hover:bg-amber-500/20"
                       >
                         <Edit3 className="w-4 h-4 mr-1" />
-                        Change Limit Price
+                        {exec.order_type === 'exit' ? 'Edit Exit Order' : 'Change Limit Price'}
                       </Button>
                     )}
                     <div className="flex gap-2">

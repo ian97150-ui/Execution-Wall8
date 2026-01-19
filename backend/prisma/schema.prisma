@@ -102,9 +102,11 @@ model ExecutionSettings {
 model Execution {
   id               String    @id @default(uuid())
   intent_id        String?   // Link to source TradeIntent (if created from WALL)
+  position_id      String?   // Link to position being exited (for EXIT orders)
   ticker           String
   dir              String?   // "Long" or "Short"
   order_action     String    // buy, sell
+  order_type       String    @default("entry") // "entry" or "exit"
   quantity         Int
   limit_price      Decimal?
   status           String    @default("pending") // pending, executing, executed, failed, cancelled
@@ -121,6 +123,7 @@ model Execution {
   @@index([ticker])
   @@index([status])
   @@index([intent_id])
+  @@index([order_type])
   @@map("executions")
 }
 

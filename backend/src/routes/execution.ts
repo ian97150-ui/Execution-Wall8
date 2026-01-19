@@ -36,6 +36,57 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// Get execution with position context (for exit orders)
+router.get('/:id/with-position', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const execution = await prisma.execution.findUnique({
+      where: { id }
+    });
+
+    if (!execution) {
+      return res.status(404).json({ error: 'Execution not found' });
+    }
+
+    // Get linked position or find by ticker
+    let position = null;
+    if (execution.position_id) {
+      position = await prisma.position.findUnique({
+        where: { id: execution.position_id }
+      });
+    } else {
+      // Fallback: find open position by ticker
+      position = await prisma.position.findFirst({
+        where: {
+          ticker: execution.ticker,
+          closed_at: null
+        }
+      });
+    }
+
+    // Determine if this is an exit order
+    let isExit = execution.order_type === 'exit';
+    if (!isExit && execution.raw_payload) {
+      try {
+        const payload = JSON.parse(execution.raw_payload);
+        isExit = payload.event === 'EXIT';
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+
+    res.json({
+      execution,
+      position,
+      isExit
+    });
+  } catch (error: any) {
+    console.error('Error fetching execution with position:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create execution
 router.post('/', async (req: Request, res: Response) => {
   try {

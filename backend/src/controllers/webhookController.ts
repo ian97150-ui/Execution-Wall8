@@ -532,6 +532,7 @@ async function handleOrderSignal(data: {
 
 /**
  * Handle EXIT signal - close position
+ * Exit orders are adverse orders for trades previously opened (manually or via automation)
  */
 async function handleExitSignal(data: {
   ticker: string;
@@ -542,20 +543,72 @@ async function handleExitSignal(data: {
 }) {
   const { ticker, dir, price, limit_price, quantity } = data;
 
-  // Determine exit action (opposite of position direction)
-  const action = dir === 'Long' ? 'sell' : dir === 'Short' ? 'buy' : 'sell';
-  const exitDir = dir === 'Long' ? 'Short' : 'Long'; // Opposite direction for exit
+  const tickerUpper = ticker.toUpperCase();
+
+  // Find matching open position for this ticker
+  const openPosition = await prisma.position.findFirst({
+    where: {
+      ticker: tickerUpper,
+      closed_at: null
+    }
+  });
+
+  // Check for existing pending exit for this position (duplicate detection)
+  let duplicateWarning = null;
+  if (openPosition) {
+    const existingPendingExit = await prisma.execution.findFirst({
+      where: {
+        position_id: openPosition.id,
+        order_type: 'exit',
+        status: 'pending'
+      }
+    });
+
+    if (existingPendingExit) {
+      duplicateWarning = {
+        message: `Duplicate EXIT signal - position ${openPosition.id} already has pending exit`,
+        existing_exit_id: existingPendingExit.id,
+        existing_exit_created: existingPendingExit.created_at
+      };
+      console.warn(`⚠️ Duplicate EXIT for ${tickerUpper}: existing pending exit ${existingPendingExit.id}`);
+
+      // Log the duplicate detection
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'duplicate_exit_detected',
+          ticker: tickerUpper,
+          details: JSON.stringify({
+            position_id: openPosition.id,
+            existing_exit_id: existingPendingExit.id,
+            new_exit_price: limit_price || price,
+            new_exit_quantity: quantity
+          })
+        }
+      });
+    }
+  }
+
+  // Determine exit action based on position direction (or provided dir)
+  // Exit action is OPPOSITE of position direction
+  const positionDir = openPosition?.side || dir;
+  const action = positionDir === 'Long' ? 'sell' : positionDir === 'Short' ? 'buy' : 'sell';
+  const exitDir = positionDir === 'Long' ? 'Short' : 'Long';
   const finalLimitPrice = limit_price || price || 0;
+
+  // Use position quantity if not specified, or clamp to position quantity
+  const positionQty = openPosition?.quantity || quantity || 1;
+  const exitQty = quantity ? Math.min(quantity, positionQty) : positionQty;
 
   // Build raw_payload for broker forwarding (TradingView EXIT/ORDER format)
   const orderPayload = JSON.stringify({
     event: 'EXIT',
-    ticker: ticker.toUpperCase(),
+    ticker: tickerUpper,
     dir: exitDir,
     price: finalLimitPrice,
     limit_price: finalLimitPrice,
-    quantity: quantity || 1,
-    order_action: action
+    quantity: exitQty,
+    order_action: action,
+    position_id: openPosition?.id || null
   });
 
   // Get settings for delay configuration
@@ -564,13 +617,15 @@ async function handleExitSignal(data: {
   const delayMinutes = delayBars * 5; // 1 bar = 5 minutes
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
-  // Create Execution for exit
+  // Create Execution for exit with position link and order_type
   const execution = await prisma.execution.create({
     data: {
-      ticker: ticker.toUpperCase(),
+      ticker: tickerUpper,
       dir: exitDir,
       order_action: action,
-      quantity: quantity || 1,
+      order_type: 'exit',              // Explicitly mark as exit order
+      position_id: openPosition?.id,   // Link to position being exited
+      quantity: exitQty,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
       status: 'pending',
       delay_expires_at: delayExpiresAt,
@@ -582,13 +637,15 @@ async function handleExitSignal(data: {
   await prisma.auditLog.create({
     data: {
       event_type: 'exit_created',
-      ticker: ticker.toUpperCase(),
+      ticker: tickerUpper,
       details: JSON.stringify({
         execution_id: execution.id,
+        position_id: openPosition?.id,
         source: 'webhook',
         type: 'EXIT',
         order_action: action,
-        quantity: quantity || 1,
+        quantity: exitQty,
+        position_quantity: positionQty,
         limit_price: finalLimitPrice
       })
     }
@@ -596,7 +653,13 @@ async function handleExitSignal(data: {
 
   return {
     execution_id: execution.id,
-    message: 'Exit order created - pending'
+    position_id: openPosition?.id,
+    position_quantity: positionQty,
+    exit_quantity: exitQty,
+    message: openPosition
+      ? `Exit order created for position ${openPosition.id}`
+      : 'Exit order created (no matching position found)',
+    ...(duplicateWarning && { warning: duplicateWarning })
   };
 }
 

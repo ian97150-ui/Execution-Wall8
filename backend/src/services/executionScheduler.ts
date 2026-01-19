@@ -32,7 +32,13 @@ async function processExpiredDelays() {
 
     // Filter out EXIT signals in safe mode - they require manual confirmation
     const executionsToProcess = expiredExecutions.filter(exec => {
-      // Parse the raw_payload to check if it's an EXIT signal
+      // Check order_type field first (preferred method)
+      if (exec.order_type === 'exit') {
+        console.log(`   ⏸️ Skipping EXIT signal for ${exec.ticker} - requires manual confirmation in safe mode`);
+        return false;
+      }
+
+      // Fallback: Parse raw_payload for legacy records without order_type
       if (exec.raw_payload) {
         try {
           const payload = JSON.parse(exec.raw_payload);

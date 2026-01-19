@@ -20,6 +20,7 @@ import ExecutionModeToggle from "../components/trading/ExecutionModeToggle";
 import StatsOverview from "../components/trading/StatsOverview";
 import TickerList from "../components/trading/TickerList";
 import LimitPriceEditor from "../components/trading/LimitPriceEditor";
+import ExecutionEditor from "../components/trading/ExecutionEditor";
 import CandidatesList from "../components/trading/CandidatesList";
 import PositionsList from "../components/trading/PositionsList";
 import BlockedTickersList from "../components/trading/BlockedTickersList";
@@ -32,6 +33,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("candidates");
   const [editingIntent, setEditingIntent] = useState(null);
   const [limitEditorOpen, setLimitEditorOpen] = useState(false);
+  const [executionEditorOpen, setExecutionEditorOpen] = useState(false);
+  const [editingExecution, setEditingExecution] = useState(null);
+  const [editingPosition, setEditingPosition] = useState(null);
   const [viewMode, setViewMode] = useState("deck"); // "deck" or "list"
 
   const queryClient = useQueryClient();
@@ -307,6 +311,40 @@ export default function Dashboard() {
     }
   });
 
+  // Save execution edits (price AND quantity) - for enhanced exit order editing
+  const saveExecutionMutation = useMutation({
+    mutationFn: async ({ execution, newPrice, newQuantity }) => {
+      const updateData = {};
+      if (newPrice !== undefined) updateData.limit_price = newPrice;
+      if (newQuantity !== undefined) updateData.quantity = newQuantity;
+
+      await api.put(`/executions/${execution.id}`, updateData);
+
+      // Log the edit
+      await api.post('/audit-logs', {
+        event_type: 'execution_edited',
+        ticker: execution.ticker,
+        details: JSON.stringify({
+          execution_id: execution.id,
+          order_type: execution.order_type,
+          price_change: newPrice !== undefined ? {
+            from: execution.limit_price,
+            to: newPrice
+          } : null,
+          quantity_change: newQuantity !== undefined ? {
+            from: execution.quantity,
+            to: newQuantity
+          } : null
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Execution updated');
+    }
+  });
+
   const cancelExecutionMutation = useMutation({
     mutationFn: async (exec) => {
       await api.post(`/executions/${exec.id}/cancel`);
@@ -426,13 +464,39 @@ export default function Dashboard() {
     return remaining;
   }, [settings]);
 
-  const handleEditLimit = (intent) => {
-    setEditingIntent(intent);
-    setLimitEditorOpen(true);
+  const handleEditLimit = async (exec) => {
+    // Check if this is an exit order
+    const isExit = exec.order_type === 'exit' ||
+      (exec.raw_payload && JSON.parse(exec.raw_payload).event === 'EXIT');
+
+    if (isExit) {
+      // Fetch execution with position context for exit orders
+      try {
+        const response = await api.get(`/executions/${exec.id}/with-position`);
+        const { execution, position, isExit: confirmedExit } = response.data;
+        setEditingExecution(execution);
+        setEditingPosition(position);
+        setExecutionEditorOpen(true);
+      } catch (error) {
+        console.error('Failed to fetch position context:', error);
+        // Fallback to basic editing
+        setEditingExecution(exec);
+        setEditingPosition(null);
+        setExecutionEditorOpen(true);
+      }
+    } else {
+      // Use legacy LimitPriceEditor for entry orders
+      setEditingIntent(exec);
+      setLimitEditorOpen(true);
+    }
   };
 
   const handleSaveLimit = (intent, newPrice) => {
     saveLimitOverrideMutation.mutate({ intent, newPrice });
+  };
+
+  const handleSaveExecution = ({ execution, newPrice, newQuantity }) => {
+    saveExecutionMutation.mutate({ execution, newPrice, newQuantity });
   };
 
   return (
@@ -680,7 +744,7 @@ export default function Dashboard() {
           </Tabs>
         </main>
 
-        {/* Limit Price Editor Modal */}
+        {/* Limit Price Editor Modal (for entry orders) */}
         <LimitPriceEditor
           open={limitEditorOpen}
           onOpenChange={setLimitEditorOpen}
@@ -688,6 +752,18 @@ export default function Dashboard() {
           maxAdjustmentPercent={settings?.max_adjustment_pct || 2}
           timeRemaining={editingIntent ? getLimitEditTimeRemaining(editingIntent) : 0}
           onSave={handleSaveLimit}
+        />
+
+        {/* Execution Editor Modal (for exit orders - supports price AND quantity) */}
+        <ExecutionEditor
+          open={executionEditorOpen}
+          onOpenChange={setExecutionEditorOpen}
+          execution={editingExecution}
+          position={editingPosition}
+          isExit={editingExecution?.order_type === 'exit'}
+          maxAdjustmentPercent={settings?.max_adjustment_pct || 2}
+          timeRemaining={editingExecution ? getLimitEditTimeRemaining(editingExecution) : 0}
+          onSave={handleSaveExecution}
         />
       </div>
     </ErrorBoundary>
