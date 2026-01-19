@@ -19,6 +19,29 @@ interface BrokerWebhookResult {
 }
 
 /**
+ * Helper to safely get settings without failing on missing columns
+ */
+async function getSettingsSafe() {
+  try {
+    return await prisma.executionSettings.findFirst();
+  } catch (e: any) {
+    // If column doesn't exist (schema mismatch), use raw query
+    if (e.message?.includes('does not exist')) {
+      console.warn('⚠️ Some settings columns missing in brokerWebhook, using raw query');
+      try {
+        const results = await prisma.$queryRaw`
+          SELECT * FROM execution_settings LIMIT 1
+        ` as any[];
+        return results[0] || null;
+      } catch {
+        return null;
+      }
+    }
+    throw e;
+  }
+}
+
+/**
  * Forward an approved order to the broker webhook
  * Uses TradingView-compatible ORDER format
  */
@@ -35,8 +58,8 @@ export async function forwardToBroker(
   }
 ): Promise<BrokerWebhookResult> {
   try {
-    // Get settings
-    const settings = await prisma.executionSettings.findFirst();
+    // Get settings safely
+    const settings = await getSettingsSafe();
 
     if (!settings?.broker_webhook_enabled || !settings?.broker_webhook_url) {
       console.log('📭 Broker webhook not configured or disabled');
