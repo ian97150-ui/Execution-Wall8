@@ -489,7 +489,8 @@ async function handleOrderSignal(data: {
   // Get settings for delay configuration
   const settings = await prisma.executionSettings.findFirst();
   const delayBars = settings?.default_delay_bars || 2;
-  const delayMinutes = delayBars * 5; // 1 bar = 5 minutes
+  const barDuration = settings?.bar_duration_minutes || 5;
+  const delayMinutes = delayBars * barDuration;
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
   // Create Execution directly
@@ -628,7 +629,8 @@ async function handleExitSignal(data: {
   // Get settings for delay configuration
   const settings = await prisma.executionSettings.findFirst();
   const delayBars = settings?.default_delay_bars || 2;
-  const delayMinutes = delayBars * 5; // 1 bar = 5 minutes
+  const barDuration = settings?.bar_duration_minutes || 5;
+  const delayMinutes = delayBars * barDuration;
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
   // Create Execution for exit

@@ -78,6 +78,7 @@ model ExecutionSettings {
   id                   String  @id @default(uuid())
   execution_mode       String  @default("safe") // off, safe, full
   default_delay_bars   Int     @default(2)
+  bar_duration_minutes Int     @default(5) // minutes per bar for delay calculation
   gate_threshold       Int     @default(3)
   limit_edit_window    Int     @default(120) // seconds
   max_adjustment_pct   Decimal @default(2.0)
