@@ -4,12 +4,44 @@ import { forwardToBroker } from './brokerWebhook';
 let schedulerInterval: NodeJS.Timeout | null = null;
 
 /**
+ * Helper to safely get settings without failing on missing columns
+ */
+async function getSettingsSafe() {
+  try {
+    // Try to get all settings
+    return await prisma.executionSettings.findFirst();
+  } catch (e: any) {
+    // If column doesn't exist, use raw query for basic fields only
+    if (e.message?.includes('does not exist')) {
+      console.warn('⚠️ Some settings columns missing, using defaults');
+      try {
+        const results = await prisma.$queryRaw`
+          SELECT id, execution_mode, default_delay_bars
+          FROM execution_settings
+          LIMIT 1
+        ` as any[];
+        return results[0] || null;
+      } catch {
+        return null;
+      }
+    }
+    throw e;
+  }
+}
+
+/**
  * Check for pending executions with expired delays and auto-execute them
+ *
+ * Safe Mode Behavior:
+ * - ENTRY orders: Auto-execute when delay expires (user can cancel during delay)
+ * - EXIT orders: Also auto-execute when delay expires (fail-safe: always close positions)
+ *
+ * This ensures positions are never left open indefinitely if user doesn't respond.
  */
 async function processExpiredDelays() {
   try {
     // Get settings to check execution mode
-    const settings = await prisma.executionSettings.findFirst();
+    const settings = await getSettingsSafe();
 
     // Only auto-execute in 'safe' mode (which has delays)
     if (!settings || settings.execution_mode !== 'safe') {
@@ -18,9 +50,8 @@ async function processExpiredDelays() {
 
     const now = new Date();
 
-    // Find pending executions with expired delays
-    // IMPORTANT: In safe mode, EXIT signals should NOT auto-execute
-    // They require manual confirmation
+    // Find ALL pending executions with expired delays
+    // Both ENTRY and EXIT orders auto-execute when delay expires
     const expiredExecutions = await prisma.execution.findMany({
       where: {
         status: 'pending',
@@ -30,36 +61,13 @@ async function processExpiredDelays() {
       }
     });
 
-    // Filter out EXIT signals in safe mode - they require manual confirmation
-    const executionsToProcess = expiredExecutions.filter((exec: any) => {
-      // Check order_type field first (preferred method) - use optional chaining for backwards compat
-      if (exec.order_type && exec.order_type === 'exit') {
-        console.log(`   ⏸️ Skipping EXIT signal for ${exec.ticker} - requires manual confirmation in safe mode`);
-        return false;
-      }
-
-      // Fallback: Parse raw_payload for legacy records without order_type
-      if (exec.raw_payload) {
-        try {
-          const payload = JSON.parse(exec.raw_payload);
-          if (payload.event === 'EXIT') {
-            console.log(`   ⏸️ Skipping EXIT signal for ${exec.ticker} - requires manual confirmation in safe mode`);
-            return false;
-          }
-        } catch (e) {
-          // If we can't parse, continue with execution
-        }
-      }
-      return true;
-    });
-
-    if (executionsToProcess.length === 0) {
+    if (expiredExecutions.length === 0) {
       return;
     }
 
-    console.log(`⏰ Found ${executionsToProcess.length} expired delay(s) - auto-executing...`);
+    console.log(`⏰ Found ${expiredExecutions.length} expired delay(s) - auto-executing...`);
 
-    for (const execution of executionsToProcess) {
+    for (const execution of expiredExecutions) {
       try {
         // Forward to broker
         const brokerResult = await forwardToBroker(execution);

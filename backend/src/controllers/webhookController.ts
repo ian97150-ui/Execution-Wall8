@@ -2,6 +2,31 @@ import { Request, Response } from 'express';
 import { prisma } from '../index';
 
 /**
+ * Helper to safely get settings without failing on missing columns
+ */
+async function getSettingsSafe() {
+  try {
+    return await prisma.executionSettings.findFirst();
+  } catch (e: any) {
+    // If column doesn't exist (schema mismatch), use raw query for basic fields
+    if (e.message?.includes('does not exist')) {
+      console.warn('⚠️ Some settings columns missing, using defaults');
+      try {
+        const results = await prisma.$queryRaw`
+          SELECT id, execution_mode, default_delay_bars
+          FROM execution_settings
+          LIMIT 1
+        ` as any[];
+        return results[0] || null;
+      } catch {
+        return null;
+      }
+    }
+    throw e;
+  }
+}
+
+/**
  * Unified Webhook Handler
  * POST /api/webhook
  *
@@ -487,7 +512,7 @@ async function handleOrderSignal(data: {
   });
 
   // Get settings for delay configuration
-  const settings = await prisma.executionSettings.findFirst();
+  const settings = await getSettingsSafe();
   const delayBars = settings?.default_delay_bars || 2;
   const barDuration = settings?.bar_duration_minutes || 5;
   const delayMinutes = delayBars * barDuration;
@@ -554,9 +579,9 @@ async function handleExitSignal(data: {
     }
   });
 
-  // Check for existing pending exit for this position (duplicate detection)
-  // Note: Uses raw_payload parsing since order_type/position_id fields not in schema yet
-  let duplicateWarning = null;
+  // Check for existing pending exit and REPLACE it with the new one
+  // This ensures the latest exit signal takes precedence
+  let replacedExitInfo = null;
   if (openPosition) {
     // Find pending exits for this ticker by parsing raw_payload
     const pendingExits = await prisma.execution.findMany({
@@ -580,23 +605,32 @@ async function handleExitSignal(data: {
     });
 
     if (existingPendingExit) {
-      duplicateWarning = {
-        message: `Duplicate EXIT signal - position ${openPosition.id} already has pending exit`,
-        existing_exit_id: existingPendingExit.id,
-        existing_exit_created: existingPendingExit.created_at
-      };
-      console.warn(`⚠️ Duplicate EXIT for ${tickerUpper}: existing pending exit ${existingPendingExit.id}`);
+      // Cancel the old exit and replace with new one
+      await prisma.execution.update({
+        where: { id: existingPendingExit.id },
+        data: { status: 'cancelled' }
+      });
 
-      // Log the duplicate detection
+      replacedExitInfo = {
+        cancelled_exit_id: existingPendingExit.id,
+        old_price: existingPendingExit.limit_price,
+        old_quantity: existingPendingExit.quantity
+      };
+
+      console.log(`🔄 Replacing EXIT for ${tickerUpper}: cancelled ${existingPendingExit.id}, creating new exit`);
+
+      // Log the replacement
       await prisma.auditLog.create({
         data: {
-          event_type: 'duplicate_exit_detected',
+          event_type: 'exit_replaced',
           ticker: tickerUpper,
           details: JSON.stringify({
             position_id: openPosition.id,
-            existing_exit_id: existingPendingExit.id,
-            new_exit_price: limit_price || price,
-            new_exit_quantity: quantity
+            cancelled_exit_id: existingPendingExit.id,
+            old_price: existingPendingExit.limit_price,
+            old_quantity: existingPendingExit.quantity,
+            new_price: limit_price || price,
+            new_quantity: quantity
           })
         }
       });
@@ -627,7 +661,7 @@ async function handleExitSignal(data: {
   });
 
   // Get settings for delay configuration
-  const settings = await prisma.executionSettings.findFirst();
+  const settings = await getSettingsSafe();
   const delayBars = settings?.default_delay_bars || 2;
   const barDuration = settings?.bar_duration_minutes || 5;
   const delayMinutes = delayBars * barDuration;
@@ -674,7 +708,7 @@ async function handleExitSignal(data: {
     message: openPosition
       ? `Exit order created for position ${openPosition.id}`
       : 'Exit order created (no matching position found)',
-    ...(duplicateWarning && { warning: duplicateWarning })
+    ...(replacedExitInfo && { replaced: replacedExitInfo })
   };
 }
 
