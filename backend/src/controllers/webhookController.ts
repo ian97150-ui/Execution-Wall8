@@ -511,14 +511,18 @@ async function handleOrderSignal(data: {
     order_action: action
   });
 
-  // Get settings for delay configuration
+  // Get settings for execution mode and delay configuration
   const settings = await getSettingsSafe();
+  const executionMode = settings?.execution_mode || 'safe';
   const delayBars = settings?.default_delay_bars || 2;
   const barDuration = settings?.bar_duration_minutes || 1;
   const delayMinutes = delayBars * barDuration;
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
-  // Create Execution directly
+  // In "full" mode, execute immediately. In "safe" mode, create pending with delay.
+  const isFullMode = executionMode === 'full';
+
+  // Create Execution
   const execution = await prisma.execution.create({
     data: {
       ticker: ticker.toUpperCase(),
@@ -526,16 +530,71 @@ async function handleOrderSignal(data: {
       order_action: action,
       quantity: quantity || 1,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
-      status: 'pending',
-      delay_expires_at: delayExpiresAt,
+      status: isFullMode ? 'executing' : 'pending',
+      delay_expires_at: isFullMode ? null : delayExpiresAt,
       raw_payload: orderPayload
     }
   });
 
+  let brokerResult = { success: false, error: null as string | null };
+
+  // In full mode, forward to broker immediately
+  if (isFullMode) {
+    const { forwardToBroker } = await import('../services/brokerWebhook');
+    brokerResult = await forwardToBroker(execution);
+
+    // Update execution status
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: {
+        status: 'executed',
+        executed_at: new Date(),
+        error_message: brokerResult.success ? null : brokerResult.error
+      }
+    });
+
+    // Create or update position
+    const existingPosition = await prisma.position.findFirst({
+      where: {
+        ticker: ticker.toUpperCase(),
+        closed_at: null
+      }
+    });
+
+    if (existingPosition) {
+      const newQuantity = action === 'buy'
+        ? existingPosition.quantity + (quantity || 1)
+        : existingPosition.quantity - (quantity || 1);
+
+      if (newQuantity === 0) {
+        await prisma.position.update({
+          where: { id: existingPosition.id },
+          data: { closed_at: new Date() }
+        });
+      } else if (newQuantity > 0) {
+        await prisma.position.update({
+          where: { id: existingPosition.id },
+          data: { quantity: newQuantity }
+        });
+      }
+    } else {
+      await prisma.position.create({
+        data: {
+          ticker: ticker.toUpperCase(),
+          side: action === 'buy' ? 'Long' : 'Short',
+          quantity: quantity || 1,
+          entry_price: finalLimitPrice ? finalLimitPrice.toString() : '0'
+        }
+      });
+    }
+
+    console.log(`⚡ Full mode: Immediately executed ${ticker.toUpperCase()} ${action} ${quantity || 1}`);
+  }
+
   // Create audit log
   await prisma.auditLog.create({
     data: {
-      event_type: 'execution_created',
+      event_type: isFullMode ? 'execution_immediate' : 'execution_created',
       ticker: ticker.toUpperCase(),
       details: JSON.stringify({
         execution_id: execution.id,
@@ -545,14 +604,20 @@ async function handleOrderSignal(data: {
         quantity: quantity || 1,
         limit_price: finalLimitPrice,
         quality_tier,
-        quality_score
+        quality_score,
+        mode: executionMode,
+        broker_forwarded: isFullMode ? brokerResult.success : null
       })
     }
   });
 
   return {
     execution_id: execution.id,
-    message: 'Execution created - pending'
+    message: isFullMode
+      ? `Execution completed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
+      : 'Execution created - pending',
+    mode: executionMode,
+    broker_forwarded: isFullMode ? brokerResult.success : undefined
   };
 }
 
@@ -660,12 +725,16 @@ async function handleExitSignal(data: {
     position_id: openPosition?.id || null
   });
 
-  // Get settings for delay configuration
+  // Get settings for execution mode and delay configuration
   const settings = await getSettingsSafe();
+  const executionMode = settings?.execution_mode || 'safe';
   const delayBars = settings?.default_delay_bars || 2;
   const barDuration = settings?.bar_duration_minutes || 1;
   const delayMinutes = delayBars * barDuration;
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+
+  // In "full" mode, execute immediately. In "safe" mode, create pending with delay.
+  const isFullMode = executionMode === 'full';
 
   // Create Execution for exit
   // Note: order_type and position_id are stored in raw_payload for backwards compatibility
@@ -676,16 +745,52 @@ async function handleExitSignal(data: {
       order_action: action,
       quantity: exitQty,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
-      status: 'pending',
-      delay_expires_at: delayExpiresAt,
+      status: isFullMode ? 'executing' : 'pending',
+      delay_expires_at: isFullMode ? null : delayExpiresAt,
       raw_payload: orderPayload  // Contains event: 'EXIT' and position_id for identification
     }
   });
 
+  let brokerResult = { success: false, error: null as string | null };
+
+  // In full mode, forward to broker immediately and close position
+  if (isFullMode) {
+    const { forwardToBroker } = await import('../services/brokerWebhook');
+    brokerResult = await forwardToBroker(execution);
+
+    // Update execution status
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: {
+        status: 'executed',
+        executed_at: new Date(),
+        error_message: brokerResult.success ? null : brokerResult.error
+      }
+    });
+
+    // Close position if we have one
+    if (openPosition) {
+      const newQuantity = openPosition.quantity - exitQty;
+      if (newQuantity <= 0) {
+        await prisma.position.update({
+          where: { id: openPosition.id },
+          data: { closed_at: new Date() }
+        });
+      } else {
+        await prisma.position.update({
+          where: { id: openPosition.id },
+          data: { quantity: newQuantity }
+        });
+      }
+    }
+
+    console.log(`⚡ Full mode: Immediately executed EXIT ${tickerUpper} ${action} ${exitQty}`);
+  }
+
   // Create audit log
   await prisma.auditLog.create({
     data: {
-      event_type: 'exit_created',
+      event_type: isFullMode ? 'exit_immediate' : 'exit_created',
       ticker: tickerUpper,
       details: JSON.stringify({
         execution_id: execution.id,
@@ -695,7 +800,9 @@ async function handleExitSignal(data: {
         order_action: action,
         quantity: exitQty,
         position_quantity: positionQty,
-        limit_price: finalLimitPrice
+        limit_price: finalLimitPrice,
+        mode: executionMode,
+        broker_forwarded: isFullMode ? brokerResult.success : null
       })
     }
   });
@@ -705,9 +812,13 @@ async function handleExitSignal(data: {
     position_id: openPosition?.id,
     position_quantity: positionQty,
     exit_quantity: exitQty,
-    message: openPosition
-      ? `Exit order created for position ${openPosition.id}`
-      : 'Exit order created (no matching position found)',
+    message: isFullMode
+      ? `Exit executed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
+      : (openPosition
+          ? `Exit order created for position ${openPosition.id}`
+          : 'Exit order created (no matching position found)'),
+    mode: executionMode,
+    broker_forwarded: isFullMode ? brokerResult.success : undefined,
     ...(replacedExitInfo && { replaced: replacedExitInfo })
   };
 }
