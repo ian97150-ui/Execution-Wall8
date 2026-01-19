@@ -554,14 +554,28 @@ async function handleExitSignal(data: {
   });
 
   // Check for existing pending exit for this position (duplicate detection)
+  // Note: Uses raw_payload parsing since order_type/position_id fields not in schema yet
   let duplicateWarning = null;
   if (openPosition) {
-    const existingPendingExit = await prisma.execution.findFirst({
+    // Find pending exits for this ticker by parsing raw_payload
+    const pendingExits = await prisma.execution.findMany({
       where: {
-        position_id: openPosition.id,
-        order_type: 'exit',
+        ticker: tickerUpper,
         status: 'pending'
       }
+    });
+
+    // Check if any pending execution is an EXIT for this position
+    const existingPendingExit = pendingExits.find((exec: any) => {
+      if (exec.raw_payload) {
+        try {
+          const payload = JSON.parse(exec.raw_payload);
+          return payload.event === 'EXIT' && payload.position_id === openPosition.id;
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
     });
 
     if (existingPendingExit) {
@@ -617,19 +631,18 @@ async function handleExitSignal(data: {
   const delayMinutes = delayBars * 5; // 1 bar = 5 minutes
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
-  // Create Execution for exit with position link and order_type
+  // Create Execution for exit
+  // Note: order_type and position_id are stored in raw_payload for backwards compatibility
   const execution = await prisma.execution.create({
     data: {
       ticker: tickerUpper,
       dir: exitDir,
       order_action: action,
-      order_type: 'exit',              // Explicitly mark as exit order
-      position_id: openPosition?.id,   // Link to position being exited
       quantity: exitQty,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
       status: 'pending',
       delay_expires_at: delayExpiresAt,
-      raw_payload: orderPayload
+      raw_payload: orderPayload  // Contains event: 'EXIT' and position_id for identification
     }
   });
 

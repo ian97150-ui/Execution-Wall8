@@ -31,9 +31,9 @@ async function processExpiredDelays() {
     });
 
     // Filter out EXIT signals in safe mode - they require manual confirmation
-    const executionsToProcess = expiredExecutions.filter(exec => {
-      // Check order_type field first (preferred method)
-      if (exec.order_type === 'exit') {
+    const executionsToProcess = expiredExecutions.filter((exec: any) => {
+      // Check order_type field first (preferred method) - use optional chaining for backwards compat
+      if (exec.order_type && exec.order_type === 'exit') {
         console.log(`   ⏸️ Skipping EXIT signal for ${exec.ticker} - requires manual confirmation in safe mode`);
         return false;
       }
