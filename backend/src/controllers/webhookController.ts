@@ -536,7 +536,7 @@ async function handleOrderSignal(data: {
     }
   });
 
-  let brokerResult = { success: false, error: null as string | null };
+  let brokerResult: { success: boolean; error?: string } = { success: false };
 
   // In full mode, forward to broker immediately
   if (isFullMode) {
@@ -751,7 +751,7 @@ async function handleExitSignal(data: {
     }
   });
 
-  let brokerResult = { success: false, error: null as string | null };
+  let brokerResult: { success: boolean; error?: string } = { success: false };
 
   // In full mode, forward to broker immediately and close position
   if (isFullMode) {
