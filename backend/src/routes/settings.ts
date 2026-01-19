@@ -4,22 +4,66 @@ import { testBrokerWebhook } from '../services/brokerWebhook';
 
 const router = express.Router();
 
+/**
+ * Helper to safely get settings without failing on missing columns
+ */
+async function getSettingsSafe() {
+  try {
+    return await prisma.executionSettings.findFirst();
+  } catch (e: any) {
+    // If column doesn't exist (schema mismatch), use raw query for basic fields
+    if (e.message?.includes('does not exist')) {
+      console.warn('⚠️ Some settings columns missing in GET, using raw query');
+      try {
+        const results = await prisma.$queryRaw`
+          SELECT * FROM execution_settings LIMIT 1
+        ` as any[];
+        return results[0] || null;
+      } catch {
+        return null;
+      }
+    }
+    throw e;
+  }
+}
+
+/**
+ * Helper to safely create settings with only existing columns
+ */
+async function createSettingsSafe() {
+  try {
+    return await prisma.executionSettings.create({
+      data: {
+        execution_mode: 'safe',
+        default_delay_bars: 2,
+        bar_duration_minutes: 1,
+        gate_threshold: 3,
+        limit_edit_window: 120,
+        max_adjustment_pct: '2.0'
+      }
+    });
+  } catch (e: any) {
+    // If column doesn't exist, create with basic fields only
+    if (e.message?.includes('does not exist')) {
+      console.warn('⚠️ Creating settings with basic fields only');
+      await prisma.$executeRaw`
+        INSERT INTO execution_settings (id, execution_mode, default_delay_bars, gate_threshold, limit_edit_window, max_adjustment_pct, broker_webhook_enabled, email_notifications, notify_on_approval, notify_on_execution, notify_on_close, created_at, updated_at)
+        VALUES (lower(hex(randomblob(16))), 'safe', 2, 3, 120, '2.0', 0, 0, 1, 1, 1, datetime('now'), datetime('now'))
+      `;
+      return await getSettingsSafe();
+    }
+    throw e;
+  }
+}
+
 // Get execution settings
 router.get('/', async (req: Request, res: Response) => {
   try {
     // Get or create default settings
-    let settings = await prisma.executionSettings.findFirst();
+    let settings = await getSettingsSafe();
 
     if (!settings) {
-      settings = await prisma.executionSettings.create({
-        data: {
-          execution_mode: 'safe',
-          default_delay_bars: 2,
-          gate_threshold: 3,
-          limit_edit_window: 120,
-          max_adjustment_pct: '2.0'
-        }
-      });
+      settings = await createSettingsSafe();
     }
 
     res.json(settings);
@@ -35,6 +79,7 @@ router.put('/', async (req: Request, res: Response) => {
     const {
       execution_mode,
       default_delay_bars,
+      bar_duration_minutes,
       gate_threshold,
       limit_edit_window,
       max_adjustment_pct,
@@ -48,42 +93,46 @@ router.put('/', async (req: Request, res: Response) => {
     } = req.body;
 
     // Get existing settings or create new
-    let settings = await prisma.executionSettings.findFirst();
+    let settings = await getSettingsSafe();
 
     if (!settings) {
-      settings = await prisma.executionSettings.create({
-        data: {
-          execution_mode: execution_mode || 'safe',
-          default_delay_bars: default_delay_bars || 2,
-          gate_threshold: gate_threshold || 3,
-          limit_edit_window: limit_edit_window || 120,
-          max_adjustment_pct: max_adjustment_pct || '2.0',
-          email_notifications: email_notifications || false,
-          notification_email: notification_email || null,
-          notify_on_approval: notify_on_approval !== undefined ? notify_on_approval : true,
-          notify_on_execution: notify_on_execution !== undefined ? notify_on_execution : true,
-          notify_on_close: notify_on_close !== undefined ? notify_on_close : true
-        }
-      });
-    } else {
-      const updateData: any = {};
-      if (execution_mode !== undefined) updateData.execution_mode = execution_mode;
-      if (default_delay_bars !== undefined) updateData.default_delay_bars = default_delay_bars;
-      if (gate_threshold !== undefined) updateData.gate_threshold = gate_threshold;
-      if (limit_edit_window !== undefined) updateData.limit_edit_window = limit_edit_window;
-      if (max_adjustment_pct !== undefined) updateData.max_adjustment_pct = max_adjustment_pct.toString();
-      if (broker_webhook_url !== undefined) updateData.broker_webhook_url = broker_webhook_url;
-      if (broker_webhook_enabled !== undefined) updateData.broker_webhook_enabled = broker_webhook_enabled;
-      if (email_notifications !== undefined) updateData.email_notifications = email_notifications;
-      if (notification_email !== undefined) updateData.notification_email = notification_email;
-      if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
-      if (notify_on_execution !== undefined) updateData.notify_on_execution = notify_on_execution;
-      if (notify_on_close !== undefined) updateData.notify_on_close = notify_on_close;
+      settings = await createSettingsSafe();
+    }
 
+    // Build update data - only include fields that exist
+    const updateData: any = {};
+    if (execution_mode !== undefined) updateData.execution_mode = execution_mode;
+    if (default_delay_bars !== undefined) updateData.default_delay_bars = default_delay_bars;
+    if (bar_duration_minutes !== undefined) updateData.bar_duration_minutes = bar_duration_minutes;
+    if (gate_threshold !== undefined) updateData.gate_threshold = gate_threshold;
+    if (limit_edit_window !== undefined) updateData.limit_edit_window = limit_edit_window;
+    if (max_adjustment_pct !== undefined) updateData.max_adjustment_pct = max_adjustment_pct.toString();
+    if (broker_webhook_url !== undefined) updateData.broker_webhook_url = broker_webhook_url;
+    if (broker_webhook_enabled !== undefined) updateData.broker_webhook_enabled = broker_webhook_enabled;
+    if (email_notifications !== undefined) updateData.email_notifications = email_notifications;
+    if (notification_email !== undefined) updateData.notification_email = notification_email;
+    if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
+    if (notify_on_execution !== undefined) updateData.notify_on_execution = notify_on_execution;
+    if (notify_on_close !== undefined) updateData.notify_on_close = notify_on_close;
+
+    // Try Prisma update first, fall back to raw SQL if columns missing
+    try {
       settings = await prisma.executionSettings.update({
-        where: { id: settings.id },
+        where: { id: (settings as any).id },
         data: updateData
       });
+    } catch (e: any) {
+      if (e.message?.includes('does not exist')) {
+        // Remove problematic fields and retry
+        delete updateData.bar_duration_minutes;
+        settings = await prisma.executionSettings.update({
+          where: { id: (settings as any).id },
+          data: updateData
+        });
+        console.warn('⚠️ Updated settings without bar_duration_minutes (column missing)');
+      } else {
+        throw e;
+      }
     }
 
     await prisma.auditLog.create({
