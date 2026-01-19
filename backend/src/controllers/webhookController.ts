@@ -514,7 +514,7 @@ async function handleOrderSignal(data: {
   // Get settings for delay configuration
   const settings = await getSettingsSafe();
   const delayBars = settings?.default_delay_bars || 2;
-  const barDuration = settings?.bar_duration_minutes || 5;
+  const barDuration = settings?.bar_duration_minutes || 1;
   const delayMinutes = delayBars * barDuration;
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
@@ -663,7 +663,7 @@ async function handleExitSignal(data: {
   // Get settings for delay configuration
   const settings = await getSettingsSafe();
   const delayBars = settings?.default_delay_bars || 2;
-  const barDuration = settings?.bar_duration_minutes || 5;
+  const barDuration = settings?.bar_duration_minutes || 1;
   const delayMinutes = delayBars * barDuration;
   const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
