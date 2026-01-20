@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../index';
 import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
+import { EmailNotifications } from '../services/emailService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -691,6 +692,28 @@ async function handleOrderSignal(data: {
       }
     });
 
+    // Send email notification for order received
+    EmailNotifications.orderReceived(tickerUpper, {
+      action,
+      side: finalDir,
+      quantity: quantity || 1,
+      limit_price: finalLimitPrice,
+      execution_mode: executionMode,
+      auto_linked: linkedIntentId ? 'yes' : 'no',
+      broker_result: isFullMode ? (brokerResult.success ? 'forwarded' : 'failed') : 'pending'
+    }).catch(err => console.error('Email notification error:', err));
+
+    // If executed immediately in full mode, also send execution notification
+    if (isFullMode && brokerResult.success) {
+      EmailNotifications.orderExecuted(tickerUpper, {
+        action,
+        side: finalDir,
+        quantity: quantity || 1,
+        limit_price: finalLimitPrice,
+        status: 'executed'
+      }).catch(err => console.error('Email notification error:', err));
+    }
+
     return {
       execution_id: execution.id,
       intent_id: linkedIntentId,
@@ -905,6 +928,20 @@ async function handleExitSignal(data: {
         })
       }
     });
+
+    // If position was closed in full mode, send email notification
+    if (isFullMode && openPosition && brokerResult.success) {
+      const positionWasClosed = (openPosition.quantity - exitQty) <= 0;
+      if (positionWasClosed) {
+        EmailNotifications.positionClosed(tickerUpper, {
+          action,
+          quantity: exitQty,
+          limit_price: finalLimitPrice,
+          position_side: openPosition.side,
+          status: 'closed'
+        }).catch(err => console.error('Email notification error:', err));
+      }
+    }
 
     return {
       execution_id: execution.id,

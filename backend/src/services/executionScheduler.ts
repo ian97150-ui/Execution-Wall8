@@ -1,5 +1,6 @@
 import { prisma } from '../index';
 import { forwardToBroker } from './brokerWebhook';
+import { EmailNotifications } from './emailService';
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 
@@ -139,6 +140,17 @@ async function processExpiredDelays() {
         } else if (brokerResult.error) {
           console.log(`      ⚠️ Broker forward failed: ${brokerResult.error}`);
         }
+
+        // Send email notification for order executed
+        EmailNotifications.orderExecuted(execution.ticker, {
+          action: execution.order_action,
+          side: execution.dir,
+          quantity: execution.quantity,
+          limit_price: execution.limit_price,
+          status: 'executed',
+          broker_result: brokerResult.success ? 'forwarded' : 'failed',
+          trigger: 'delay_expired'
+        }).catch(err => console.error('Email notification error:', err));
 
       } catch (execError: any) {
         console.error(`   ❌ Failed to auto-execute ${execution.id}:`, execError.message);
