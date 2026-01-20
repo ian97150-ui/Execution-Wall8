@@ -157,96 +157,74 @@ router.put('/', async (req: Request, res: Response) => {
   }
 });
 
-// Test email notification
+// Test email notification - sends directly, bypasses settings checks
 router.post('/test-email', async (req: Request, res: Response) => {
   try {
-    // Import email service
-    const { sendEmailNotification } = await import('../services/emailService');
+    const nodemailer = await import('nodemailer');
 
-    // Check environment variables - log for debugging
+    // Check environment variables
     const gmailUser = process.env.GMAIL_USER;
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
-    console.log('Email test - checking env vars:');
-    console.log('  GMAIL_USER:', gmailUser ? `set (${gmailUser.substring(0, 3)}...)` : 'missing');
-    console.log('  GMAIL_APP_PASSWORD:', gmailPass ? `set (${gmailPass.length} chars)` : 'missing');
-
     if (!gmailUser || !gmailPass) {
-      // List all env vars that contain 'GMAIL' or 'EMAIL' for debugging
-      const relevantVars = Object.keys(process.env)
-        .filter(k => k.includes('GMAIL') || k.includes('EMAIL') || k.includes('MAIL'))
-        .map(k => `${k}: ${process.env[k] ? 'set' : 'missing'}`);
-
       return res.status(400).json({
         success: false,
-        error: 'Gmail credentials not configured',
+        error: 'Gmail credentials not configured in environment variables',
         details: {
-          GMAIL_USER: gmailUser ? 'set' : 'missing',
-          GMAIL_APP_PASSWORD: gmailPass ? 'set' : 'missing',
-          found_vars: relevantVars.length > 0 ? relevantVars : ['No GMAIL/EMAIL/MAIL vars found']
+          GMAIL_USER: gmailUser ? 'set' : 'MISSING',
+          GMAIL_APP_PASSWORD: gmailPass ? 'set' : 'MISSING'
         }
       });
     }
 
-    // Get settings to check notification email
-    const settings = await getSettingsSafe();
+    // Get the email to send to - from request body or settings
+    let toEmail = req.body.email;
+    if (!toEmail) {
+      const settings = await getSettingsSafe();
+      toEmail = settings?.notification_email;
+    }
 
-    // SQLite stores booleans as 0/1, so check for both
-    const emailEnabled = settings?.email_notifications === true || settings?.email_notifications === 1;
-
-    console.log('Email settings check:');
-    console.log('  email_notifications raw value:', settings?.email_notifications, typeof settings?.email_notifications);
-    console.log('  emailEnabled:', emailEnabled);
-    console.log('  notification_email:', settings?.notification_email);
-
-    if (!emailEnabled) {
+    if (!toEmail) {
       return res.status(400).json({
         success: false,
-        error: 'Email notifications are disabled in settings',
-        debug: {
-          raw_value: settings?.email_notifications,
-          type: typeof settings?.email_notifications
-        }
+        error: 'No email address provided. Enter an email in the notification email field first.'
       });
     }
 
-    if (!settings?.notification_email) {
-      return res.status(400).json({
-        success: false,
-        error: 'No notification email configured in settings'
-      });
-    }
-
-    // Send test email
-    const result = await sendEmailNotification({
-      eventType: 'order_received',
-      ticker: 'TEST',
-      details: {
-        action: 'buy',
-        side: 'Long',
-        quantity: 1,
-        limit_price: 100.00,
-        status: 'test_email',
-        message: 'This is a test email from Execution Wall'
-      }
+    // Create transporter and send directly (bypass all settings checks)
+    const transporter = nodemailer.default.createTransport({
+      service: 'gmail',
+      auth: { user: gmailUser, pass: gmailPass }
     });
 
-    if (result) {
-      res.json({
-        success: true,
-        message: `Test email sent to ${settings.notification_email}`
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: 'Email send returned false - check server logs for details'
-      });
-    }
+    await transporter.sendMail({
+      from: gmailUser,
+      to: toEmail,
+      subject: 'Execution Wall - Test Email',
+      text: `This is a test email from Execution Wall.
+
+If you received this, your email configuration is working correctly!
+
+Gmail User: ${gmailUser}
+Sent To: ${toEmail}
+Time: ${new Date().toLocaleString()}
+
+---
+Execution Wall`
+    });
+
+    console.log(`✅ Test email sent to ${toEmail}`);
+
+    res.json({
+      success: true,
+      message: `Test email sent to ${toEmail}`
+    });
   } catch (error: any) {
     console.error('Error sending test email:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      hint: error.code === 'EAUTH' ? 'Check your Gmail App Password - it should be 16 characters without spaces' : undefined
     });
   }
 });
