@@ -3,6 +3,52 @@ import { prisma } from '../index';
 
 const router = express.Router();
 
+/**
+ * Helper to safely get positions without failing on missing columns
+ */
+async function getPositionsSafe(where: any = {}, orderBy: any = { opened_at: 'desc' }) {
+  try {
+    return await prisma.position.findMany({ where, orderBy });
+  } catch (e: any) {
+    // If column doesn't exist (schema mismatch), use raw query
+    if (e.message?.includes('does not exist') || e.message?.includes('Unknown argument')) {
+      console.warn('⚠️ Position query failed, using raw SQL fallback');
+      try {
+        // Build WHERE clause
+        const conditions: string[] = [];
+        if (where.ticker) conditions.push(`ticker = '${where.ticker}'`);
+        if (where.closed_at === null) conditions.push('closed_at IS NULL');
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const results = await prisma.$queryRawUnsafe(`
+          SELECT * FROM positions ${whereClause} ORDER BY opened_at DESC
+        `) as any[];
+        return results || [];
+      } catch (rawError: any) {
+        console.error('Raw position query also failed:', rawError.message);
+        return [];
+      }
+    }
+    throw e;
+  }
+}
+
+/**
+ * Normalize position data for frontend compatibility
+ * Maps backend field names to what frontend expects
+ */
+function normalizePosition(position: any) {
+  return {
+    ...position,
+    // Frontend expects these field names
+    created_date: position.opened_at || position.created_date,
+    avg_entry_price: position.entry_price || position.avg_entry_price,
+    // Normalize side to lowercase for frontend
+    side: position.side?.toLowerCase() || position.side
+  };
+}
+
 // Get all positions (open and closed)
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -13,32 +59,52 @@ router.get('/', async (req: Request, res: Response) => {
     if (ticker) where.ticker = ticker;
     if (open_only === 'true') where.closed_at = null;
 
-    const positions = await prisma.position.findMany({
-      where,
-      orderBy: { opened_at: 'desc' }
-    });
+    const positions = await getPositionsSafe(where);
 
-    res.json(positions);
+    // Normalize positions for frontend compatibility
+    const normalizedPositions = positions.map(normalizePosition);
+
+    res.json(normalizedPositions);
   } catch (error: any) {
     console.error('Error fetching positions:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+/**
+ * Helper to safely get a single position by ID
+ */
+async function getPositionByIdSafe(id: string) {
+  try {
+    return await prisma.position.findUnique({ where: { id } });
+  } catch (e: any) {
+    if (e.message?.includes('does not exist') || e.message?.includes('Unknown argument')) {
+      console.warn('⚠️ Position findUnique failed, using raw SQL fallback');
+      try {
+        const results = await prisma.$queryRawUnsafe(`
+          SELECT * FROM positions WHERE id = ? LIMIT 1
+        `, id) as any[];
+        return results[0] || null;
+      } catch {
+        return null;
+      }
+    }
+    throw e;
+  }
+}
+
 // Get single position
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
 
-    const position = await prisma.position.findUnique({
-      where: { id }
-    });
+    const position = await getPositionByIdSafe(id);
 
     if (!position) {
       return res.status(404).json({ error: 'Position not found' });
     }
 
-    res.json(position);
+    res.json(normalizePosition(position));
   } catch (error: any) {
     console.error('Error fetching position:', error);
     res.status(500).json({ error: error.message });
@@ -50,9 +116,7 @@ router.post('/:id/mark-flat', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
 
-    const position = await prisma.position.findUnique({
-      where: { id }
-    });
+    const position = await getPositionByIdSafe(id);
 
     if (!position) {
       return res.status(404).json({ error: 'Position not found' });
@@ -96,7 +160,7 @@ router.post('/:id/mark-flat', async (req: Request, res: Response) => {
 
     console.log(`✅ Position marked flat: ${position.ticker}`);
 
-    res.json(updatedPosition);
+    res.json(normalizePosition(updatedPosition));
   } catch (error: any) {
     console.error('Error marking position flat:', error);
     res.status(500).json({ error: error.message });
