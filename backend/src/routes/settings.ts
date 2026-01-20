@@ -163,17 +163,27 @@ router.post('/test-email', async (req: Request, res: Response) => {
     // Import email service
     const { sendEmailNotification } = await import('../services/emailService');
 
-    // Check environment variables
+    // Check environment variables - log for debugging
     const gmailUser = process.env.GMAIL_USER;
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
+    console.log('Email test - checking env vars:');
+    console.log('  GMAIL_USER:', gmailUser ? `set (${gmailUser.substring(0, 3)}...)` : 'missing');
+    console.log('  GMAIL_APP_PASSWORD:', gmailPass ? `set (${gmailPass.length} chars)` : 'missing');
+
     if (!gmailUser || !gmailPass) {
+      // List all env vars that contain 'GMAIL' or 'EMAIL' for debugging
+      const relevantVars = Object.keys(process.env)
+        .filter(k => k.includes('GMAIL') || k.includes('EMAIL') || k.includes('MAIL'))
+        .map(k => `${k}: ${process.env[k] ? 'set' : 'missing'}`);
+
       return res.status(400).json({
         success: false,
         error: 'Gmail credentials not configured',
         details: {
           GMAIL_USER: gmailUser ? 'set' : 'missing',
-          GMAIL_APP_PASSWORD: gmailPass ? 'set' : 'missing'
+          GMAIL_APP_PASSWORD: gmailPass ? 'set' : 'missing',
+          found_vars: relevantVars.length > 0 ? relevantVars : ['No GMAIL/EMAIL/MAIL vars found']
         }
       });
     }
