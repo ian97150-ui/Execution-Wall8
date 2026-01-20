@@ -101,68 +101,44 @@ router.put('/', async (req: Request, res: Response) => {
 
     const settingsId = (settings as any).id;
 
-    // Try Prisma update first
-    try {
-      const updateData: any = {};
-      if (execution_mode !== undefined) updateData.execution_mode = execution_mode;
-      if (default_delay_bars !== undefined) updateData.default_delay_bars = default_delay_bars;
-      if (bar_duration_minutes !== undefined) updateData.bar_duration_minutes = bar_duration_minutes;
-      if (gate_threshold !== undefined) updateData.gate_threshold = gate_threshold;
-      if (limit_edit_window !== undefined) updateData.limit_edit_window = limit_edit_window;
-      if (max_adjustment_pct !== undefined) updateData.max_adjustment_pct = max_adjustment_pct.toString();
-      if (broker_webhook_url !== undefined) updateData.broker_webhook_url = broker_webhook_url;
-      if (broker_webhook_enabled !== undefined) updateData.broker_webhook_enabled = broker_webhook_enabled;
-      if (email_notifications !== undefined) updateData.email_notifications = email_notifications;
-      if (notification_email !== undefined) updateData.notification_email = notification_email;
-      if (notify_on_order_received !== undefined) updateData.notify_on_order_received = notify_on_order_received;
-      if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
-      if (notify_on_execution !== undefined) updateData.notify_on_execution = notify_on_execution;
-      if (notify_on_close !== undefined) updateData.notify_on_close = notify_on_close;
-
-      settings = await prisma.executionSettings.update({
-        where: { id: settingsId },
-        data: updateData
-      });
-    } catch (e: any) {
-      // If Prisma fails due to missing column, use raw SQL with individual updates
-      if (e.message?.includes('does not exist') || e.message?.includes('Unknown argument')) {
-        console.warn('⚠️ Using raw SQL update due to schema mismatch');
-
-        // Helper to safely update a single field (ignores if column doesn't exist)
-        async function safeUpdateField(field: string, value: any) {
-          try {
-            const sql = `UPDATE execution_settings SET ${field} = ?, updated_at = datetime('now') WHERE id = ?`;
-            await prisma.$executeRawUnsafe(sql, value, settingsId);
-          } catch (fieldError: any) {
-            // Silently skip if column doesn't exist
-            if (!fieldError.message?.includes('no such column')) {
-              console.warn(`⚠️ Could not update ${field}: ${fieldError.message}`);
-            }
-          }
+    // Helper to safely update a single field (ignores if column doesn't exist)
+    async function safeUpdateField(field: string, value: any) {
+      try {
+        const sql = `UPDATE execution_settings SET ${field} = ?, updated_at = datetime('now') WHERE id = ?`;
+        await prisma.$executeRawUnsafe(sql, value, settingsId);
+        return true;
+      } catch (fieldError: any) {
+        // Silently skip if column doesn't exist
+        if (fieldError.message?.includes('no such column')) {
+          console.log(`⚠️ Column ${field} doesn't exist, skipping`);
+        } else {
+          console.warn(`⚠️ Could not update ${field}: ${fieldError.message}`);
         }
-
-        // Update each field individually to handle missing columns gracefully
-        if (execution_mode !== undefined) await safeUpdateField('execution_mode', execution_mode);
-        if (default_delay_bars !== undefined) await safeUpdateField('default_delay_bars', default_delay_bars);
-        if (bar_duration_minutes !== undefined) await safeUpdateField('bar_duration_minutes', bar_duration_minutes);
-        if (gate_threshold !== undefined) await safeUpdateField('gate_threshold', gate_threshold);
-        if (limit_edit_window !== undefined) await safeUpdateField('limit_edit_window', limit_edit_window);
-        if (max_adjustment_pct !== undefined) await safeUpdateField('max_adjustment_pct', max_adjustment_pct.toString());
-        if (broker_webhook_url !== undefined) await safeUpdateField('broker_webhook_url', broker_webhook_url);
-        if (broker_webhook_enabled !== undefined) await safeUpdateField('broker_webhook_enabled', broker_webhook_enabled ? 1 : 0);
-        if (email_notifications !== undefined) await safeUpdateField('email_notifications', email_notifications ? 1 : 0);
-        if (notification_email !== undefined) await safeUpdateField('notification_email', notification_email);
-        if (notify_on_order_received !== undefined) await safeUpdateField('notify_on_order_received', notify_on_order_received ? 1 : 0);
-        if (notify_on_approval !== undefined) await safeUpdateField('notify_on_approval', notify_on_approval ? 1 : 0);
-        if (notify_on_execution !== undefined) await safeUpdateField('notify_on_execution', notify_on_execution ? 1 : 0);
-        if (notify_on_close !== undefined) await safeUpdateField('notify_on_close', notify_on_close ? 1 : 0);
-
-        // Fetch updated settings
-        settings = await getSettingsSafe();
-      } else {
-        throw e;
+        return false;
       }
     }
+
+    // Use raw SQL updates directly to avoid Prisma schema mismatch issues
+    // Each field is updated individually so missing columns don't break everything
+    console.log('Updating settings...');
+
+    if (execution_mode !== undefined) await safeUpdateField('execution_mode', execution_mode);
+    if (default_delay_bars !== undefined) await safeUpdateField('default_delay_bars', default_delay_bars);
+    if (bar_duration_minutes !== undefined) await safeUpdateField('bar_duration_minutes', bar_duration_minutes);
+    if (gate_threshold !== undefined) await safeUpdateField('gate_threshold', gate_threshold);
+    if (limit_edit_window !== undefined) await safeUpdateField('limit_edit_window', limit_edit_window);
+    if (max_adjustment_pct !== undefined) await safeUpdateField('max_adjustment_pct', max_adjustment_pct.toString());
+    if (broker_webhook_url !== undefined) await safeUpdateField('broker_webhook_url', broker_webhook_url);
+    if (broker_webhook_enabled !== undefined) await safeUpdateField('broker_webhook_enabled', broker_webhook_enabled ? 1 : 0);
+    if (email_notifications !== undefined) await safeUpdateField('email_notifications', email_notifications ? 1 : 0);
+    if (notification_email !== undefined) await safeUpdateField('notification_email', notification_email);
+    if (notify_on_order_received !== undefined) await safeUpdateField('notify_on_order_received', notify_on_order_received ? 1 : 0);
+    if (notify_on_approval !== undefined) await safeUpdateField('notify_on_approval', notify_on_approval ? 1 : 0);
+    if (notify_on_execution !== undefined) await safeUpdateField('notify_on_execution', notify_on_execution ? 1 : 0);
+    if (notify_on_close !== undefined) await safeUpdateField('notify_on_close', notify_on_close ? 1 : 0);
+
+    // Fetch updated settings
+    settings = await getSettingsSafe();
 
     await prisma.auditLog.create({
       data: {
