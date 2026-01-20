@@ -157,6 +157,78 @@ router.put('/', async (req: Request, res: Response) => {
   }
 });
 
+// Test email notification
+router.post('/test-email', async (req: Request, res: Response) => {
+  try {
+    // Import email service
+    const { sendEmailNotification } = await import('../services/emailService');
+
+    // Check environment variables
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+    if (!gmailUser || !gmailPass) {
+      return res.status(400).json({
+        success: false,
+        error: 'Gmail credentials not configured',
+        details: {
+          GMAIL_USER: gmailUser ? 'set' : 'missing',
+          GMAIL_APP_PASSWORD: gmailPass ? 'set' : 'missing'
+        }
+      });
+    }
+
+    // Get settings to check notification email
+    const settings = await getSettingsSafe();
+
+    if (!settings?.email_notifications) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email notifications are disabled in settings'
+      });
+    }
+
+    if (!settings?.notification_email) {
+      return res.status(400).json({
+        success: false,
+        error: 'No notification email configured in settings'
+      });
+    }
+
+    // Send test email
+    const result = await sendEmailNotification({
+      eventType: 'order_received',
+      ticker: 'TEST',
+      details: {
+        action: 'buy',
+        side: 'Long',
+        quantity: 1,
+        limit_price: 100.00,
+        status: 'test_email',
+        message: 'This is a test email from Execution Wall'
+      }
+    });
+
+    if (result) {
+      res.json({
+        success: true,
+        message: `Test email sent to ${settings.notification_email}`
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: 'Email send returned false - check server logs for details'
+      });
+    }
+  } catch (error: any) {
+    console.error('Error sending test email:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Test broker webhook connection
 router.post('/test-broker-webhook', async (req: Request, res: Response) => {
   try {

@@ -447,6 +447,30 @@ export default function Settings() {
                     </div>
                   </div>
                 </div>
+
+                <div className="pt-3 border-t border-slate-700">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const response = await api.post('/settings/test-email');
+                        if (response.data.success) {
+                          toast.success(response.data.message);
+                        } else {
+                          toast.error(response.data.error || 'Test email failed');
+                        }
+                      } catch (err) {
+                        const errorMsg = err.response?.data?.error || err.message || 'Failed to send test email';
+                        toast.error(errorMsg);
+                      }
+                    }}
+                    className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+                  >
+                    Send Test Email
+                  </Button>
+                </div>
               </>
             )}
           </CardContent>
