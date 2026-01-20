@@ -31,29 +31,28 @@ async function getSettingsSafe() {
  * Helper to safely create settings with only existing columns
  */
 async function createSettingsSafe() {
+  // Use raw SQL to ensure all columns are created with proper defaults
+  // This handles schema mismatches gracefully
+  console.log('Creating new settings with defaults...');
   try {
-    return await prisma.executionSettings.create({
-      data: {
-        execution_mode: 'safe',
-        default_delay_bars: 2,
-        bar_duration_minutes: 1,
-        gate_threshold: 3,
-        limit_edit_window: 120,
-        max_adjustment_pct: '2.0'
-      }
-    });
-  } catch (e: any) {
-    // If column doesn't exist, create with basic fields only
-    if (e.message?.includes('does not exist')) {
-      console.warn('⚠️ Creating settings with basic fields only');
+    // Try with all fields first (including newer columns)
+    await prisma.$executeRaw`
+      INSERT INTO execution_settings (id, execution_mode, default_delay_bars, bar_duration_minutes, gate_threshold, limit_edit_window, max_adjustment_pct, broker_webhook_enabled, email_notifications, notify_on_order_received, notify_on_approval, notify_on_execution, notify_on_close, created_at, updated_at)
+      VALUES (lower(hex(randomblob(16))), 'safe', 2, 1, 3, 120, '2.0', 0, 0, 1, 1, 1, 1, datetime('now'), datetime('now'))
+    `;
+  } catch {
+    // Fallback without newer columns (bar_duration_minutes, notify_on_order_received)
+    try {
       await prisma.$executeRaw`
         INSERT INTO execution_settings (id, execution_mode, default_delay_bars, gate_threshold, limit_edit_window, max_adjustment_pct, broker_webhook_enabled, email_notifications, notify_on_approval, notify_on_execution, notify_on_close, created_at, updated_at)
         VALUES (lower(hex(randomblob(16))), 'safe', 2, 3, 120, '2.0', 0, 0, 1, 1, 1, datetime('now'), datetime('now'))
       `;
-      return await getSettingsSafe();
+    } catch (e2: any) {
+      console.error('Failed to create settings:', e2.message);
+      throw e2;
     }
-    throw e;
   }
+  return await getSettingsSafe();
 }
 
 // Get execution settings
@@ -125,74 +124,38 @@ router.put('/', async (req: Request, res: Response) => {
         data: updateData
       });
     } catch (e: any) {
-      // If Prisma fails due to missing column, use raw SQL
-      if (e.message?.includes('does not exist')) {
+      // If Prisma fails due to missing column, use raw SQL with individual updates
+      if (e.message?.includes('does not exist') || e.message?.includes('Unknown argument')) {
         console.warn('⚠️ Using raw SQL update due to schema mismatch');
 
-        // Build raw SQL update for fields that exist in old schema
-        const updates: string[] = [];
-        const values: any[] = [];
-
-        if (execution_mode !== undefined) {
-          updates.push('execution_mode = ?');
-          values.push(execution_mode);
-        }
-        if (default_delay_bars !== undefined) {
-          updates.push('default_delay_bars = ?');
-          values.push(default_delay_bars);
-        }
-        if (gate_threshold !== undefined) {
-          updates.push('gate_threshold = ?');
-          values.push(gate_threshold);
-        }
-        if (limit_edit_window !== undefined) {
-          updates.push('limit_edit_window = ?');
-          values.push(limit_edit_window);
-        }
-        if (max_adjustment_pct !== undefined) {
-          updates.push('max_adjustment_pct = ?');
-          values.push(max_adjustment_pct.toString());
-        }
-        if (broker_webhook_url !== undefined) {
-          updates.push('broker_webhook_url = ?');
-          values.push(broker_webhook_url);
-        }
-        if (broker_webhook_enabled !== undefined) {
-          updates.push('broker_webhook_enabled = ?');
-          values.push(broker_webhook_enabled ? 1 : 0);
-        }
-        if (email_notifications !== undefined) {
-          updates.push('email_notifications = ?');
-          values.push(email_notifications ? 1 : 0);
-        }
-        if (notification_email !== undefined) {
-          updates.push('notification_email = ?');
-          values.push(notification_email);
-        }
-        if (notify_on_order_received !== undefined) {
-          updates.push('notify_on_order_received = ?');
-          values.push(notify_on_order_received ? 1 : 0);
-        }
-        if (notify_on_approval !== undefined) {
-          updates.push('notify_on_approval = ?');
-          values.push(notify_on_approval ? 1 : 0);
-        }
-        if (notify_on_execution !== undefined) {
-          updates.push('notify_on_execution = ?');
-          values.push(notify_on_execution ? 1 : 0);
-        }
-        if (notify_on_close !== undefined) {
-          updates.push('notify_on_close = ?');
-          values.push(notify_on_close ? 1 : 0);
+        // Helper to safely update a single field (ignores if column doesn't exist)
+        async function safeUpdateField(field: string, value: any) {
+          try {
+            const sql = `UPDATE execution_settings SET ${field} = ?, updated_at = datetime('now') WHERE id = ?`;
+            await prisma.$executeRawUnsafe(sql, value, settingsId);
+          } catch (fieldError: any) {
+            // Silently skip if column doesn't exist
+            if (!fieldError.message?.includes('no such column')) {
+              console.warn(`⚠️ Could not update ${field}: ${fieldError.message}`);
+            }
+          }
         }
 
-        updates.push("updated_at = datetime('now')");
-        values.push(settingsId);
-
-        if (updates.length > 1) {
-          const sql = `UPDATE execution_settings SET ${updates.join(', ')} WHERE id = ?`;
-          await prisma.$executeRawUnsafe(sql, ...values);
-        }
+        // Update each field individually to handle missing columns gracefully
+        if (execution_mode !== undefined) await safeUpdateField('execution_mode', execution_mode);
+        if (default_delay_bars !== undefined) await safeUpdateField('default_delay_bars', default_delay_bars);
+        if (bar_duration_minutes !== undefined) await safeUpdateField('bar_duration_minutes', bar_duration_minutes);
+        if (gate_threshold !== undefined) await safeUpdateField('gate_threshold', gate_threshold);
+        if (limit_edit_window !== undefined) await safeUpdateField('limit_edit_window', limit_edit_window);
+        if (max_adjustment_pct !== undefined) await safeUpdateField('max_adjustment_pct', max_adjustment_pct.toString());
+        if (broker_webhook_url !== undefined) await safeUpdateField('broker_webhook_url', broker_webhook_url);
+        if (broker_webhook_enabled !== undefined) await safeUpdateField('broker_webhook_enabled', broker_webhook_enabled ? 1 : 0);
+        if (email_notifications !== undefined) await safeUpdateField('email_notifications', email_notifications ? 1 : 0);
+        if (notification_email !== undefined) await safeUpdateField('notification_email', notification_email);
+        if (notify_on_order_received !== undefined) await safeUpdateField('notify_on_order_received', notify_on_order_received ? 1 : 0);
+        if (notify_on_approval !== undefined) await safeUpdateField('notify_on_approval', notify_on_approval ? 1 : 0);
+        if (notify_on_execution !== undefined) await safeUpdateField('notify_on_execution', notify_on_execution ? 1 : 0);
+        if (notify_on_close !== undefined) await safeUpdateField('notify_on_close', notify_on_close ? 1 : 0);
 
         // Fetch updated settings
         settings = await getSettingsSafe();
