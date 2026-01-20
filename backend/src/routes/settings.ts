@@ -87,6 +87,7 @@ router.put('/', async (req: Request, res: Response) => {
       broker_webhook_enabled,
       email_notifications,
       notification_email,
+      notify_on_order_received,
       notify_on_approval,
       notify_on_execution,
       notify_on_close
@@ -114,6 +115,7 @@ router.put('/', async (req: Request, res: Response) => {
       if (broker_webhook_enabled !== undefined) updateData.broker_webhook_enabled = broker_webhook_enabled;
       if (email_notifications !== undefined) updateData.email_notifications = email_notifications;
       if (notification_email !== undefined) updateData.notification_email = notification_email;
+      if (notify_on_order_received !== undefined) updateData.notify_on_order_received = notify_on_order_received;
       if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
       if (notify_on_execution !== undefined) updateData.notify_on_execution = notify_on_execution;
       if (notify_on_close !== undefined) updateData.notify_on_close = notify_on_close;
@@ -166,6 +168,10 @@ router.put('/', async (req: Request, res: Response) => {
         if (notification_email !== undefined) {
           updates.push('notification_email = ?');
           values.push(notification_email);
+        }
+        if (notify_on_order_received !== undefined) {
+          updates.push('notify_on_order_received = ?');
+          values.push(notify_on_order_received ? 1 : 0);
         }
         if (notify_on_approval !== undefined) {
           updates.push('notify_on_approval = ?');

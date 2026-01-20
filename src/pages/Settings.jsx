@@ -62,6 +62,7 @@ export default function Settings() {
         broker_webhook_enabled: settings.broker_webhook_enabled || false,
         email_notifications: settings.email_notifications || false,
         notification_email: settings.notification_email || '',
+        notify_on_order_received: settings.notify_on_order_received !== false,
         notify_on_approval: settings.notify_on_approval !== false,
         notify_on_execution: settings.notify_on_execution !== false,
         notify_on_close: settings.notify_on_close !== false
@@ -413,6 +414,14 @@ export default function Settings() {
                   <Label className="text-slate-300">Event Preferences</Label>
 
                   <div className="space-y-2">
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                      <span className="text-sm text-slate-300">Order Received</span>
+                      <Switch
+                        checked={formData.notify_on_order_received}
+                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_order_received: checked }))}
+                      />
+                    </div>
+
                     <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
                       <span className="text-sm text-slate-300">Signal Approved</span>
                       <Switch
