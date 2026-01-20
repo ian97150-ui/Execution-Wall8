@@ -52,6 +52,9 @@ export default function Settings() {
 
   React.useEffect(() => {
     if (settings && !formData) {
+      // SQLite stores booleans as 0/1, so we need to handle both boolean and number values
+      const toBool = (val) => val === true || val === 1 || val === '1';
+
       setFormData({
         execution_mode: settings.execution_mode || 'safe',
         default_delay_bars: settings.default_delay_bars || 2,
@@ -59,13 +62,13 @@ export default function Settings() {
         limit_edit_window: settings.limit_edit_window || 120,
         max_adjustment_pct: settings.max_adjustment_pct || 2.0,
         broker_webhook_url: settings.broker_webhook_url || '',
-        broker_webhook_enabled: settings.broker_webhook_enabled || false,
-        email_notifications: settings.email_notifications || false,
+        broker_webhook_enabled: toBool(settings.broker_webhook_enabled),
+        email_notifications: toBool(settings.email_notifications),
         notification_email: settings.notification_email || '',
-        notify_on_order_received: settings.notify_on_order_received !== false,
-        notify_on_approval: settings.notify_on_approval !== false,
-        notify_on_execution: settings.notify_on_execution !== false,
-        notify_on_close: settings.notify_on_close !== false
+        notify_on_order_received: settings.notify_on_order_received !== 0 && settings.notify_on_order_received !== false,
+        notify_on_approval: settings.notify_on_approval !== 0 && settings.notify_on_approval !== false,
+        notify_on_execution: settings.notify_on_execution !== 0 && settings.notify_on_execution !== false,
+        notify_on_close: settings.notify_on_close !== 0 && settings.notify_on_close !== false
       });
     }
   }, [settings]);

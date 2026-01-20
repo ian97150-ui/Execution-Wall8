@@ -55,6 +55,13 @@ async function getSettingsSafe() {
 }
 
 /**
+ * Helper to convert SQLite boolean (0/1) to JavaScript boolean
+ */
+function toBool(val: any): boolean {
+  return val === true || val === 1 || val === '1';
+}
+
+/**
  * Check if email should be sent for this event type
  */
 async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boolean; toEmail: string | null }> {
@@ -64,8 +71,9 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
     return { send: false, toEmail: null };
   }
 
-  // Master switch must be on
-  if (!settings.email_notifications) {
+  // Master switch must be on (handle SQLite 0/1 booleans)
+  const emailEnabled = toBool(settings.email_notifications);
+  if (!emailEnabled) {
     return { send: false, toEmail: null };
   }
 
@@ -75,7 +83,7 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
     return { send: false, toEmail: null };
   }
 
-  // Check individual event preferences
+  // Check individual event preferences (handle SQLite 0/1 booleans)
   const eventSettingMap: Record<EmailEventType, string> = {
     'order_received': 'notify_on_order_received',
     'signal_approved': 'notify_on_approval',
@@ -84,7 +92,9 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
   };
 
   const settingKey = eventSettingMap[eventType];
-  const isEnabled = settings[settingKey] !== false; // Default to true if undefined
+  const settingValue = settings[settingKey];
+  // Default to true if undefined, otherwise check for truthy SQLite value
+  const isEnabled = settingValue === undefined || toBool(settingValue);
 
   return { send: isEnabled, toEmail: settings.notification_email };
 }

@@ -191,10 +191,22 @@ router.post('/test-email', async (req: Request, res: Response) => {
     // Get settings to check notification email
     const settings = await getSettingsSafe();
 
-    if (!settings?.email_notifications) {
+    // SQLite stores booleans as 0/1, so check for both
+    const emailEnabled = settings?.email_notifications === true || settings?.email_notifications === 1;
+
+    console.log('Email settings check:');
+    console.log('  email_notifications raw value:', settings?.email_notifications, typeof settings?.email_notifications);
+    console.log('  emailEnabled:', emailEnabled);
+    console.log('  notification_email:', settings?.notification_email);
+
+    if (!emailEnabled) {
       return res.status(400).json({
         success: false,
-        error: 'Email notifications are disabled in settings'
+        error: 'Email notifications are disabled in settings',
+        debug: {
+          raw_value: settings?.email_notifications,
+          type: typeof settings?.email_notifications
+        }
       });
     }
 
