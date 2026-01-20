@@ -432,6 +432,35 @@ async function handleWallSignal(data: {
     console.log(`✨ Created new intent for ${tickerUpper} (id: ${tradeIntent.id})`);
   }
 
+  // Check if execution already exists for this ticker (ORDER arrived before WALL)
+  // Auto-link and approve if found
+  let linkedExecutionId: string | null = null;
+  const existingExecution = await prisma.execution.findFirst({
+    where: {
+      ticker: tickerUpper,
+      intent_id: null,  // Not yet linked to any intent
+      status: { in: ['pending', 'executing', 'executed'] },
+      created_at: { gte: new Date(Date.now() - 60 * 60 * 1000) }  // Within last hour
+    },
+    orderBy: { created_at: 'desc' }
+  });
+
+  if (existingExecution) {
+    // Link execution to this intent and auto-approve
+    await prisma.execution.update({
+      where: { id: existingExecution.id },
+      data: { intent_id: tradeIntent.id }
+    });
+
+    await prisma.tradeIntent.update({
+      where: { id: tradeIntent.id },
+      data: { status: 'swiped_on' }  // Auto-approve since ORDER already exists
+    });
+
+    linkedExecutionId = existingExecution.id;
+    console.log(`🔗 Auto-linked WALL intent to existing ORDER ${existingExecution.id}`);
+  }
+
   // Create audit log
   await prisma.auditLog.create({
     data: {
@@ -439,6 +468,7 @@ async function handleWallSignal(data: {
       ticker: tickerUpper,
       details: JSON.stringify({
         intent_id: tradeIntent.id,
+        execution_id: linkedExecutionId,
         source: 'webhook',
         type: 'WALL',
         is_update: isUpdate,
@@ -450,19 +480,24 @@ async function handleWallSignal(data: {
         quality_tier: finalQualityTier,
         quality_score: finalQualityScore,
         price: tradeIntent.price,
-        gate_vector: gateVector
+        gate_vector: gateVector,
+        auto_linked: !!linkedExecutionId
       })
     }
   });
 
   return {
     intent_id: tradeIntent.id,
+    execution_id: linkedExecutionId,
     confidence: finalConfidence,
     gates_hit: finalGatesHit,
     gates_total: finalGatesTotal,
     quality_tier: finalQualityTier,
     updated: isUpdate,
-    message: isUpdate ? 'Trade intent updated' : 'Trade intent created - awaiting review'
+    auto_linked: !!linkedExecutionId,
+    message: linkedExecutionId
+      ? `Trade intent auto-approved - linked to existing execution ${linkedExecutionId}`
+      : (isUpdate ? 'Trade intent updated' : 'Trade intent created - awaiting review')
   };
 }
 
@@ -604,7 +639,34 @@ async function handleOrderSignal(data: {
       });
     }
 
-    console.log(`⚡ Full mode: Immediately executed ${ticker.toUpperCase()} ${action} ${quantity || 1}`);
+    console.log(`⚡ Full mode: Immediately executed ${tickerUpper} ${action} ${quantity || 1}`);
+  }
+
+  // Auto-link to existing TradeIntent if one exists for this ticker
+  let linkedIntentId: string | null = null;
+  const pendingIntent = await prisma.tradeIntent.findFirst({
+    where: {
+      ticker: tickerUpper,
+      status: { in: ['pending', 'swiped_on'] },
+      expires_at: { gt: new Date() }
+    },
+    orderBy: { created_date: 'desc' }
+  });
+
+  if (pendingIntent) {
+    // Link execution to intent and mark approved
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: { intent_id: pendingIntent.id }
+    });
+
+    await prisma.tradeIntent.update({
+      where: { id: pendingIntent.id },
+      data: { status: 'swiped_on' }  // Auto-approve
+    });
+
+    linkedIntentId = pendingIntent.id;
+    console.log(`🔗 Linked ORDER to existing WALL intent ${pendingIntent.id}`);
   }
 
     // Create audit log
@@ -614,6 +676,7 @@ async function handleOrderSignal(data: {
         ticker: tickerUpper,
         details: JSON.stringify({
           execution_id: execution.id,
+          intent_id: linkedIntentId,
           source: 'webhook',
           type: 'ORDER',
           order_action: action,
@@ -622,18 +685,21 @@ async function handleOrderSignal(data: {
           quality_tier,
           quality_score,
           mode: executionMode,
-          broker_forwarded: isFullMode ? brokerResult.success : null
+          broker_forwarded: isFullMode ? brokerResult.success : null,
+          auto_linked: !!linkedIntentId
         })
       }
     });
 
     return {
       execution_id: execution.id,
+      intent_id: linkedIntentId,
       message: isFullMode
         ? `Execution completed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
         : 'Execution created - pending',
       mode: executionMode,
-      broker_forwarded: isFullMode ? brokerResult.success : undefined
+      broker_forwarded: isFullMode ? brokerResult.success : undefined,
+      auto_linked: !!linkedIntentId
     };
   } finally {
     // Always release the lock when done
