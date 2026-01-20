@@ -1,13 +1,14 @@
 import React from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, ShieldOff, Flag } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldOff, Shield, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 
-export default function PositionsList({ 
-  positions = [], 
+export default function PositionsList({
+  positions = [],
   onBlockSignals,
+  onUnblockSignals,
   onMarkFlat,
   tickers = []
 }) {
@@ -121,18 +122,27 @@ export default function PositionsList({
                   {cooldownRemaining > 0 ? `${cooldownRemaining}s` : 'Mark Flat (5min cooldown)'}
                 </Button>
                 <Button
-                  onClick={() => onBlockSignals?.(position)}
+                  onClick={() => isBlocked ? onUnblockSignals?.(position) : onBlockSignals?.(position)}
                   variant="outline"
                   size="sm"
                   className={cn(
                     "w-full transition-all duration-300",
-                    isBlocked 
-                      ? "border-slate-600 bg-slate-700/50 text-slate-400 opacity-60" 
+                    isBlocked
+                      ? "border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
                       : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
                   )}
                 >
-                  <ShieldOff className="w-4 h-4 mr-1" />
-                  Block Signals (until 1am)
+                  {isBlocked ? (
+                    <>
+                      <Shield className="w-4 h-4 mr-1" />
+                      Unblock Signals
+                    </>
+                  ) : (
+                    <>
+                      <ShieldOff className="w-4 h-4 mr-1" />
+                      Block Signals (until 1am)
+                    </>
+                  )}
                 </Button>
               </div>
             </motion.div>

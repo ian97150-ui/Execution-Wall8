@@ -416,6 +416,29 @@ export default function Dashboard() {
     }
   });
 
+  const unblockSignalsMutation = useMutation({
+    mutationFn: async (position) => {
+      await api.put(`/ticker-configs/${position.ticker}`, {
+        enabled: true,
+        blocked_until: null
+      });
+
+      await api.post('/audit-logs', {
+        event_type: 'ticker_toggle',
+        ticker: position.ticker,
+        details: JSON.stringify({
+          new_value: 'enabled',
+          reason: 'Unblocked from position management'
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Signals unblocked for this ticker');
+    }
+  });
+
   const markFlatMutation = useMutation({
     mutationFn: async (position) => {
       const response = await api.post(`/positions/${position.id}/mark-flat`);
@@ -672,6 +695,7 @@ export default function Dashboard() {
               <PositionsList
                 positions={positions}
                 onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
+                onUnblockSignals={(position) => unblockSignalsMutation.mutate(position)}
                 onMarkFlat={(position) => markFlatMutation.mutate(position)}
                 tickers={tickers}
               />

@@ -39,4 +39,28 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// Create audit log entry
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { event_type, ticker, details } = req.body;
+
+    if (!event_type) {
+      return res.status(400).json({ error: 'event_type is required' });
+    }
+
+    const log = await prisma.auditLog.create({
+      data: {
+        event_type,
+        ticker: ticker || null,
+        details: typeof details === 'string' ? details : JSON.stringify(details)
+      }
+    });
+
+    res.status(201).json(log);
+  } catch (error: any) {
+    console.error('Error creating audit log:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
