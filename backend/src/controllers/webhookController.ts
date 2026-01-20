@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../index';
+import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -491,14 +492,29 @@ async function handleOrderSignal(data: {
     raw_payload
   } = data;
 
-  // Determine order action from dir if not provided
-  const action = order_action || (dir === 'Long' ? 'buy' : dir === 'Short' ? 'sell' : null);
-  if (!action) {
-    throw new Error('Missing order_action or dir field');
+  const tickerUpper = ticker.toUpperCase();
+
+  // Try to acquire symbol lock to prevent duplicate orders from race conditions
+  // Lock TTL: 3 seconds - prevents double webhooks arriving simultaneously
+  if (!acquireSymbolLock(tickerUpper, 'order', 3000)) {
+    console.warn(`⚠️ Duplicate ORDER signal blocked for ${tickerUpper} - symbol locked`);
+    return {
+      execution_id: null,
+      message: `Duplicate order blocked - ${tickerUpper} is currently being processed`,
+      blocked: true,
+      reason: 'symbol_locked'
+    };
   }
 
-  const finalDir = dir || (action === 'buy' ? 'Long' : 'Short');
-  const finalLimitPrice = limit_price || price || 0;
+  try {
+    // Determine order action from dir if not provided
+    const action = order_action || (dir === 'Long' ? 'buy' : dir === 'Short' ? 'sell' : null);
+    if (!action) {
+      throw new Error('Missing order_action or dir field');
+    }
+
+    const finalDir = dir || (action === 'buy' ? 'Long' : 'Short');
+    const finalLimitPrice = limit_price || price || 0;
 
   // Build raw_payload for broker forwarding (TradingView ORDER format)
   const orderPayload = JSON.stringify({
@@ -591,34 +607,38 @@ async function handleOrderSignal(data: {
     console.log(`⚡ Full mode: Immediately executed ${ticker.toUpperCase()} ${action} ${quantity || 1}`);
   }
 
-  // Create audit log
-  await prisma.auditLog.create({
-    data: {
-      event_type: isFullMode ? 'execution_immediate' : 'execution_created',
-      ticker: ticker.toUpperCase(),
-      details: JSON.stringify({
-        execution_id: execution.id,
-        source: 'webhook',
-        type: 'ORDER',
-        order_action: action,
-        quantity: quantity || 1,
-        limit_price: finalLimitPrice,
-        quality_tier,
-        quality_score,
-        mode: executionMode,
-        broker_forwarded: isFullMode ? brokerResult.success : null
-      })
-    }
-  });
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        event_type: isFullMode ? 'execution_immediate' : 'execution_created',
+        ticker: tickerUpper,
+        details: JSON.stringify({
+          execution_id: execution.id,
+          source: 'webhook',
+          type: 'ORDER',
+          order_action: action,
+          quantity: quantity || 1,
+          limit_price: finalLimitPrice,
+          quality_tier,
+          quality_score,
+          mode: executionMode,
+          broker_forwarded: isFullMode ? brokerResult.success : null
+        })
+      }
+    });
 
-  return {
-    execution_id: execution.id,
-    message: isFullMode
-      ? `Execution completed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
-      : 'Execution created - pending',
-    mode: executionMode,
-    broker_forwarded: isFullMode ? brokerResult.success : undefined
-  };
+    return {
+      execution_id: execution.id,
+      message: isFullMode
+        ? `Execution completed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
+        : 'Execution created - pending',
+      mode: executionMode,
+      broker_forwarded: isFullMode ? brokerResult.success : undefined
+    };
+  } finally {
+    // Always release the lock when done
+    releaseSymbolLock(tickerUpper, 'order');
+  }
 }
 
 /**
@@ -636,7 +656,20 @@ async function handleExitSignal(data: {
 
   const tickerUpper = ticker.toUpperCase();
 
-  // Find matching open position for this ticker
+  // Try to acquire symbol lock to prevent duplicate exits from race conditions
+  // Lock TTL: 3 seconds - prevents double webhooks arriving simultaneously
+  if (!acquireSymbolLock(tickerUpper, 'exit', 3000)) {
+    console.warn(`⚠️ Duplicate EXIT signal blocked for ${tickerUpper} - symbol locked`);
+    return {
+      execution_id: null,
+      message: `Duplicate exit blocked - ${tickerUpper} is currently being processed`,
+      blocked: true,
+      reason: 'symbol_locked'
+    };
+  }
+
+  try {
+    // Find matching open position for this ticker
   const openPosition = await prisma.position.findFirst({
     where: {
       ticker: tickerUpper,
@@ -787,40 +820,44 @@ async function handleExitSignal(data: {
     console.log(`⚡ Full mode: Immediately executed EXIT ${tickerUpper} ${action} ${exitQty}`);
   }
 
-  // Create audit log
-  await prisma.auditLog.create({
-    data: {
-      event_type: isFullMode ? 'exit_immediate' : 'exit_created',
-      ticker: tickerUpper,
-      details: JSON.stringify({
-        execution_id: execution.id,
-        position_id: openPosition?.id,
-        source: 'webhook',
-        type: 'EXIT',
-        order_action: action,
-        quantity: exitQty,
-        position_quantity: positionQty,
-        limit_price: finalLimitPrice,
-        mode: executionMode,
-        broker_forwarded: isFullMode ? brokerResult.success : null
-      })
-    }
-  });
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        event_type: isFullMode ? 'exit_immediate' : 'exit_created',
+        ticker: tickerUpper,
+        details: JSON.stringify({
+          execution_id: execution.id,
+          position_id: openPosition?.id,
+          source: 'webhook',
+          type: 'EXIT',
+          order_action: action,
+          quantity: exitQty,
+          position_quantity: positionQty,
+          limit_price: finalLimitPrice,
+          mode: executionMode,
+          broker_forwarded: isFullMode ? brokerResult.success : null
+        })
+      }
+    });
 
-  return {
-    execution_id: execution.id,
-    position_id: openPosition?.id,
-    position_quantity: positionQty,
-    exit_quantity: exitQty,
-    message: isFullMode
-      ? `Exit executed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
-      : (openPosition
-          ? `Exit order created for position ${openPosition.id}`
-          : 'Exit order created (no matching position found)'),
-    mode: executionMode,
-    broker_forwarded: isFullMode ? brokerResult.success : undefined,
-    ...(replacedExitInfo && { replaced: replacedExitInfo })
-  };
+    return {
+      execution_id: execution.id,
+      position_id: openPosition?.id,
+      position_quantity: positionQty,
+      exit_quantity: exitQty,
+      message: isFullMode
+        ? `Exit executed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
+        : (openPosition
+            ? `Exit order created for position ${openPosition.id}`
+            : 'Exit order created (no matching position found)'),
+      mode: executionMode,
+      broker_forwarded: isFullMode ? brokerResult.success : undefined,
+      ...(replacedExitInfo && { replaced: replacedExitInfo })
+    };
+  } finally {
+    // Always release the lock when done
+    releaseSymbolLock(tickerUpper, 'exit');
+  }
 }
 
 /**
