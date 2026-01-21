@@ -101,12 +101,12 @@ export default function TradeCard({
           isLong ? "bg-gradient-to-r from-emerald-500 to-emerald-400" : "bg-gradient-to-r from-rose-500 to-rose-400"
         )} />
 
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
           {/* Top row: Ticker, Side, Quality, Order Live */}
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <h2 className="text-3xl font-black text-white tracking-tight">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   {intent.ticker}
                 </h2>
                 <div className={cn(

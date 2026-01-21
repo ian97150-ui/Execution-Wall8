@@ -46,7 +46,7 @@ export default function SwipeDeck({
     <div className="relative h-full w-full">
       {/* Card stack */}
       <div className="absolute inset-0 flex items-center justify-center">
-        <div className="relative w-full max-w-sm h-[680px]">
+        <div className="relative w-full max-w-[95vw] sm:max-w-sm h-[calc(100vh-280px)] sm:h-[600px] md:h-[680px]">
           <AnimatePresence mode="popLayout">
             {visibleCards.map((intent, index) => {
               const tickerConfig = tickers.find(t => t.ticker === intent.ticker);

@@ -706,19 +706,19 @@ export default function Dashboard() {
             </TabsContent>
 
             {/* Bottom navigation */}
-            <div className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800 z-50">
-              <TabsList className="w-full h-20 bg-transparent grid grid-cols-4 gap-0 p-0 rounded-none">
+            <div className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800 z-50 safe-area-pb">
+              <TabsList className="w-full h-16 sm:h-20 bg-transparent grid grid-cols-4 gap-0 p-0 rounded-none">
                 <TabsTrigger
                   value="candidates"
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "flex flex-col items-center justify-center gap-0.5 sm:gap-1 h-full rounded-none data-[state=active]:bg-transparent",
                     "data-[state=active]:text-blue-400 text-slate-500"
                   )}
                 >
-                  <Layers className="w-6 h-6" />
-                  <span className="text-xs font-medium">Candidates</span>
+                  <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <span className="text-[10px] sm:text-xs font-medium">Candidates</span>
                   {candidates.length > 0 && (
-                    <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">
+                    <span className="absolute top-1 sm:top-2 right-1/2 translate-x-3 sm:translate-x-4 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-blue-500 text-white text-[10px] sm:text-xs flex items-center justify-center font-bold">
                       {candidates.length}
                     </span>
                   )}
@@ -726,14 +726,14 @@ export default function Dashboard() {
                 <TabsTrigger
                   value="executions"
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "flex flex-col items-center justify-center gap-0.5 sm:gap-1 h-full rounded-none data-[state=active]:bg-transparent",
                     "data-[state=active]:text-emerald-400 text-slate-500"
                   )}
                 >
-                  <Send className="w-6 h-6" />
-                  <span className="text-xs font-medium">Executions</span>
+                  <Send className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <span className="text-[10px] sm:text-xs font-medium">Executions</span>
                   {stats.pending > 0 && (
-                    <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-emerald-500 text-emerald-950 text-xs flex items-center justify-center font-bold">
+                    <span className="absolute top-1 sm:top-2 right-1/2 translate-x-3 sm:translate-x-4 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-emerald-500 text-emerald-950 text-[10px] sm:text-xs flex items-center justify-center font-bold">
                       {stats.pending}
                     </span>
                   )}
@@ -741,14 +741,14 @@ export default function Dashboard() {
                 <TabsTrigger
                   value="positions"
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "flex flex-col items-center justify-center gap-0.5 sm:gap-1 h-full rounded-none data-[state=active]:bg-transparent",
                     "data-[state=active]:text-amber-400 text-slate-500"
                   )}
                 >
-                  <TrendingUp className="w-6 h-6" />
-                  <span className="text-xs font-medium">Positions</span>
+                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <span className="text-[10px] sm:text-xs font-medium">Positions</span>
                   {positions.length > 0 && (
-                    <span className="absolute top-2 right-1/2 translate-x-4 w-5 h-5 rounded-full bg-amber-500 text-amber-950 text-xs flex items-center justify-center font-bold">
+                    <span className="absolute top-1 sm:top-2 right-1/2 translate-x-3 sm:translate-x-4 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-amber-500 text-amber-950 text-[10px] sm:text-xs flex items-center justify-center font-bold">
                       {positions.length}
                     </span>
                   )}
@@ -756,12 +756,12 @@ export default function Dashboard() {
                 <TabsTrigger
                   value="history"
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 h-full rounded-none data-[state=active]:bg-transparent",
+                    "flex flex-col items-center justify-center gap-0.5 sm:gap-1 h-full rounded-none data-[state=active]:bg-transparent",
                     "data-[state=active]:text-purple-400 text-slate-500"
                   )}
                 >
-                  <History className="w-6 h-6" />
-                  <span className="text-xs font-medium">History</span>
+                  <History className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <span className="text-[10px] sm:text-xs font-medium">History</span>
                 </TabsTrigger>
               </TabsList>
             </div>
