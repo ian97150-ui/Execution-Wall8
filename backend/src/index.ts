@@ -66,7 +66,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 // Serve static frontend files in production
-const frontendPath = path.join(__dirname, '../../frontend-dist');
+// In production: __dirname is backend/dist, frontend-dist is at backend/frontend-dist
+const frontendPath = path.join(__dirname, '../frontend-dist');
 app.use(express.static(frontendPath));
 
 // For any non-API routes, serve the frontend index.html (SPA support)
