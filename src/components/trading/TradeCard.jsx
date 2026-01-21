@@ -122,8 +122,12 @@ export default function TradeCard({
                   </span>
                 )}
                 {hasLiveOrder && (
-                  <span className="px-2 py-1 rounded-md text-xs font-bold bg-blue-500 text-blue-950">
-                    LIVE
+                  <span className="relative px-2 py-1 rounded-md text-xs font-bold bg-blue-500 text-blue-950">
+                    <span className="absolute inset-0 rounded-md bg-blue-400 animate-ping opacity-50"></span>
+                    <span className="relative flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-blue-900 animate-pulse"></span>
+                      LIVE ORDER
+                    </span>
                   </span>
                 )}
               </div>
