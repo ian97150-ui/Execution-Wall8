@@ -1,15 +1,23 @@
-# Build stage for frontend
-FROM node:20-alpine AS frontend-build
+# Single stage build
+FROM node:20-alpine
+
 WORKDIR /app
+
+# Install frontend dependencies and build
 COPY package*.json ./
 RUN npm install
-COPY . .
+COPY src/ ./src/
+COPY public/ ./public/
+COPY index.html ./
+COPY vite.config.js ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+COPY components.json ./
+COPY jsconfig.json ./
 RUN npm run build
-# Verify frontend build output
-RUN echo "=== Frontend build output ===" && ls -la dist/
+RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Build stage for backend
-FROM node:20-alpine AS backend-build
+# Setup backend
 WORKDIR /app/backend
 COPY backend/package*.json ./
 RUN npm install
@@ -17,24 +25,9 @@ COPY backend/ .
 RUN npx prisma generate
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine AS production
-WORKDIR /app
-
-# Copy backend dist and node_modules
-COPY --from=backend-build /app/backend/dist ./dist
-COPY --from=backend-build /app/backend/node_modules ./node_modules
-COPY --from=backend-build /app/backend/package*.json ./
-COPY --from=backend-build /app/backend/prisma ./prisma
-
-# Regenerate Prisma client for this platform
-RUN npx prisma generate
-
-# Copy frontend dist to frontend-dist folder
-COPY --from=frontend-build /app/dist ./frontend-dist
-
-# Debug: List files to verify structure
-RUN echo "=== App structure ===" && ls -la && echo "=== Frontend files ===" && ls -la frontend-dist && echo "=== Dist files ===" && ls -la dist
+# Copy frontend to backend's frontend-dist
+RUN mkdir -p frontend-dist && cp -r /app/dist/* frontend-dist/
+RUN echo "=== Backend frontend-dist ===" && ls -la frontend-dist/
 
 # Expose port
 EXPOSE 3000

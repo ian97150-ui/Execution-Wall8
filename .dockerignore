@@ -5,6 +5,3 @@ backend/node_modules
 *.md
 .env
 backend/.env
-dist
-backend/dist
-backend/frontend-dist
