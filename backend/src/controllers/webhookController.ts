@@ -566,6 +566,28 @@ async function handleOrderSignal(data: {
     };
   }
 
+  // Check if the corresponding WALL intent was denied - block the order
+  const deniedIntent = await prisma.tradeIntent.findFirst({
+    where: {
+      ticker: tickerUpper,
+      status: 'swiped_deny',
+      expires_at: { gt: new Date() }  // Only check non-expired intents
+    },
+    orderBy: { updated_at: 'desc' }
+  });
+
+  if (deniedIntent) {
+    console.warn(`⚠️ ORDER signal blocked for ${tickerUpper} - intent was denied (id: ${deniedIntent.id})`);
+    releaseSymbolLock(tickerUpper, 'order');
+    return {
+      execution_id: null,
+      message: `Order blocked - ${tickerUpper} signal was denied by user`,
+      blocked: true,
+      reason: 'intent_denied',
+      denied_intent_id: deniedIntent.id
+    };
+  }
+
   try {
     // Determine order action from dir if not provided
     const action = order_action || (dir === 'Long' ? 'buy' : dir === 'Short' ? 'sell' : null);
