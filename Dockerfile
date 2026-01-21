@@ -5,6 +5,8 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
+# Verify frontend build output
+RUN echo "=== Frontend build output ===" && ls -la dist/
 
 # Build stage for backend
 FROM node:20-alpine AS backend-build
