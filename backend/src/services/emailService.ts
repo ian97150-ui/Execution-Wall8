@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { prisma } from '../index';
 
 // Email event types matching settings
@@ -14,25 +14,21 @@ interface EmailPayload {
   details: Record<string, any>;
 }
 
-// Create reusable transporter
-let transporter: nodemailer.Transporter | null = null;
+// Resend client
+let resend: Resend | null = null;
 
-function getTransporter() {
-  if (!transporter) {
-    const user = process.env.GMAIL_USER;
-    const pass = process.env.GMAIL_APP_PASSWORD;
+function getResendClient(): Resend | null {
+  if (!resend) {
+    const apiKey = process.env.RESEND_API_KEY;
 
-    if (!user || !pass) {
-      console.warn('⚠️ Gmail credentials not configured (GMAIL_USER, GMAIL_APP_PASSWORD)');
+    if (!apiKey) {
+      console.warn('⚠️ Resend API key not configured (RESEND_API_KEY)');
       return null;
     }
 
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user, pass }
-    });
+    resend = new Resend(apiKey);
   }
-  return transporter;
+  return resend;
 }
 
 /**
@@ -104,18 +100,106 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
  */
 function getEmailSubject(eventType: EmailEventType, ticker: string): string {
   const subjects: Record<EmailEventType, string> = {
-    'order_received': `Order Received: ${ticker}`,
-    'signal_approved': `Signal Approved: ${ticker}`,
-    'order_executed': `Order Executed: ${ticker}`,
-    'position_closed': `Position Closed: ${ticker}`
+    'order_received': `📥 Order Received: ${ticker}`,
+    'signal_approved': `✅ Signal Approved: ${ticker}`,
+    'order_executed': `🚀 Order Executed: ${ticker}`,
+    'position_closed': `📊 Position Closed: ${ticker}`
   };
   return subjects[eventType];
 }
 
 /**
- * Format email body based on event type
+ * Format email body as HTML
  */
-function getEmailBody(eventType: EmailEventType, ticker: string, details: Record<string, any>): string {
+function getEmailHtml(eventType: EmailEventType, ticker: string, details: Record<string, any>): string {
+  const timestamp = new Date().toLocaleString();
+
+  const eventLabels: Record<EmailEventType, string> = {
+    'order_received': 'Order Received',
+    'signal_approved': 'Signal Approved',
+    'order_executed': 'Order Executed',
+    'position_closed': 'Position Closed'
+  };
+
+  const eventColors: Record<EmailEventType, string> = {
+    'order_received': '#3b82f6',
+    'signal_approved': '#22c55e',
+    'order_executed': '#8b5cf6',
+    'position_closed': '#f59e0b'
+  };
+
+  let detailsHtml = '';
+  const displayFields = [
+    { key: 'action', label: 'Action' },
+    { key: 'side', label: 'Side' },
+    { key: 'quantity', label: 'Quantity' },
+    { key: 'limit_price', label: 'Limit Price', prefix: '$' },
+    { key: 'entry_price', label: 'Entry Price', prefix: '$' },
+    { key: 'status', label: 'Status' },
+    { key: 'execution_mode', label: 'Execution Mode' },
+    { key: 'broker_result', label: 'Broker Result' },
+    { key: 'message', label: 'Message' }
+  ];
+
+  const shownKeys = displayFields.map(f => f.key);
+
+  for (const field of displayFields) {
+    if (details[field.key] !== null && details[field.key] !== undefined) {
+      const value = field.prefix ? `${field.prefix}${details[field.key]}` : details[field.key];
+      detailsHtml += `<tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">${field.label}</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 500;">${value}</td></tr>`;
+    }
+  }
+
+  // Add any remaining details not in the standard list
+  for (const [key, value] of Object.entries(details)) {
+    if (!shownKeys.includes(key) && value !== null && value !== undefined) {
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      detailsHtml += `<tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">${label}</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${value}</td></tr>`;
+    }
+  }
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <!-- Header -->
+      <div style="background-color: ${eventColors[eventType]}; padding: 20px; text-align: center;">
+        <h1 style="margin: 0; color: white; font-size: 24px;">${eventLabels[eventType]}</h1>
+        <p style="margin: 8px 0 0; color: rgba(255,255,255,0.9); font-size: 28px; font-weight: bold;">${ticker}</p>
+      </div>
+
+      <!-- Content -->
+      <div style="padding: 20px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          ${detailsHtml}
+        </table>
+
+        <p style="margin: 20px 0 0; color: #9ca3af; font-size: 12px; text-align: center;">
+          ${timestamp}
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background-color: #f9fafb; padding: 15px; text-align: center; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #6b7280; font-size: 12px;">Sent by Execution Wall</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+}
+
+/**
+ * Get plain text version of email
+ */
+function getEmailText(eventType: EmailEventType, ticker: string, details: Record<string, any>): string {
   const timestamp = new Date().toLocaleString();
 
   let body = `
@@ -129,7 +213,6 @@ Time: ${timestamp}
 Details:
 `;
 
-  // Add relevant details based on event type
   if (details.action) body += `  Action: ${details.action}\n`;
   if (details.side) body += `  Side: ${details.side}\n`;
   if (details.quantity) body += `  Quantity: ${details.quantity}\n`;
@@ -139,7 +222,6 @@ Details:
   if (details.execution_mode) body += `  Execution Mode: ${details.execution_mode}\n`;
   if (details.broker_result) body += `  Broker Result: ${details.broker_result}\n`;
 
-  // Add any remaining details
   const shownKeys = ['action', 'side', 'quantity', 'limit_price', 'entry_price', 'status', 'execution_mode', 'broker_result'];
   for (const [key, value] of Object.entries(details)) {
     if (!shownKeys.includes(key) && value !== null && value !== undefined) {
@@ -170,25 +252,79 @@ export async function sendEmailNotification(payload: EmailPayload): Promise<bool
       return false;
     }
 
-    const transport = getTransporter();
-    if (!transport) {
-      console.warn('⚠️ Email transport not configured');
+    const client = getResendClient();
+    if (!client) {
+      console.warn('⚠️ Resend client not configured');
       return false;
     }
 
-    const mailOptions = {
-      from: process.env.GMAIL_USER,
+    // Get the from email (use env var or default to Resend's default)
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'Execution Wall <onboarding@resend.dev>';
+
+    const { data, error } = await client.emails.send({
+      from: fromEmail,
       to: toEmail,
       subject: getEmailSubject(eventType, ticker),
-      text: getEmailBody(eventType, ticker, details)
-    };
+      html: getEmailHtml(eventType, ticker, details),
+      text: getEmailText(eventType, ticker, details)
+    });
 
-    await transport.sendMail(mailOptions);
-    console.log(`✅ Email sent: ${eventType} for ${ticker} to ${toEmail}`);
+    if (error) {
+      console.error(`❌ Resend error for ${eventType}:`, error);
+      return false;
+    }
+
+    console.log(`✅ Email sent: ${eventType} for ${ticker} to ${toEmail} (id: ${data?.id})`);
     return true;
   } catch (error: any) {
     console.error(`❌ Failed to send email for ${eventType}:`, error.message);
     return false;
+  }
+}
+
+/**
+ * Send a direct test email (bypasses settings checks)
+ */
+export async function sendTestEmail(toEmail: string): Promise<{ success: boolean; error?: string; id?: string }> {
+  const client = getResendClient();
+
+  if (!client) {
+    return { success: false, error: 'Resend API key not configured (RESEND_API_KEY)' };
+  }
+
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Execution Wall <onboarding@resend.dev>';
+
+  try {
+    const { data, error } = await client.emails.send({
+      from: fromEmail,
+      to: toEmail,
+      subject: 'Execution Wall - Test Email',
+      html: `
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px;">
+  <div style="max-width: 500px; margin: 0 auto; background: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px;">
+    <h2 style="color: #16a34a; margin: 0 0 10px;">✅ Test Email Successful!</h2>
+    <p style="color: #166534; margin: 0;">Your Execution Wall email notifications are configured correctly.</p>
+    <hr style="border: none; border-top: 1px solid #bbf7d0; margin: 15px 0;">
+    <p style="color: #6b7280; font-size: 12px; margin: 0;">
+      Sent to: ${toEmail}<br>
+      Time: ${new Date().toLocaleString()}
+    </p>
+  </div>
+</body>
+</html>
+`,
+      text: `Test Email Successful!\n\nYour Execution Wall email notifications are configured correctly.\n\nSent to: ${toEmail}\nTime: ${new Date().toLocaleString()}`
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, id: data?.id };
+  } catch (error: any) {
+    return { success: false, error: error.message };
   }
 }
 
