@@ -542,6 +542,30 @@ async function handleOrderSignal(data: {
     };
   }
 
+  // Check for existing open position - block new entry orders if position already exists
+  const existingOpenPosition = await prisma.position.findFirst({
+    where: {
+      ticker: tickerUpper,
+      closed_at: null
+    }
+  });
+
+  if (existingOpenPosition) {
+    console.warn(`⚠️ ORDER signal blocked for ${tickerUpper} - open position already exists (id: ${existingOpenPosition.id})`);
+    releaseSymbolLock(tickerUpper, 'order');
+    return {
+      execution_id: null,
+      message: `Order blocked - ${tickerUpper} already has an open position`,
+      blocked: true,
+      reason: 'position_exists',
+      existing_position: {
+        id: existingOpenPosition.id,
+        side: existingOpenPosition.side,
+        quantity: existingOpenPosition.quantity
+      }
+    };
+  }
+
   try {
     // Determine order action from dir if not provided
     const action = order_action || (dir === 'Long' ? 'buy' : dir === 'Short' ? 'sell' : null);
