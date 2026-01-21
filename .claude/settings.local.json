@@ -24,7 +24,13 @@
       "Bash(git commit:*)",
       "Bash(railway variables:*)",
       "Bash(railway domain:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma db push)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(git restore:*)"
     ]
   }
 }
