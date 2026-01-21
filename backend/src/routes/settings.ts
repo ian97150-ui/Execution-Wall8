@@ -159,12 +159,19 @@ router.put('/', async (req: Request, res: Response) => {
 
 // Test email notification - sends directly, bypasses settings checks
 router.post('/test-email', async (req: Request, res: Response) => {
+  console.log('📧 Test email endpoint called');
+
   try {
     const nodemailer = await import('nodemailer');
 
     // Check environment variables
     const gmailUser = process.env.GMAIL_USER;
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+    console.log('📧 Gmail config:', {
+      user: gmailUser ? `${gmailUser.substring(0, 5)}...` : 'MISSING',
+      pass: gmailPass ? `${gmailPass.length} chars` : 'MISSING'
+    });
 
     if (!gmailUser || !gmailPass) {
       return res.status(400).json({
@@ -184,6 +191,8 @@ router.post('/test-email', async (req: Request, res: Response) => {
       toEmail = settings?.notification_email;
     }
 
+    console.log('📧 Sending to:', toEmail || 'NO EMAIL SET');
+
     if (!toEmail) {
       return res.status(400).json({
         success: false,
@@ -191,11 +200,22 @@ router.post('/test-email', async (req: Request, res: Response) => {
       });
     }
 
-    // Create transporter and send directly (bypass all settings checks)
+    // Create transporter with explicit settings and timeout
+    console.log('📧 Creating transporter...');
     const transporter = nodemailer.default.createTransport({
-      service: 'gmail',
-      auth: { user: gmailUser, pass: gmailPass }
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: { user: gmailUser, pass: gmailPass },
+      connectionTimeout: 10000, // 10 second timeout
+      greetingTimeout: 10000,
+      socketTimeout: 10000
     });
+
+    // Verify connection first
+    console.log('📧 Verifying SMTP connection...');
+    await transporter.verify();
+    console.log('📧 SMTP connection verified, sending email...');
 
     await transporter.sendMail({
       from: gmailUser,
@@ -220,11 +240,22 @@ Execution Wall`
       message: `Test email sent to ${toEmail}`
     });
   } catch (error: any) {
-    console.error('Error sending test email:', error);
+    console.error('❌ Test email error:', error.code, error.message);
+
+    let hint = '';
+    if (error.code === 'EAUTH') {
+      hint = 'Authentication failed. Check your Gmail App Password - it should be 16 characters without spaces.';
+    } else if (error.code === 'ESOCKET' || error.code === 'ETIMEDOUT') {
+      hint = 'Connection timed out. Railway may be blocking SMTP ports.';
+    } else if (error.code === 'ECONNECTION') {
+      hint = 'Could not connect to Gmail SMTP server.';
+    }
+
     res.status(500).json({
       success: false,
       error: error.message,
-      hint: error.code === 'EAUTH' ? 'Check your Gmail App Password - it should be 16 characters without spaces' : undefined
+      code: error.code,
+      hint: hint || undefined
     });
   }
 });
