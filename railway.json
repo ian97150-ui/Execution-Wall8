@@ -5,9 +5,9 @@
     "buildCommand": "npm install && npm run build && ls -la dist && mkdir -p backend/frontend-dist && cp -r dist/* backend/frontend-dist/ && ls -la backend/frontend-dist && cd backend && npm install && npx prisma generate && npm run build"
   },
   "deploy": {
-    "startCommand": "cd backend && npx prisma db push && node dist/index.js",
+    "startCommand": "cd backend && node dist/index.js",
     "healthcheckPath": "/health",
-    "healthcheckTimeout": 60,
+    "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
   }
