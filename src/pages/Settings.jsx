@@ -458,15 +458,22 @@ export default function Settings() {
                     size="sm"
                     onClick={async () => {
                       try {
+                        toast.info('Sending test email...');
                         const response = await api.post('/settings/test-email');
                         if (response.data.success) {
                           toast.success(response.data.message);
                         } else {
-                          toast.error(response.data.error || 'Test email failed');
+                          const details = response.data.details ? JSON.stringify(response.data.details) : '';
+                          const hint = response.data.hint ? ` Hint: ${response.data.hint}` : '';
+                          toast.error(`${response.data.error || 'Test email failed'}${hint} ${details}`);
                         }
                       } catch (err) {
-                        const errorMsg = err.response?.data?.error || err.message || 'Failed to send test email';
-                        toast.error(errorMsg);
+                        console.error('Test email error:', err.response?.data || err);
+                        const data = err.response?.data;
+                        const errorMsg = data?.error || err.message || 'Failed to send test email';
+                        const details = data?.details ? ` Details: ${JSON.stringify(data.details)}` : '';
+                        const hint = data?.hint ? ` Hint: ${data.hint}` : '';
+                        toast.error(`${errorMsg}${hint}${details}`);
                       }
                     }}
                     className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
