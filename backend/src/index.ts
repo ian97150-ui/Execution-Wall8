@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 
 // Import routes
@@ -68,6 +69,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Serve static frontend files in production
 // In production: __dirname is backend/dist, frontend-dist is at backend/frontend-dist
 const frontendPath = path.join(__dirname, '../frontend-dist');
+
+// Log the frontend path for debugging
+console.log(`📁 Frontend path: ${frontendPath}`);
+
+// Check if frontend-dist exists
+if (fs.existsSync(frontendPath)) {
+  console.log(`✅ Frontend directory exists`);
+  const files = fs.readdirSync(frontendPath);
+  console.log(`📂 Frontend files: ${files.slice(0, 10).join(', ')}${files.length > 10 ? '...' : ''}`);
+} else {
+  console.warn(`⚠️ Frontend directory NOT found at: ${frontendPath}`);
+}
+
 app.use(express.static(frontendPath));
 
 // For any non-API routes, serve the frontend index.html (SPA support)
@@ -76,7 +90,13 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API route not found' });
   }
-  res.sendFile(path.join(frontendPath, 'index.html'));
+
+  const indexPath = path.join(frontendPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Frontend not found. Build may have failed.');
+  }
 });
 
 // Start server
