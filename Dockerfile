@@ -25,8 +25,14 @@ COPY --from=backend-build /app/backend/node_modules ./node_modules
 COPY --from=backend-build /app/backend/package*.json ./
 COPY --from=backend-build /app/backend/prisma ./prisma
 
+# Regenerate Prisma client for this platform
+RUN npx prisma generate
+
 # Copy frontend dist to frontend-dist folder
 COPY --from=frontend-build /app/dist ./frontend-dist
+
+# Debug: List files to verify structure
+RUN echo "=== App structure ===" && ls -la && echo "=== Frontend files ===" && ls -la frontend-dist && echo "=== Dist files ===" && ls -la dist
 
 # Expose port
 EXPOSE 3000
