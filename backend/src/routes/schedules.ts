@@ -24,8 +24,9 @@ router.get('/', async (req: Request, res: Response) => {
 // Get a single schedule
 router.get('/:id', async (req: Request, res: Response) => {
   try {
+    const id = req.params.id as string;
     const schedule = await prisma.executionSchedule.findUnique({
-      where: { id: req.params.id }
+      where: { id }
     });
 
     if (!schedule) {
@@ -118,7 +119,7 @@ router.post('/', async (req: Request, res: Response) => {
 // Update a schedule
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       name,
       start_time,
@@ -195,7 +196,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 // Delete a schedule
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const schedule = await prisma.executionSchedule.delete({
       where: { id }
