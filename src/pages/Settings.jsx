@@ -46,7 +46,9 @@ export default function Settings() {
         }
         throw error;
       }
-    }
+    },
+    // Refetch every 30 seconds to pick up mode changes from scheduler
+    refetchInterval: 30000
   });
 
   const [formData, setFormData] = useState(null);
@@ -186,16 +188,29 @@ export default function Settings() {
             <CardTitle className="flex items-center gap-2 text-white">
               <Shield className="w-5 h-5 text-blue-400" />
               Execution Mode
+              {formData.use_time_schedules && (
+                <span className="ml-auto text-xs font-normal text-violet-400 bg-violet-500/20 px-2 py-1 rounded">
+                  Auto-managed
+                </span>
+              )}
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Control how trades are processed
+              {formData.use_time_schedules
+                ? "Mode is automatically controlled by your time schedules"
+                : "Control how trades are processed"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ExecutionModeToggle
-              mode={formData.execution_mode}
+              mode={formData.use_time_schedules ? settings?.execution_mode : formData.execution_mode}
               onChange={(mode) => setFormData(f => ({ ...f, execution_mode: mode }))}
+              disabled={formData.use_time_schedules}
             />
+            {formData.use_time_schedules && (
+              <p className="text-xs text-slate-500 mt-3 text-center">
+                Mode updates automatically based on schedules (refreshes every 30s)
+              </p>
+            )}
           </CardContent>
         </Card>
 
