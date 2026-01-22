@@ -68,6 +68,7 @@ export default function Settings() {
         broker_webhook_enabled: toBool(settings.broker_webhook_enabled),
         email_notifications: toBool(settings.email_notifications),
         notification_email: settings.notification_email || '',
+        notify_on_wall: settings.notify_on_wall !== 0 && settings.notify_on_wall !== false,
         notify_on_order_received: settings.notify_on_order_received !== 0 && settings.notify_on_order_received !== false,
         notify_on_approval: settings.notify_on_approval !== 0 && settings.notify_on_approval !== false,
         notify_on_execution: settings.notify_on_execution !== 0 && settings.notify_on_execution !== false,
@@ -500,6 +501,14 @@ export default function Settings() {
                   <Label className="text-slate-300">Event Preferences</Label>
 
                   <div className="space-y-2">
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                      <span className="text-sm text-slate-300">WALL Signal (New/Updated)</span>
+                      <Switch
+                        checked={formData.notify_on_wall}
+                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_wall: checked }))}
+                      />
+                    </div>
+
                     <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
                       <span className="text-sm text-slate-300">Order Received</span>
                       <Switch

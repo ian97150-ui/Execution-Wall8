@@ -487,6 +487,20 @@ async function handleWallSignal(data: {
     }
   });
 
+  // Send email notification for WALL signal
+  EmailNotifications.wallSignal(tickerUpper, {
+    action: isUpdate ? 'Updated' : 'Created',
+    side: dir,
+    price: tradeIntent.price,
+    strategy: strategy_id || 'N/A',
+    timeframe: tf || 'N/A',
+    gates_hit: `${finalGatesHit}/${finalGatesTotal}`,
+    confidence: `${Math.round(finalConfidence * 100)}%`,
+    quality_tier: finalQualityTier,
+    status: linkedExecutionId ? 'Auto-linked to ORDER' : 'Awaiting review',
+    auto_linked: linkedExecutionId ? 'Yes' : 'No'
+  }).catch(err => console.error('Email notification error:', err));
+
   return {
     intent_id: tradeIntent.id,
     execution_id: linkedExecutionId,

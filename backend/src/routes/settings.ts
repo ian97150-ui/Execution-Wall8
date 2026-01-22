@@ -44,6 +44,7 @@ async function createSettingsSafe() {
         max_adjustment_pct: '2.0',
         broker_webhook_enabled: false,
         email_notifications: false,
+        notify_on_wall: true,
         notify_on_order_received: true,
         notify_on_approval: true,
         notify_on_execution: true,
@@ -90,6 +91,7 @@ router.put('/', async (req: Request, res: Response) => {
       broker_webhook_enabled,
       email_notifications,
       notification_email,
+      notify_on_wall,
       notify_on_order_received,
       notify_on_approval,
       notify_on_execution,
@@ -120,6 +122,7 @@ router.put('/', async (req: Request, res: Response) => {
     if (broker_webhook_enabled !== undefined) updateData.broker_webhook_enabled = broker_webhook_enabled;
     if (email_notifications !== undefined) updateData.email_notifications = email_notifications;
     if (notification_email !== undefined) updateData.notification_email = notification_email;
+    if (notify_on_wall !== undefined) updateData.notify_on_wall = notify_on_wall;
     if (notify_on_order_received !== undefined) updateData.notify_on_order_received = notify_on_order_received;
     if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
     if (notify_on_execution !== undefined) updateData.notify_on_execution = notify_on_execution;

@@ -3,6 +3,7 @@ import { prisma } from '../index';
 
 // Email event types matching settings
 export type EmailEventType =
+  | 'wall_signal'
   | 'order_received'
   | 'signal_approved'
   | 'order_executed'
@@ -81,6 +82,7 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
 
   // Check individual event preferences (handle SQLite 0/1 booleans)
   const eventSettingMap: Record<EmailEventType, string> = {
+    'wall_signal': 'notify_on_wall',
     'order_received': 'notify_on_order_received',
     'signal_approved': 'notify_on_approval',
     'order_executed': 'notify_on_execution',
@@ -100,6 +102,7 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
  */
 function getEmailSubject(eventType: EmailEventType, ticker: string): string {
   const subjects: Record<EmailEventType, string> = {
+    'wall_signal': `🎯 WALL Signal: ${ticker}`,
     'order_received': `📥 Order Received: ${ticker}`,
     'signal_approved': `✅ Signal Approved: ${ticker}`,
     'order_executed': `🚀 Order Executed: ${ticker}`,
@@ -115,6 +118,7 @@ function getEmailHtml(eventType: EmailEventType, ticker: string, details: Record
   const timestamp = new Date().toLocaleString();
 
   const eventLabels: Record<EmailEventType, string> = {
+    'wall_signal': 'WALL Signal',
     'order_received': 'Order Received',
     'signal_approved': 'Signal Approved',
     'order_executed': 'Order Executed',
@@ -122,6 +126,7 @@ function getEmailHtml(eventType: EmailEventType, ticker: string, details: Record
   };
 
   const eventColors: Record<EmailEventType, string> = {
+    'wall_signal': '#6366f1',
     'order_received': '#3b82f6',
     'signal_approved': '#22c55e',
     'order_executed': '#8b5cf6',
@@ -332,6 +337,9 @@ export async function sendTestEmail(toEmail: string): Promise<{ success: boolean
  * Convenience methods for each event type
  */
 export const EmailNotifications = {
+  wallSignal: (ticker: string, details: Record<string, any>) =>
+    sendEmailNotification({ eventType: 'wall_signal', ticker, details }),
+
   orderReceived: (ticker: string, details: Record<string, any>) =>
     sendEmailNotification({ eventType: 'order_received', ticker, details }),
 

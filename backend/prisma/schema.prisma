@@ -90,6 +90,7 @@ model ExecutionSettings {
   // Email notification settings
   email_notifications  Boolean @default(false)
   notification_email   String?
+  notify_on_wall       Boolean @default(true) // When WALL signal creates/updates intent
   notify_on_order_received Boolean @default(true) // When ORDER webhook arrives
   notify_on_approval   Boolean @default(true)
   notify_on_execution  Boolean @default(true)
