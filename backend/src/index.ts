@@ -16,11 +16,13 @@ import settingsRoutes from './routes/settings';
 import tickerConfigRoutes from './routes/tickerConfig';
 import authRoutes from './routes/auth';
 import databaseRoutes from './routes/database';
+import schedulesRoutes from './routes/schedules';
 
 // Import services
 import { startCleanupScheduler } from './services/databaseCleanup';
 import { startExecutionScheduler, stopExecutionScheduler } from './services/executionScheduler';
 import { startDailyResetScheduler, stopDailyResetScheduler } from './services/dailyReset';
+import { startModeScheduler, stopModeScheduler } from './services/modeScheduler';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +58,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/ticker-configs', tickerConfigRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/database', databaseRoutes);
+app.use('/api/schedules', schedulesRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -114,6 +117,9 @@ app.listen(PORT, () => {
 
   // Start daily reset scheduler (resets ticker configs at midnight or app startup)
   startDailyResetScheduler();
+
+  // Start mode scheduler (auto-switches execution mode based on time schedules)
+  startModeScheduler();
 });
 
 // Graceful shutdown
@@ -121,6 +127,7 @@ process.on('SIGINT', async () => {
   console.log('\\n🛑 Shutting down gracefully...');
   stopExecutionScheduler();
   stopDailyResetScheduler();
+  stopModeScheduler();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -129,6 +136,7 @@ process.on('SIGTERM', async () => {
   console.log('\\n🛑 Shutting down gracefully...');
   stopExecutionScheduler();
   stopDailyResetScheduler();
+  stopModeScheduler();
   await prisma.$disconnect();
   process.exit(0);
 });

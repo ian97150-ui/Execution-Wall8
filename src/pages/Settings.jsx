@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 
 import ExecutionModeToggle from "../components/trading/ExecutionModeToggle";
+import ScheduleList from "../components/settings/ScheduleList";
 import api from "@/api/apiClient";
 
 // Get the backend API URL
@@ -68,7 +69,9 @@ export default function Settings() {
         notify_on_order_received: settings.notify_on_order_received !== 0 && settings.notify_on_order_received !== false,
         notify_on_approval: settings.notify_on_approval !== 0 && settings.notify_on_approval !== false,
         notify_on_execution: settings.notify_on_execution !== 0 && settings.notify_on_execution !== false,
-        notify_on_close: settings.notify_on_close !== 0 && settings.notify_on_close !== false
+        notify_on_close: settings.notify_on_close !== 0 && settings.notify_on_close !== false,
+        use_time_schedules: toBool(settings.use_time_schedules),
+        timezone: settings.timezone || 'America/New_York'
       });
     }
   }, [settings]);
@@ -193,6 +196,71 @@ export default function Settings() {
               mode={formData.execution_mode}
               onChange={(mode) => setFormData(f => ({ ...f, execution_mode: mode }))}
             />
+          </CardContent>
+        </Card>
+
+        {/* Time-Based Schedules */}
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Clock className="w-5 h-5 text-violet-400" />
+              Time-Based Mode Switching
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              Automatically change execution mode based on time of day
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+              <div>
+                <Label className="text-slate-300">Enable Time Schedules</Label>
+                <p className="text-xs text-slate-500 mt-1">
+                  Automatically switch modes based on your schedules
+                </p>
+              </div>
+              <Switch
+                checked={formData.use_time_schedules}
+                onCheckedChange={(checked) => setFormData(f => ({ ...f, use_time_schedules: checked }))}
+              />
+            </div>
+
+            {formData.use_time_schedules && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Timezone</Label>
+                  <select
+                    value={formData.timezone}
+                    onChange={(e) => setFormData(f => ({ ...f, timezone: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-md bg-slate-800 border border-slate-700 text-white text-sm"
+                  >
+                    <option value="America/New_York">Eastern (New York)</option>
+                    <option value="America/Chicago">Central (Chicago)</option>
+                    <option value="America/Denver">Mountain (Denver)</option>
+                    <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+                    <option value="America/Phoenix">Arizona (Phoenix)</option>
+                    <option value="Europe/London">London</option>
+                    <option value="Europe/Paris">Paris</option>
+                    <option value="Asia/Tokyo">Tokyo</option>
+                    <option value="Asia/Hong_Kong">Hong Kong</option>
+                    <option value="Asia/Singapore">Singapore</option>
+                    <option value="Australia/Sydney">Sydney</option>
+                  </select>
+                </div>
+
+                <div className="pt-2">
+                  <Label className="text-slate-300 mb-3 block">Schedules</Label>
+                  <ScheduleList />
+                </div>
+
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
+                  <Info className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-violet-300">
+                    <p>Mode checks run every minute. When no schedule matches, defaults to OFF mode.</p>
+                    <p className="mt-1">Higher priority schedules take precedence when times overlap.</p>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

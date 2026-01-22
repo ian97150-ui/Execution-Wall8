@@ -95,10 +95,29 @@ model ExecutionSettings {
   notify_on_execution  Boolean @default(true)
   notify_on_close      Boolean @default(true)
 
+  // Time-based mode scheduling
+  use_time_schedules   Boolean @default(false)
+  timezone             String  @default("America/New_York")
+
   created_at           DateTime @default(now())
   updated_at           DateTime @updatedAt
 
   @@map("execution_settings")
+}
+
+model ExecutionSchedule {
+  id             String   @id @default(uuid())
+  name           String   // "Market Open", "Mid-Day", etc.
+  start_time     String   // "09:30" (HH:MM 24-hour format)
+  end_time       String   // "16:00"
+  execution_mode String   // "off", "safe", "full"
+  days_of_week   String   // "1,2,3,4,5" (Mon-Fri) or "0,6" (weekends)
+  enabled        Boolean  @default(true)
+  priority       Int      @default(0) // Higher priority takes precedence
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@map("execution_schedules")
 }
 
 model Execution {

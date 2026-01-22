@@ -47,7 +47,9 @@ async function createSettingsSafe() {
         notify_on_order_received: true,
         notify_on_approval: true,
         notify_on_execution: true,
-        notify_on_close: true
+        notify_on_close: true,
+        use_time_schedules: false,
+        timezone: 'America/New_York'
       }
     });
   } catch (e: any) {
@@ -91,7 +93,9 @@ router.put('/', async (req: Request, res: Response) => {
       notify_on_order_received,
       notify_on_approval,
       notify_on_execution,
-      notify_on_close
+      notify_on_close,
+      use_time_schedules,
+      timezone
     } = req.body;
 
     // Get existing settings or create new
@@ -120,6 +124,8 @@ router.put('/', async (req: Request, res: Response) => {
     if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
     if (notify_on_execution !== undefined) updateData.notify_on_execution = notify_on_execution;
     if (notify_on_close !== undefined) updateData.notify_on_close = notify_on_close;
+    if (use_time_schedules !== undefined) updateData.use_time_schedules = use_time_schedules;
+    if (timezone !== undefined) updateData.timezone = timezone;
 
     console.log('Updating settings with:', updateData);
 
