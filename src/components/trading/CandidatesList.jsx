@@ -126,8 +126,7 @@ export default function CandidatesList({
                   className="flex-1 border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
                   onClick={() => {
                     const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
-                    const symbol = encodeURIComponent(`AMEX:${intent.ticker}`);
-                    const webUrl = `https://www.tradingview.com/${chartPath}?symbol=${symbol}`;
+                    const webUrl = `https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`;
                     window.open(webUrl, '_blank', 'noopener,noreferrer');
                   }}
                 >

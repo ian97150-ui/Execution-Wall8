@@ -488,7 +488,7 @@ export default function Settings() {
             <div className="flex items-start gap-2 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
               <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
               <p className="text-xs text-cyan-300">
-                Chart links will open your saved layout with the correct ticker symbol pre-loaded (using AMEX: prefix).
+                Chart links will open your saved layout with the ticker symbol pre-loaded.
               </p>
             </div>
           </CardContent>

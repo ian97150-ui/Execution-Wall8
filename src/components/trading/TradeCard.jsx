@@ -137,8 +137,7 @@ export default function TradeCard({
                 onClick={(e) => {
                   e.stopPropagation();
                   const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
-                  const symbol = encodeURIComponent(`AMEX:${intent.ticker}`);
-                  window.open(`https://www.tradingview.com/${chartPath}?symbol=${symbol}`, '_blank', 'noopener,noreferrer');
+                  window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
                 }}
               >
                 View Chart <ExternalLink className="w-3 h-3" />
@@ -202,8 +201,7 @@ export default function TradeCard({
               onClick={(e) => {
                 e.stopPropagation();
                 const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
-                const symbol = encodeURIComponent(`AMEX:${intent.ticker}`);
-                window.open(`https://www.tradingview.com/${chartPath}?symbol=${symbol}`, '_blank', 'noopener,noreferrer');
+                window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
               }}
             >
               Open Chart
