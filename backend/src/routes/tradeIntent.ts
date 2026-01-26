@@ -97,9 +97,19 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
     }
 
     // Update trade intent
+    // If blocking (off/deny), expire immediately so it doesn't show up next session
+    // If reviving, give a fresh 24-hour window
+    const shouldExpireNow = action === 'off' || action === 'deny';
+    const shouldResetExpiry = action === 'revive';
+    const freshExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+
     const updatedIntent = await prisma.tradeIntent.update({
       where: { id },
-      data: { status: newStatus }
+      data: {
+        status: newStatus,
+        ...(shouldExpireNow && { expires_at: new Date() }),
+        ...(shouldResetExpiry && { expires_at: freshExpiry })
+      }
     });
 
     // Update or create ticker config

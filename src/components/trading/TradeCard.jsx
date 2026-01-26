@@ -17,7 +17,8 @@ export default function TradeCard({
   onDeny,
   isTopCard = false,
   style = {},
-  isEnabled = false
+  isEnabled = false,
+  tradingviewChartId
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showOverlay, setShowOverlay] = useState(null); // 'success' | 'rejected' | null
@@ -131,18 +132,17 @@ export default function TradeCard({
                   </span>
                 )}
               </div>
-              <a 
-                href={`tradingview://chart?symbol=${intent.ticker}`}
-                onError={(e) => {
-                  e.currentTarget.href = `https://www.tradingview.com/chart/?symbol=${intent.ticker}`;
-                }}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
                 className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
+                  const symbol = encodeURIComponent(`AMEX:${intent.ticker}`);
+                  window.open(`https://www.tradingview.com/${chartPath}?symbol=${symbol}`, '_blank', 'noopener,noreferrer');
+                }}
               >
                 View Chart <ExternalLink className="w-3 h-3" />
-              </a>
+              </button>
             </div>
             <QualityBadge tier={intent.quality_tier || "B"} score={intent.quality_score} size="large" />
           </div>
@@ -196,23 +196,18 @@ export default function TradeCard({
 
           {/* Action buttons for non-swipe interaction */}
           <div className="space-y-3 pt-3">
-            <a
-              href={`tradingview://chart?symbol=${intent.ticker}&chat=true`}
-              onError={(e) => {
-                e.currentTarget.href = `https://www.tradingview.com/chart/?symbol=${intent.ticker}`;
+            <Button
+              variant="outline"
+              className="w-full h-14 text-base font-semibold border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+              onClick={(e) => {
+                e.stopPropagation();
+                const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
+                const symbol = encodeURIComponent(`AMEX:${intent.ticker}`);
+                window.open(`https://www.tradingview.com/${chartPath}?symbol=${symbol}`, '_blank', 'noopener,noreferrer');
               }}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="block"
             >
-              <Button 
-                variant="outline"
-                className="w-full h-14 text-base font-semibold border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
-              >
-                Chat Access
-              </Button>
-            </a>
+              Open Chart
+            </Button>
             <div className="flex gap-3">
               <Button 
                 onClick={(e) => { e.stopPropagation(); handleAction('off'); }}

@@ -5,15 +5,16 @@ import { Inbox, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TradeCard from "./TradeCard";
 
-export default function SwipeDeck({ 
-  intents = [], 
+export default function SwipeDeck({
+  intents = [],
   executions = [],
-  onSwipeOn, 
+  onSwipeOn,
   onSwipeOff,
   onDeny,
   onRefresh,
   isLoading = false,
-  tickers = []
+  tickers = [],
+  tradingviewChartId
 }) {
   // Show up to 3 cards stacked
   const visibleCards = intents.slice(0, 3);
@@ -56,8 +57,8 @@ export default function SwipeDeck({
                 <TradeCard
                   key={intent.id}
                   intent={intent}
-                  hasLiveOrder={executions.some(e => 
-                    e.ticker === intent.ticker && 
+                  hasLiveOrder={executions.some(e =>
+                    e.ticker === intent.ticker &&
                     ['pending', 'executing'].includes(e.status)
                   )}
                   isTopCard={index === 0}
@@ -65,6 +66,7 @@ export default function SwipeDeck({
                   onSwipeOff={onSwipeOff}
                   onDeny={onDeny}
                   isEnabled={isEnabled}
+                  tradingviewChartId={tradingviewChartId}
                   style={{
                     scale: 1 - index * 0.05,
                     y: index * 10,

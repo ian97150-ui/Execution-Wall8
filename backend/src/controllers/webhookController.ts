@@ -342,6 +342,17 @@ async function handleWallSignal(data: {
 
   const tickerUpper = ticker.toUpperCase();
 
+  // Try to acquire symbol lock to prevent duplicate cards from race conditions
+  // Lock TTL: 3 seconds - prevents double webhooks arriving simultaneously
+  if (!acquireSymbolLock(tickerUpper, 'wall', 3000)) {
+    console.warn(`⚠️ Duplicate WALL signal blocked for ${tickerUpper} - symbol locked`);
+    return {
+      intent_id: null,
+      message: `Duplicate WALL signal blocked for ${tickerUpper} - please wait`,
+      rejected: true
+    };
+  }
+
   // Check if ticker is blocked
   const tickerConfig = await prisma.tickerConfig.findUnique({
     where: { ticker: tickerUpper }
@@ -356,11 +367,12 @@ async function handleWallSignal(data: {
     };
   }
 
-  // Check for existing pending or approved intent for this ticker
+  // Check for existing pending, approved, or cancelled intent for this ticker
+  // Include 'cancelled' to prevent duplicates when a card was invalidated but not expired
   const existingIntent = await prisma.tradeIntent.findFirst({
     where: {
       ticker: tickerUpper,
-      status: { in: ['pending', 'swiped_on'] },
+      status: { in: ['pending', 'swiped_on', 'cancelled'] },
       expires_at: { gt: new Date() }
     },
     orderBy: { created_date: 'desc' }

@@ -74,7 +74,8 @@ export default function Settings() {
         notify_on_execution: settings.notify_on_execution !== 0 && settings.notify_on_execution !== false,
         notify_on_close: settings.notify_on_close !== 0 && settings.notify_on_close !== false,
         use_time_schedules: toBool(settings.use_time_schedules),
-        timezone: settings.timezone || 'America/New_York'
+        timezone: settings.timezone || 'America/New_York',
+        tradingview_chart_id: settings.tradingview_chart_id || ''
       });
     }
   }, [settings]);
@@ -456,6 +457,40 @@ export default function Settings() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* TradingView Integration */}
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <ExternalLink className="w-5 h-5 text-cyan-400" />
+              TradingView Integration
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              Configure chart links to open your saved layout
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Chart Layout ID</Label>
+              <Input
+                type="text"
+                placeholder="e.g., 0v6Deawb"
+                value={formData.tradingview_chart_id}
+                onChange={(e) => setFormData(f => ({ ...f, tradingview_chart_id: e.target.value }))}
+                className="bg-slate-800 border-slate-700 text-white font-mono"
+              />
+              <p className="text-xs text-slate-500">
+                Find this in your TradingView chart URL: tradingview.com/chart/<strong>0v6Deawb</strong>/
+              </p>
+            </div>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+              <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-cyan-300">
+                Chart links will open your saved layout with the correct ticker symbol pre-loaded (using AMEX: prefix).
+              </p>
+            </div>
           </CardContent>
         </Card>
 

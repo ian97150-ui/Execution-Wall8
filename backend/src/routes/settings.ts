@@ -97,7 +97,8 @@ router.put('/', async (req: Request, res: Response) => {
       notify_on_execution,
       notify_on_close,
       use_time_schedules,
-      timezone
+      timezone,
+      tradingview_chart_id
     } = req.body;
 
     // Get existing settings or create new
@@ -129,6 +130,7 @@ router.put('/', async (req: Request, res: Response) => {
     if (notify_on_close !== undefined) updateData.notify_on_close = notify_on_close;
     if (use_time_schedules !== undefined) updateData.use_time_schedules = use_time_schedules;
     if (timezone !== undefined) updateData.timezone = timezone;
+    if (tradingview_chart_id !== undefined) updateData.tradingview_chart_id = tradingview_chart_id;
 
     console.log('Updating settings with:', updateData);
 

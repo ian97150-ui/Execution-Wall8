@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
 import GateProgress from "./GateProgress";
 
-export default function CandidatesList({ 
-  candidates = [], 
-  onApprove, 
+export default function CandidatesList({
+  candidates = [],
+  onApprove,
   onReject,
   onDeny,
-  tickers = []
+  tickers = [],
+  tradingviewChartId
 }) {
   if (candidates.length === 0) {
     return (
@@ -119,23 +120,19 @@ export default function CandidatesList({
                 >
                   Deny Order
                 </Button>
-                <a
-                  href={`tradingview://chart?symbol=${intent.ticker}&chat=true`}
-                  onError={(e) => {
-                    e.currentTarget.href = `https://www.tradingview.com/chart/?symbol=${intent.ticker}`;
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+                  onClick={() => {
+                    const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
+                    const symbol = encodeURIComponent(`AMEX:${intent.ticker}`);
+                    const webUrl = `https://www.tradingview.com/${chartPath}?symbol=${symbol}`;
+                    window.open(webUrl, '_blank', 'noopener,noreferrer');
                   }}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1"
                 >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
-                  >
-                    Chat
-                  </Button>
-                </a>
+                  Chart
+                </Button>
               </div>
             </div>
           </div>

@@ -71,7 +71,7 @@ export default function Dashboard() {
       const response = await api.get('/trade-intents', {
         params: {
           card_state: 'ARMED,ELIGIBLE,WAITING_DIP',
-          status: 'pending,swiped_on,cancelled'
+          status: 'pending,swiped_on'
         }
       });
       // Filter out expired intents
@@ -654,6 +654,7 @@ export default function Dashboard() {
                   onRefresh={refetchCandidates}
                   isLoading={candidatesLoading}
                   tickers={tickers}
+                  tradingviewChartId={settings?.tradingview_chart_id}
                 />
               )}
 
@@ -665,6 +666,7 @@ export default function Dashboard() {
                     onReject={(intent) => swipeOffMutation.mutate(intent)}
                     onDeny={(intent) => denyOrderMutation.mutate(intent)}
                     tickers={tickers}
+                    tradingviewChartId={settings?.tradingview_chart_id}
                   />
                 </div>
               )}

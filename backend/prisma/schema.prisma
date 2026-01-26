@@ -100,6 +100,9 @@ model ExecutionSettings {
   use_time_schedules   Boolean @default(false)
   timezone             String  @default("America/New_York")
 
+  // TradingView integration
+  tradingview_chart_id String?  // Chart layout ID (e.g., "0v6Deawb")
+
   created_at           DateTime @default(now())
   updated_at           DateTime @updatedAt
 
