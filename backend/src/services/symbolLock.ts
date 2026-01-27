@@ -19,13 +19,13 @@ const DEFAULT_LOCK_TTL = 3000;
 /**
  * Attempt to acquire a lock for a symbol
  * @param symbol - The ticker symbol to lock
- * @param lockType - Type of lock ('order' or 'exit') - allows different lock namespaces
+ * @param lockType - Type of lock ('order', 'exit', or 'wall') - allows different lock namespaces
  * @param ttlMs - Lock TTL in milliseconds (default: 3000ms)
  * @returns true if lock acquired, false if already locked
  */
 export function acquireSymbolLock(
   symbol: string,
-  lockType: 'order' | 'exit' = 'order',
+  lockType: 'order' | 'exit' | 'wall' = 'order',
   ttlMs: number = DEFAULT_LOCK_TTL
 ): boolean {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
@@ -57,9 +57,9 @@ export function acquireSymbolLock(
 /**
  * Release a symbol lock early (before TTL expires)
  * @param symbol - The ticker symbol to unlock
- * @param lockType - Type of lock ('order' or 'exit')
+ * @param lockType - Type of lock ('order', 'exit', or 'wall')
  */
-export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' = 'order'): void {
+export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' | 'wall' = 'order'): void {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
   if (symbolLocks.delete(lockKey)) {
     console.log(`🔓 Released lock for ${lockKey}`);
@@ -69,10 +69,10 @@ export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' = '
 /**
  * Check if a symbol is currently locked
  * @param symbol - The ticker symbol to check
- * @param lockType - Type of lock ('order' or 'exit')
+ * @param lockType - Type of lock ('order', 'exit', or 'wall')
  * @returns true if locked, false if not locked
  */
-export function isSymbolLocked(symbol: string, lockType: 'order' | 'exit' = 'order'): boolean {
+export function isSymbolLocked(symbol: string, lockType: 'order' | 'exit' | 'wall' = 'order'): boolean {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
   const existingLock = symbolLocks.get(lockKey);
 
