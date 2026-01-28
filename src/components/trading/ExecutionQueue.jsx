@@ -1,18 +1,19 @@
 import React from 'react';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Clock, TrendingUp, TrendingDown, Send, X, 
-  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw 
+import {
+  Clock, TrendingUp, TrendingDown, Send, X,
+  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import DelayProgress from "./DelayProgress";
 
-export default function ExecutionQueue({ 
-  executions = [], 
-  onCancel, 
+export default function ExecutionQueue({
+  executions = [],
+  onCancel,
   onForceExecute,
+  onApprove,
   onEditLimit,
   onRetry,
   executionMode = "safe"
@@ -154,6 +155,17 @@ export default function ExecutionQueue({
                 {/* Actions - only show in safe mode */}
                 {isActive && executionMode === "safe" && (
                   <div className="space-y-2 pt-2">
+                    {/* Approve button - only show if order has linked intent awaiting approval */}
+                    {exec.intent_id && (
+                      <Button
+                        onClick={() => onApprove?.(exec)}
+                        size="sm"
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+                      >
+                        <ThumbsUp className="w-4 h-4 mr-1" />
+                        Approve Order
+                      </Button>
+                    )}
                     {exec.limit_price && (
                       <Button
                         onClick={() => onEditLimit?.(exec)}

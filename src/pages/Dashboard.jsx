@@ -357,6 +357,25 @@ export default function Dashboard() {
     }
   });
 
+  // Approve an execution's linked intent (for safe mode)
+  const approveExecutionMutation = useMutation({
+    mutationFn: async (exec) => {
+      if (!exec.intent_id) {
+        throw new Error('No linked intent to approve');
+      }
+      await api.post(`/trade-intents/${exec.intent_id}/swipe`, { action: 'approve' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Order approved - will execute shortly');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to approve order');
+    }
+  });
+
   const retryExecutionMutation = useMutation({
     mutationFn: async (exec) => {
       // Re-execute the order
@@ -689,6 +708,7 @@ export default function Dashboard() {
                 executionMode={settings?.execution_mode || 'safe'}
                 onCancel={(exec) => cancelExecutionMutation.mutate(exec)}
                 onForceExecute={(exec) => forceExecuteMutation.mutate(exec)}
+                onApprove={(exec) => approveExecutionMutation.mutate(exec)}
                 onRetry={(exec) => retryExecutionMutation.mutate(exec)}
                 onEditLimit={handleEditLimit}
               />
