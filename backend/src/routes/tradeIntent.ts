@@ -130,12 +130,17 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
         }
       });
     } else if (action === 'off') {
+      // Calculate 11:59 PM today for auto-reset
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 0, 0);
+
       await prisma.tickerConfig.upsert({
         where: { ticker: intent.ticker },
-        update: { enabled: false },
+        update: { enabled: false, blocked_until: endOfDay },
         create: {
           ticker: intent.ticker,
-          enabled: false
+          enabled: false,
+          blocked_until: endOfDay
         }
       });
 

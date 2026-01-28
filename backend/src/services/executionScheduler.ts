@@ -218,9 +218,71 @@ async function processExpiredDelays() {
 }
 
 /**
+ * Check for blocked tickers that should be unblocked (blocked_until has passed)
+ * Runs as part of the scheduler to auto-reset blocked tickers at end of day
+ */
+async function processExpiredBlocks() {
+  try {
+    const now = new Date();
+
+    // Find tickers where blocked_until has passed
+    const expiredBlocks = await prisma.tickerConfig.findMany({
+      where: {
+        enabled: false,
+        blocked_until: {
+          lte: now // blocked_until <= now (expired)
+        }
+      }
+    });
+
+    if (expiredBlocks.length === 0) {
+      return;
+    }
+
+    console.log(`🔓 Found ${expiredBlocks.length} expired block(s) - auto-unblocking...`);
+
+    for (const ticker of expiredBlocks) {
+      // Re-enable the ticker
+      await prisma.tickerConfig.update({
+        where: { ticker: ticker.ticker },
+        data: {
+          enabled: true,
+          blocked_until: null
+        }
+      });
+
+      // Create audit log
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'ticker_auto_unblocked',
+          ticker: ticker.ticker,
+          details: JSON.stringify({
+            reason: 'Block expired at end of day',
+            blocked_until: ticker.blocked_until
+          })
+        }
+      });
+
+      console.log(`   ✅ Auto-unblocked: ${ticker.ticker}`);
+    }
+
+  } catch (error: any) {
+    console.error('❌ Block expiry check error:', error.message);
+  }
+}
+
+/**
  * Start the execution scheduler
  * Runs every 10 seconds to check for expired delays
  */
+/**
+ * Combined scheduler tick - runs all periodic checks
+ */
+async function runSchedulerTick() {
+  await processExpiredDelays();
+  await processExpiredBlocks();
+}
+
 export function startExecutionScheduler() {
   if (schedulerInterval) {
     console.log('⚠️ Execution scheduler already running');
@@ -230,10 +292,10 @@ export function startExecutionScheduler() {
   console.log('🕐 Starting execution scheduler (checks every 10 seconds)');
 
   // Run immediately on start
-  processExpiredDelays();
+  runSchedulerTick();
 
   // Then run every 10 seconds
-  schedulerInterval = setInterval(processExpiredDelays, 10 * 1000);
+  schedulerInterval = setInterval(runSchedulerTick, 10 * 1000);
 }
 
 /**
