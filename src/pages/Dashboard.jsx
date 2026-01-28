@@ -83,6 +83,7 @@ export default function Dashboard() {
   });
 
   // Fetch blocked intents (swiped_off status - for revive section)
+  // Don't filter by expiry - show all blocked cards from today for potential revival
   const { data: blockedIntents = [], refetch: refetchBlockedIntents } = useQuery({
     queryKey: ['blockedIntents'],
     queryFn: async () => {
@@ -91,9 +92,9 @@ export default function Dashboard() {
           status: 'swiped_off'
         }
       });
-      // Filter out expired intents
-      const now = new Date();
-      return (response.data || []).filter(intent => new Date(intent.expires_at) > now);
+      // Only show cards blocked today (within last 24 hours)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      return (response.data || []).filter(intent => new Date(intent.created_date) > oneDayAgo);
     },
     enabled: !!settings,
     refetchInterval: 10000

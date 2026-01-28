@@ -28,8 +28,15 @@ router.get('/', async (req: Request, res: Response) => {
       where.ticker = ticker;
     }
 
-    // Filter out expired intents
-    where.expires_at = { gt: new Date() };
+    // Filter out expired intents - but skip for blocked cards (swiped_off)
+    // so they can still be shown in the blocked list for revival
+    const isBlockedQuery = status === 'swiped_off';
+    if (!isBlockedQuery) {
+      where.expires_at = { gt: new Date() };
+    } else {
+      // For blocked cards, only show from last 24 hours
+      where.created_date = { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) };
+    }
 
     const intents = await prisma.tradeIntent.findMany({
       where,
