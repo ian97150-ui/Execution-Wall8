@@ -70,6 +70,19 @@ async function processExpiredDelays() {
 
     for (const execution of expiredExecutions) {
       try {
+        // In safe mode, check if linked intent is approved before executing
+        if (execution.intent_id) {
+          const linkedIntent = await prisma.tradeIntent.findUnique({
+            where: { id: execution.intent_id }
+          });
+
+          // If intent exists but is NOT approved (swiped_on), skip execution
+          if (linkedIntent && linkedIntent.status !== 'swiped_on') {
+            console.log(`   ⏸️ Skipping ${execution.ticker} - awaiting approval (intent status: ${linkedIntent.status})`);
+            continue; // Skip this execution, check again next cycle
+          }
+        }
+
         // Forward to broker
         const brokerResult = await forwardToBroker(execution);
 

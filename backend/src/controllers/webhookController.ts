@@ -465,13 +465,21 @@ async function handleWallSignal(data: {
       data: { intent_id: tradeIntent.id }
     });
 
-    await prisma.tradeIntent.update({
-      where: { id: tradeIntent.id },
-      data: { status: 'swiped_on' }  // Auto-approve since ORDER already exists
-    });
+    // Only auto-approve in full mode - in safe mode, user must approve
+    const settings = await getSettingsSafe();
+    const isFullMode = settings?.execution_mode === 'full';
+
+    if (isFullMode) {
+      await prisma.tradeIntent.update({
+        where: { id: tradeIntent.id },
+        data: { status: 'swiped_on' }
+      });
+      console.log(`🔗 Auto-linked and auto-approved WALL intent (full mode)`);
+    } else {
+      console.log(`🔗 Linked WALL intent to ORDER - awaiting user approval (safe mode)`);
+    }
 
     linkedExecutionId = existingExecution.id;
-    console.log(`🔗 Auto-linked WALL intent to existing ORDER ${existingExecution.id}`);
   }
 
   // Create audit log
@@ -727,19 +735,24 @@ async function handleOrderSignal(data: {
   });
 
   if (pendingIntent) {
-    // Link execution to intent and mark approved
+    // Link execution to intent
     await prisma.execution.update({
       where: { id: execution.id },
       data: { intent_id: pendingIntent.id }
     });
 
-    await prisma.tradeIntent.update({
-      where: { id: pendingIntent.id },
-      data: { status: 'swiped_on' }  // Auto-approve
-    });
+    // Only auto-approve in full mode - in safe mode, user must approve
+    if (isFullMode) {
+      await prisma.tradeIntent.update({
+        where: { id: pendingIntent.id },
+        data: { status: 'swiped_on' }
+      });
+      console.log(`🔗 Linked ORDER to WALL intent and auto-approved (full mode)`);
+    } else {
+      console.log(`🔗 Linked ORDER to WALL intent - awaiting user approval (safe mode)`);
+    }
 
     linkedIntentId = pendingIntent.id;
-    console.log(`🔗 Linked ORDER to existing WALL intent ${pendingIntent.id}`);
   }
 
     // Create audit log
