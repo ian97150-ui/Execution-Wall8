@@ -393,6 +393,23 @@ export default function Dashboard() {
     }
   });
 
+  // Create demo execution for testing the approval flow
+  const createDemoMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/executions/demo');
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Demo execution created - try the Approve button!');
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.error || 'Failed to create demo');
+    }
+  });
+
   const blockSignalsMutation = useMutation({
     mutationFn: async (position) => {
       // Calculate 1am next day
@@ -711,6 +728,8 @@ export default function Dashboard() {
                 onApprove={(exec) => approveExecutionMutation.mutate(exec)}
                 onRetry={(exec) => retryExecutionMutation.mutate(exec)}
                 onEditLimit={handleEditLimit}
+                onCreateDemo={() => createDemoMutation.mutate()}
+                isDemoLoading={createDemoMutation.isPending}
               />
             </TabsContent>
 

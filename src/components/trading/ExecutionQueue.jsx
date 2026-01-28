@@ -16,6 +16,8 @@ export default function ExecutionQueue({
   onApprove,
   onEditLimit,
   onRetry,
+  onCreateDemo,
+  isDemoLoading,
   executionMode = "safe"
 }) {
   const getStatusBadge = (status) => {
@@ -209,6 +211,22 @@ export default function ExecutionQueue({
           <Send className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p className="font-medium">No pending executions</p>
           <p className="text-xs mt-1">Execution requests will appear here</p>
+          {onCreateDemo && (
+            <Button
+              onClick={onCreateDemo}
+              disabled={isDemoLoading}
+              size="sm"
+              variant="outline"
+              className="mt-4 border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+            >
+              {isDemoLoading ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-1" />
+              )}
+              Create Demo Order
+            </Button>
+          )}
         </div>
       )}
     </div>

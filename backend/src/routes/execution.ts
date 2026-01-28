@@ -315,4 +315,74 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
   }
 });
 
+// Create demo execution (for testing the approval flow)
+router.post('/demo', async (req: Request, res: Response) => {
+  try {
+    const demoTicker = 'DEMO';
+    const demoPrice = '99.50';
+
+    // First, create a trade intent that requires approval
+    const intent = await prisma.tradeIntent.create({
+      data: {
+        ticker: demoTicker,
+        dir: 'Long',
+        price: demoPrice,
+        status: 'pending', // Not approved yet
+        card_state: 'ARMED',
+        quality_tier: 'A',
+        quality_score: 85,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      }
+    });
+
+    // Create execution linked to this intent (will need approval)
+    // Set delay_expires_at far in the future so it doesn't auto-execute
+    const execution = await prisma.execution.create({
+      data: {
+        ticker: demoTicker,
+        dir: 'Long',
+        order_action: 'buy',
+        quantity: 10,
+        limit_price: demoPrice,
+        status: 'pending',
+        delay_expires_at: new Date(Date.now() + 60 * 60 * 1000), // 1 hour delay
+        intent_id: intent.id,
+        raw_payload: JSON.stringify({
+          event: 'ORDER',
+          ticker: demoTicker,
+          dir: 'Long',
+          price: demoPrice,
+          limit_price: demoPrice,
+          quantity: 10,
+          order_action: 'buy',
+          demo: true
+        })
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'demo_execution_created',
+        ticker: demoTicker,
+        details: JSON.stringify({
+          execution_id: execution.id,
+          intent_id: intent.id,
+          message: 'Demo execution created for testing approval flow'
+        })
+      }
+    });
+
+    console.log(`🎯 Demo execution created: ${execution.id} (linked to intent: ${intent.id})`);
+
+    res.status(201).json({
+      execution,
+      intent,
+      message: 'Demo execution created. Approve the order in the execution queue to see it execute.'
+    });
+  } catch (error: any) {
+    console.error('Error creating demo execution:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
