@@ -76,10 +76,43 @@ async function processExpiredDelays() {
             where: { id: execution.intent_id }
           });
 
-          // If intent exists but is NOT approved (swiped_on), skip execution
+          // If intent exists but is NOT approved (swiped_on), cancel the execution
+          // User didn't approve in time - order expires
           if (linkedIntent && linkedIntent.status !== 'swiped_on') {
-            console.log(`   ⏸️ Skipping ${execution.ticker} - awaiting approval (intent status: ${linkedIntent.status})`);
-            continue; // Skip this execution, check again next cycle
+            console.log(`   ❌ Cancelling ${execution.ticker} - not approved before delay expired (intent status: ${linkedIntent.status})`);
+
+            // Cancel the execution
+            await prisma.execution.update({
+              where: { id: execution.id },
+              data: {
+                status: 'cancelled',
+                error_message: 'Order not approved before delay expired'
+              }
+            });
+
+            // Also cancel/invalidate the linked intent
+            await prisma.tradeIntent.update({
+              where: { id: execution.intent_id },
+              data: {
+                status: 'cancelled',
+                card_state: 'INVALIDATED'
+              }
+            });
+
+            // Create audit log
+            await prisma.auditLog.create({
+              data: {
+                event_type: 'execution_expired',
+                ticker: execution.ticker,
+                details: JSON.stringify({
+                  execution_id: execution.id,
+                  intent_id: execution.intent_id,
+                  reason: 'Not approved before delay expired'
+                })
+              }
+            });
+
+            continue; // Move to next execution
           }
         }
 

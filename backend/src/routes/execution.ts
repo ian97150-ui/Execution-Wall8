@@ -336,7 +336,7 @@ router.post('/demo', async (req: Request, res: Response) => {
     });
 
     // Create execution linked to this intent (will need approval)
-    // Set delay_expires_at far in the future so it doesn't auto-execute
+    // Set delay_expires_at to 30 seconds for testing
     const execution = await prisma.execution.create({
       data: {
         ticker: demoTicker,
@@ -345,7 +345,7 @@ router.post('/demo', async (req: Request, res: Response) => {
         quantity: 10,
         limit_price: demoPrice,
         status: 'pending',
-        delay_expires_at: new Date(Date.now() + 60 * 60 * 1000), // 1 hour delay
+        delay_expires_at: new Date(Date.now() + 30 * 1000), // 30 second delay for testing
         intent_id: intent.id,
         raw_payload: JSON.stringify({
           event: 'ORDER',
