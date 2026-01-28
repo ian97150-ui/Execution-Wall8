@@ -505,6 +505,37 @@ export default function Dashboard() {
     }
   });
 
+  // Block wall alerts for a ticker (until end of day)
+  const blockWallAlertsMutation = useMutation({
+    mutationFn: async (ticker) => {
+      // Calculate 11:59 PM today
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 0, 0);
+
+      await api.put(`/ticker-configs/${ticker}`, {
+        enabled: false,
+        blocked_until: endOfDay.toISOString()
+      });
+
+      await api.post('/audit-logs', {
+        event_type: 'wall_alerts_blocked',
+        ticker: ticker,
+        details: JSON.stringify({
+          reason: 'User blocked wall alerts for today',
+          blocked_until: endOfDay.toISOString()
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Wall alerts blocked until 11:59 PM');
+    },
+    onError: () => {
+      toast.error('Failed to block alerts');
+    }
+  });
+
   // Check if limit edit is available for an intent
   const canEditLimit = useCallback((intent) => {
     if (!intent.limit_price) return false;
@@ -713,7 +744,9 @@ export default function Dashboard() {
                   <BlockedTickersList
                     blockedIntents={blockedIntents}
                     onRevive={(intent) => reviveTickerMutation.mutate(intent)}
+                    onBlockWallAlerts={(ticker) => blockWallAlertsMutation.mutate(ticker)}
                     isLoading={reviveTickerMutation.isPending}
+                    isBlockingAlerts={blockWallAlertsMutation.isPending}
                   />
                 </div>
               )}

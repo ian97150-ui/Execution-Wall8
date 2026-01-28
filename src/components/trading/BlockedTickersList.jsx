@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  TrendingUp, TrendingDown, RefreshCw, Ban, Clock
+  TrendingUp, TrendingDown, RefreshCw, Ban, Clock, ShieldOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -11,7 +11,9 @@ import QualityBadge from "./QualityBadge";
 export default function BlockedTickersList({
   blockedIntents = [],
   onRevive,
-  isLoading = false
+  onBlockWallAlerts,
+  isLoading = false,
+  isBlockingAlerts = false
 }) {
   // Deduplicate by ticker - keep only the most recent intent per ticker
   const uniqueBlockedIntents = React.useMemo(() => {
@@ -94,17 +96,30 @@ export default function BlockedTickersList({
                   </div>
                 </div>
 
-                {/* Revive Button */}
-                <Button
-                  onClick={() => onRevive?.(intent)}
-                  size="sm"
-                  variant="outline"
-                  className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
-                  disabled={isLoading}
-                >
-                  <RefreshCw className={cn("w-4 h-4 mr-1", isLoading && "animate-spin")} />
-                  Revive
-                </Button>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => onBlockWallAlerts?.(intent.ticker)}
+                    size="sm"
+                    variant="outline"
+                    className="border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
+                    disabled={isBlockingAlerts}
+                    title="Block all WALL alerts for this ticker today"
+                  >
+                    <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
+                    Block Alerts
+                  </Button>
+                  <Button
+                    onClick={() => onRevive?.(intent)}
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
+                    disabled={isLoading}
+                  >
+                    <RefreshCw className={cn("w-4 h-4 mr-1", isLoading && "animate-spin")} />
+                    Revive
+                  </Button>
+                </div>
               </motion.div>
             );
           })}
