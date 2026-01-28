@@ -507,19 +507,31 @@ async function handleWallSignal(data: {
     }
   });
 
-  // Send email notification for WALL signal
-  EmailNotifications.wallSignal(tickerUpper, {
-    action: isUpdate ? 'Updated' : 'Created',
-    side: dir,
-    price: tradeIntent.price,
-    strategy: strategy_id || 'N/A',
-    timeframe: tf || 'N/A',
-    gates_hit: `${finalGatesHit}/${finalGatesTotal}`,
-    confidence: `${Math.round(finalConfidence * 100)}%`,
-    quality_tier: finalQualityTier,
-    status: linkedExecutionId ? 'Auto-linked to ORDER' : 'Awaiting review',
-    auto_linked: linkedExecutionId ? 'Yes' : 'No'
-  }).catch(err => console.error('Email notification error:', err));
+  // Check if user already holds a position in this ticker - skip email if so
+  const existingPosition = await prisma.position.findFirst({
+    where: {
+      ticker: tickerUpper,
+      closed_at: null
+    }
+  });
+
+  // Send email notification for WALL signal (only if no existing position)
+  if (!existingPosition) {
+    EmailNotifications.wallSignal(tickerUpper, {
+      action: isUpdate ? 'Updated' : 'Created',
+      side: dir,
+      price: tradeIntent.price,
+      strategy: strategy_id || 'N/A',
+      timeframe: tf || 'N/A',
+      gates_hit: `${finalGatesHit}/${finalGatesTotal}`,
+      confidence: `${Math.round(finalConfidence * 100)}%`,
+      quality_tier: finalQualityTier,
+      status: linkedExecutionId ? 'Auto-linked to ORDER' : 'Awaiting review',
+      auto_linked: linkedExecutionId ? 'Yes' : 'No'
+    }).catch(err => console.error('Email notification error:', err));
+  } else {
+    console.log(`📧 Skipping WALL email for ${tickerUpper} - user already holds position`);
+  }
 
   return {
     intent_id: tradeIntent.id,
