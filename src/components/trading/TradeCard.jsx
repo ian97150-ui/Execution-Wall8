@@ -45,7 +45,7 @@ export default function TradeCard({
   const sideLabel = intent.dir?.toUpperCase();
 
   const getSecUrl = (ticker) => {
-    const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2C8-K12B%2C8-K12G3%2C8-K15D5%2CF-3%2CF-3ASR%2CF-3D%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-3%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3AFIN";
+    const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2CF-3%2CF-3ASR%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-1MEF%2CS-3%2CS-3ASR%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3%2C6-K";
     return `https://www.sec.gov/edgar/search/#/dateRange=30d&category=custom&entityName=${ticker}&forms=${forms}`;
   };
 
