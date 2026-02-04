@@ -100,6 +100,11 @@ model ExecutionSettings {
   pushover_enabled     Boolean @default(false)
   pushover_user_key    String?  // User's Pushover user key
   pushover_api_token   String?  // App API token from Pushover
+  pushover_on_wall     Boolean @default(true)  // Push when WALL signal received
+  pushover_on_order    Boolean @default(true)  // Push when ORDER received
+  pushover_on_approval Boolean @default(true)  // Push when signal approved
+  pushover_on_execution Boolean @default(true) // Push when order executed
+  pushover_on_close    Boolean @default(true)  // Push when position closed
 
   // Time-based mode scheduling
   use_time_schedules   Boolean @default(false)

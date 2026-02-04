@@ -79,7 +79,12 @@ export default function Settings() {
         // Pushover settings
         pushover_enabled: toBool(settings.pushover_enabled),
         pushover_user_key: settings.pushover_user_key || '',
-        pushover_api_token: settings.pushover_api_token || ''
+        pushover_api_token: settings.pushover_api_token || '',
+        pushover_on_wall: settings.pushover_on_wall !== 0 && settings.pushover_on_wall !== false,
+        pushover_on_order: settings.pushover_on_order !== 0 && settings.pushover_on_order !== false,
+        pushover_on_approval: settings.pushover_on_approval !== 0 && settings.pushover_on_approval !== false,
+        pushover_on_execution: settings.pushover_on_execution !== 0 && settings.pushover_on_execution !== false,
+        pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false
       });
     }
   }, [settings]);
@@ -679,9 +684,53 @@ export default function Settings() {
                   />
                 </div>
 
-                <div className="text-xs text-slate-400 p-2 bg-slate-800/30 rounded">
-                  <p>Push notifications use the same event preferences as email (above).</p>
-                  <p className="mt-1">High-priority sounds for ORDER and EXECUTED events.</p>
+                {/* Pushover Event Preferences */}
+                <div className="space-y-3 pt-2">
+                  <Label className="text-slate-300 text-sm">Push Notification Events</Label>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">WALL signal received</span>
+                    <Switch
+                      checked={formData.pushover_on_wall}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_wall: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">ORDER received</span>
+                    <Switch
+                      checked={formData.pushover_on_order}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_order: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">Signal approved</span>
+                    <Switch
+                      checked={formData.pushover_on_approval}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_approval: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">Order executed</span>
+                    <Switch
+                      checked={formData.pushover_on_execution}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_execution: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">Position closed</span>
+                    <Switch
+                      checked={formData.pushover_on_close}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_close: checked }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500 p-2">
+                  High-priority sounds for ORDER and EXECUTED events.
                 </div>
 
                 <div className="pt-3 border-t border-slate-700">

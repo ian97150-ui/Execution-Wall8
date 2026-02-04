@@ -82,13 +82,13 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
     return { send: false, userKey: null, apiToken: null };
   }
 
-  // Check individual event preferences (reuse email settings)
+  // Check individual Pushover event preferences
   const eventSettingMap: Record<PushoverEventType, string> = {
-    'wall_signal': 'notify_on_wall',
-    'order_received': 'notify_on_order_received',
-    'signal_approved': 'notify_on_approval',
-    'order_executed': 'notify_on_execution',
-    'position_closed': 'notify_on_close'
+    'wall_signal': 'pushover_on_wall',
+    'order_received': 'pushover_on_order',
+    'signal_approved': 'pushover_on_approval',
+    'order_executed': 'pushover_on_execution',
+    'position_closed': 'pushover_on_close'
   };
 
   const settingKey = eventSettingMap[eventType];

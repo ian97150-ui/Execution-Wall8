@@ -102,7 +102,12 @@ router.put('/', async (req: Request, res: Response) => {
       // Pushover settings
       pushover_enabled,
       pushover_user_key,
-      pushover_api_token
+      pushover_api_token,
+      pushover_on_wall,
+      pushover_on_order,
+      pushover_on_approval,
+      pushover_on_execution,
+      pushover_on_close
     } = req.body;
 
     // Get existing settings or create new
@@ -139,6 +144,11 @@ router.put('/', async (req: Request, res: Response) => {
     if (pushover_enabled !== undefined) updateData.pushover_enabled = pushover_enabled;
     if (pushover_user_key !== undefined) updateData.pushover_user_key = pushover_user_key;
     if (pushover_api_token !== undefined) updateData.pushover_api_token = pushover_api_token;
+    if (pushover_on_wall !== undefined) updateData.pushover_on_wall = pushover_on_wall;
+    if (pushover_on_order !== undefined) updateData.pushover_on_order = pushover_on_order;
+    if (pushover_on_approval !== undefined) updateData.pushover_on_approval = pushover_on_approval;
+    if (pushover_on_execution !== undefined) updateData.pushover_on_execution = pushover_on_execution;
+    if (pushover_on_close !== undefined) updateData.pushover_on_close = pushover_on_close;
 
     console.log('Updating settings with:', updateData);
 
