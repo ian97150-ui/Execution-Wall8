@@ -62,7 +62,8 @@ export async function handleWebhook(req: Request, res: Response) {
   let logId: string | undefined;
 
   try {
-    // Create webhook log entry (store raw payload verbatim - immutable truth layer)
+    // CRITICAL: TradingView has a 3-second timeout. We must respond FAST.
+    // Step 1: Quick write to database (acknowledge receipt)
     const log = await prisma.webhookLog.create({
       data: {
         source: 'tradingview',
@@ -72,6 +73,58 @@ export async function handleWebhook(req: Request, res: Response) {
     });
     logId = log.id;
 
+    // Step 2: Extract minimal info for immediate response
+    const { event, type, ticker, symbol, action } = req.body;
+    const normalizedTicker = ticker || symbol || 'UNKNOWN';
+    const signalType = (event || type || (action ? 'ORDER' : 'WALL')).toUpperCase();
+
+    // Step 3: IMMEDIATELY acknowledge receipt to TradingView (before processing)
+    // This prevents the 3-second timeout from dropping webhooks
+    res.status(200).json({
+      success: true,
+      received: true,
+      log_id: logId,
+      type: signalType,
+      ticker: normalizedTicker,
+      message: 'Webhook received, processing asynchronously'
+    });
+
+    // Step 4: Process webhook asynchronously (after response sent)
+    // Use setImmediate to ensure response is flushed first
+    setImmediate(async () => {
+      try {
+        await processWebhookAsync(req.body, logId!);
+      } catch (error: any) {
+        console.error(`❌ Async webhook processing error for ${logId}:`, error.message);
+        // Update log with error
+        await prisma.webhookLog.update({
+          where: { id: logId },
+          data: { status: 'error', error: error.message }
+        }).catch(e => console.error('Failed to update webhook log:', e));
+      }
+    });
+
+    return; // Response already sent
+
+  } catch (error: any) {
+    console.error('❌ Webhook receive error:', error.message);
+
+    // Only send error response if we haven't already responded
+    if (!res.headersSent) {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+}
+
+/**
+ * Async webhook processor - runs after immediate acknowledgment
+ * This contains all the heavy processing that was causing timeouts
+ */
+async function processWebhookAsync(body: any, logId: string) {
+  try {
     const {
       // New WALL format fields
       event,
@@ -100,7 +153,7 @@ export async function handleWebhook(req: Request, res: Response) {
       price_ticks,        // Integer ticks for price (WALL signals)
       limit_price_ticks,  // Integer ticks for limit_price (ORDER/EXIT signals)
       mintick             // Tick size multiplier (e.g., 0.01)
-    } = req.body;
+    } = body;
 
     // Helper: Reconstruct price from ticks: limitPx = ticks * mintick
     const reconstructPrice = (
@@ -163,7 +216,7 @@ export async function handleWebhook(req: Request, res: Response) {
           primary_blocker,
           card_state,
           limit_price: normalizedLimitPrice,  // Use reconstructed limit price
-          raw_payload: req.body
+          raw_payload: body
         });
         break;
 
@@ -210,42 +263,29 @@ export async function handleWebhook(req: Request, res: Response) {
           primary_blocker,
           card_state,
           limit_price: normalizedLimitPrice,  // Use reconstructed limit price
-          raw_payload: req.body
+          raw_payload: body
         });
     }
 
-    // Update webhook log as success
+    // Update webhook log as success (response already sent)
     await prisma.webhookLog.update({
       where: { id: logId },
       data: { status: 'success' }
     });
 
-    console.log(`✅ Webhook processed: ${signalType} ${normalizedTicker} ${normalizedDir || ''}`);
-
-    res.status(200).json({
-      success: true,
-      type: signalType,
-      ...result
-    });
+    console.log(`✅ Webhook processed: ${signalType} ${normalizedTicker} ${normalizedDir || ''} (log: ${logId})`);
 
   } catch (error: any) {
-    console.error('❌ Webhook error:', error.message);
+    console.error('❌ Async webhook processing error:', error.message);
 
-    // Update webhook log with error
-    if (logId) {
-      await prisma.webhookLog.update({
-        where: { id: logId },
-        data: {
-          status: 'error',
-          error: error.message
-        }
-      }).catch(err => console.error('Failed to update webhook log:', err));
-    }
-
-    res.status(400).json({
-      success: false,
-      error: error.message
-    });
+    // Update webhook log with error (response already sent, so just log)
+    await prisma.webhookLog.update({
+      where: { id: logId },
+      data: {
+        status: 'error',
+        error: error.message
+      }
+    }).catch(err => console.error('Failed to update webhook log:', err));
   }
 }
 
