@@ -19,6 +19,12 @@ interface PushoverPayload {
   priority?: PushoverPriority;
 }
 
+interface PushoverResponse {
+  status: number;
+  request?: string;
+  errors?: string[];
+}
+
 const PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json';
 
 /**
@@ -193,7 +199,7 @@ export async function sendPushoverNotification(payload: PushoverPayload): Promis
       body: formData
     });
 
-    const result = await response.json();
+    const result = await response.json() as PushoverResponse;
 
     if (result.status !== 1) {
       console.error(`❌ Pushover error for ${eventType}:`, result.errors);
@@ -226,7 +232,7 @@ export async function sendTestPushover(userKey: string, apiToken: string): Promi
       body: formData
     });
 
-    const result = await response.json();
+    const result = await response.json() as PushoverResponse;
 
     if (result.status !== 1) {
       return { success: false, error: result.errors?.join(', ') || 'Unknown error' };
