@@ -229,4 +229,52 @@ router.post('/:id/invalidate', async (req: Request, res: Response) => {
   }
 });
 
+// Create demo WALL card (for testing)
+router.post('/demo', async (req: Request, res: Response) => {
+  try {
+    // Sample tickers for demo
+    const demoTickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META'];
+    const randomTicker = demoTickers[Math.floor(Math.random() * demoTickers.length)];
+    const randomPrice = (50 + Math.random() * 450).toFixed(2);
+    const isLong = Math.random() > 0.3; // 70% long, 30% short
+    const qualityTiers = ['S', 'A', 'B', 'C'];
+    const randomTier = qualityTiers[Math.floor(Math.random() * qualityTiers.length)];
+    const randomScore = Math.floor(60 + Math.random() * 40); // 60-100
+
+    const intent = await prisma.tradeIntent.create({
+      data: {
+        ticker: randomTicker,
+        dir: isLong ? 'Long' : 'Short',
+        price: randomPrice,
+        status: 'pending',
+        card_state: 'ELIGIBLE',
+        quality_tier: randomTier,
+        quality_score: randomScore,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'demo_wall_created',
+        ticker: randomTicker,
+        details: JSON.stringify({
+          intent_id: intent.id,
+          message: 'Demo WALL card created for testing'
+        })
+      }
+    });
+
+    console.log(`🎯 Demo WALL card created: ${intent.ticker} (${intent.dir}) @ $${intent.price}`);
+
+    res.status(201).json({
+      intent,
+      message: `Demo WALL card created: ${intent.ticker}`
+    });
+  } catch (error: any) {
+    console.error('Error creating demo WALL card:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

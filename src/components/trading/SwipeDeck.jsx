@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { Inbox, RefreshCw } from "lucide-react";
+import { Inbox, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TradeCard from "./TradeCard";
 
@@ -14,7 +14,9 @@ export default function SwipeDeck({
   onRefresh,
   isLoading = false,
   tickers = [],
-  tradingviewChartId
+  tradingviewChartId,
+  onCreateDemo,
+  isDemoLoading = false
 }) {
   // Show up to 3 cards stacked
   const visibleCards = intents.slice(0, 3);
@@ -29,16 +31,30 @@ export default function SwipeDeck({
         <p className="text-sm text-slate-500 mb-4 max-w-xs">
           Waiting for signals from TradingView that meet your gate threshold
         </p>
-        <Button 
-          onClick={onRefresh}
-          variant="outline"
-          size="sm"
-          disabled={isLoading}
-          className="border-slate-700 text-slate-400"
-        >
-          <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={onRefresh}
+            variant="outline"
+            size="sm"
+            disabled={isLoading}
+            className="border-slate-700 text-slate-400"
+          >
+            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+            Refresh
+          </Button>
+          {onCreateDemo && (
+            <Button
+              onClick={onCreateDemo}
+              variant="outline"
+              size="sm"
+              disabled={isDemoLoading}
+              className="border-amber-500/50 text-amber-400 hover:bg-amber-500/20"
+            >
+              <Sparkles className={cn("w-4 h-4 mr-2", isDemoLoading && "animate-pulse")} />
+              Demo Card
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

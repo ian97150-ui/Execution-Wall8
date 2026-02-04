@@ -410,6 +410,22 @@ export default function Dashboard() {
     }
   });
 
+  // Create demo WALL card for testing
+  const createDemoWallMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/trade-intents/demo');
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success(`Demo WALL card created: ${data.intent.ticker}`);
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.error || 'Failed to create demo');
+    }
+  });
+
   const blockSignalsMutation = useMutation({
     mutationFn: async (position) => {
       // Calculate 1am next day
@@ -723,6 +739,8 @@ export default function Dashboard() {
                   isLoading={candidatesLoading}
                   tickers={tickers}
                   tradingviewChartId={settings?.tradingview_chart_id}
+                  onCreateDemo={() => createDemoWallMutation.mutate()}
+                  isDemoLoading={createDemoWallMutation.isPending}
                 />
               )}
 
