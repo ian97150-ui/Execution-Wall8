@@ -1,6 +1,7 @@
 import { prisma } from '../index';
 import { forwardToBroker } from './brokerWebhook';
 import { EmailNotifications } from './emailService';
+import { PushoverNotifications } from './pushoverService';
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 
@@ -70,8 +71,11 @@ async function processExpiredDelays() {
 
     for (const execution of expiredExecutions) {
       try {
-        // In safe mode, check if linked intent is approved before executing
+        // In safe mode, REQUIRE a linked approved intent before executing
+        // This prevents orders from executing without explicit user approval
+
         if (execution.intent_id) {
+          // Has linked intent - check if it's approved
           const linkedIntent = await prisma.tradeIntent.findUnique({
             where: { id: execution.intent_id }
           });
@@ -113,6 +117,77 @@ async function processExpiredDelays() {
             });
 
             continue; // Move to next execution
+          }
+        } else {
+          // NO linked intent - check if there's a rejected/blocked intent for this ticker
+          // Also check if there's an approved intent we can link to
+          const existingIntent = await prisma.tradeIntent.findFirst({
+            where: {
+              ticker: execution.ticker,
+              expires_at: { gt: new Date() }
+            },
+            orderBy: { updated_at: 'desc' }
+          });
+
+          if (existingIntent) {
+            if (existingIntent.status === 'swiped_on') {
+              // Found an approved intent - link it and continue to execution
+              await prisma.execution.update({
+                where: { id: execution.id },
+                data: { intent_id: existingIntent.id }
+              });
+              console.log(`   🔗 Late-linked ${execution.ticker} to approved intent ${existingIntent.id}`);
+            } else {
+              // Intent exists but not approved - cancel
+              console.log(`   ❌ Cancelling ${execution.ticker} - found unapproved intent (status: ${existingIntent.status})`);
+
+              await prisma.execution.update({
+                where: { id: execution.id },
+                data: {
+                  status: 'cancelled',
+                  error_message: `Order cancelled - intent was ${existingIntent.status}`
+                }
+              });
+
+              await prisma.auditLog.create({
+                data: {
+                  event_type: 'execution_cancelled_no_approval',
+                  ticker: execution.ticker,
+                  details: JSON.stringify({
+                    execution_id: execution.id,
+                    found_intent_id: existingIntent.id,
+                    intent_status: existingIntent.status,
+                    reason: 'Found unapproved intent for ticker'
+                  })
+                }
+              });
+
+              continue;
+            }
+          } else {
+            // No intent exists at all - cancel execution (safe mode requires approval)
+            console.log(`   ❌ Cancelling ${execution.ticker} - no WALL intent found (safe mode requires approval)`);
+
+            await prisma.execution.update({
+              where: { id: execution.id },
+              data: {
+                status: 'cancelled',
+                error_message: 'No approved WALL intent found - safe mode requires approval'
+              }
+            });
+
+            await prisma.auditLog.create({
+              data: {
+                event_type: 'execution_cancelled_no_intent',
+                ticker: execution.ticker,
+                details: JSON.stringify({
+                  execution_id: execution.id,
+                  reason: 'No WALL intent found - safe mode requires explicit approval'
+                })
+              }
+            });
+
+            continue;
           }
         }
 
@@ -187,8 +262,8 @@ async function processExpiredDelays() {
           console.log(`      ⚠️ Broker forward failed: ${brokerResult.error}`);
         }
 
-        // Send email notification for order executed
-        EmailNotifications.orderExecuted(execution.ticker, {
+        // Send notifications for order executed
+        const executedNotificationData = {
           action: execution.order_action,
           side: execution.dir,
           quantity: execution.quantity,
@@ -196,7 +271,9 @@ async function processExpiredDelays() {
           status: 'executed',
           broker_result: brokerResult.success ? 'forwarded' : 'failed',
           trigger: 'delay_expired'
-        }).catch(err => console.error('Email notification error:', err));
+        };
+        EmailNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Email notification error:', err));
+        PushoverNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Pushover notification error:', err));
 
       } catch (execError: any) {
         console.error(`   ❌ Failed to auto-execute ${execution.id}:`, execError.message);

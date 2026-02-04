@@ -96,6 +96,11 @@ model ExecutionSettings {
   notify_on_execution  Boolean @default(true)
   notify_on_close      Boolean @default(true)
 
+  // Pushover notification settings (iPhone push notifications)
+  pushover_enabled     Boolean @default(false)
+  pushover_user_key    String?  // User's Pushover user key
+  pushover_api_token   String?  // App API token from Pushover
+
   // Time-based mode scheduling
   use_time_schedules   Boolean @default(false)
   timezone             String  @default("America/New_York")

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../index';
 import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
 import { EmailNotifications } from '../services/emailService';
+import { PushoverNotifications } from '../services/pushoverService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -515,9 +516,9 @@ async function handleWallSignal(data: {
     }
   });
 
-  // Send email notification for WALL signal (only if no existing position)
+  // Send notifications for WALL signal (only if no existing position)
   if (!existingPosition) {
-    EmailNotifications.wallSignal(tickerUpper, {
+    const wallNotificationData = {
       action: isUpdate ? 'Updated' : 'Created',
       side: dir,
       price: tradeIntent.price,
@@ -528,9 +529,11 @@ async function handleWallSignal(data: {
       quality_tier: finalQualityTier,
       status: linkedExecutionId ? 'Auto-linked to ORDER' : 'Awaiting review',
       auto_linked: linkedExecutionId ? 'Yes' : 'No'
-    }).catch(err => console.error('Email notification error:', err));
+    };
+    EmailNotifications.wallSignal(tickerUpper, wallNotificationData).catch(err => console.error('Email notification error:', err));
+    PushoverNotifications.wallSignal(tickerUpper, wallNotificationData).catch(err => console.error('Pushover notification error:', err));
   } else {
-    console.log(`📧 Skipping WALL email for ${tickerUpper} - user already holds position`);
+    console.log(`📧 Skipping WALL notifications for ${tickerUpper} - user already holds position`);
   }
 
   return {
@@ -612,25 +615,26 @@ async function handleOrderSignal(data: {
     };
   }
 
-  // Check if the corresponding WALL intent was denied - block the order
-  const deniedIntent = await prisma.tradeIntent.findFirst({
+  // Check if the corresponding WALL intent was denied or swiped off - block the order
+  const rejectedIntent = await prisma.tradeIntent.findFirst({
     where: {
       ticker: tickerUpper,
-      status: 'swiped_deny',
+      status: { in: ['swiped_deny', 'swiped_off'] },
       expires_at: { gt: new Date() }  // Only check non-expired intents
     },
     orderBy: { updated_at: 'desc' }
   });
 
-  if (deniedIntent) {
-    console.warn(`⚠️ ORDER signal blocked for ${tickerUpper} - intent was denied (id: ${deniedIntent.id})`);
+  if (rejectedIntent) {
+    const reasonText = rejectedIntent.status === 'swiped_deny' ? 'denied' : 'blocked';
+    console.warn(`⚠️ ORDER signal blocked for ${tickerUpper} - intent was ${reasonText} (id: ${rejectedIntent.id})`);
     releaseSymbolLock(tickerUpper, 'order');
     return {
       execution_id: null,
-      message: `Order blocked - ${tickerUpper} signal was denied by user`,
+      message: `Order blocked - ${tickerUpper} signal was ${reasonText} by user`,
       blocked: true,
-      reason: 'intent_denied',
-      denied_intent_id: deniedIntent.id
+      reason: rejectedIntent.status === 'swiped_deny' ? 'intent_denied' : 'intent_blocked',
+      rejected_intent_id: rejectedIntent.id
     };
   }
 
@@ -789,8 +793,8 @@ async function handleOrderSignal(data: {
       }
     });
 
-    // Send email notification for order received
-    EmailNotifications.orderReceived(tickerUpper, {
+    // Send notifications for order received
+    const orderReceivedData = {
       action,
       side: finalDir,
       quantity: quantity || 1,
@@ -798,17 +802,21 @@ async function handleOrderSignal(data: {
       execution_mode: executionMode,
       auto_linked: linkedIntentId ? 'yes' : 'no',
       broker_result: isFullMode ? (brokerResult.success ? 'forwarded' : 'failed') : 'pending'
-    }).catch(err => console.error('Email notification error:', err));
+    };
+    EmailNotifications.orderReceived(tickerUpper, orderReceivedData).catch(err => console.error('Email notification error:', err));
+    PushoverNotifications.orderReceived(tickerUpper, orderReceivedData).catch(err => console.error('Pushover notification error:', err));
 
     // If executed immediately in full mode, also send execution notification
     if (isFullMode && brokerResult.success) {
-      EmailNotifications.orderExecuted(tickerUpper, {
+      const orderExecutedData = {
         action,
         side: finalDir,
         quantity: quantity || 1,
         limit_price: finalLimitPrice,
         status: 'executed'
-      }).catch(err => console.error('Email notification error:', err));
+      };
+      EmailNotifications.orderExecuted(tickerUpper, orderExecutedData).catch(err => console.error('Email notification error:', err));
+      PushoverNotifications.orderExecuted(tickerUpper, orderExecutedData).catch(err => console.error('Pushover notification error:', err));
     }
 
     return {
@@ -1026,17 +1034,19 @@ async function handleExitSignal(data: {
       }
     });
 
-    // If position was closed in full mode, send email notification
+    // If position was closed in full mode, send notifications
     if (isFullMode && openPosition && brokerResult.success) {
       const positionWasClosed = (openPosition.quantity - exitQty) <= 0;
       if (positionWasClosed) {
-        EmailNotifications.positionClosed(tickerUpper, {
+        const positionClosedData = {
           action,
           quantity: exitQty,
           limit_price: finalLimitPrice,
           position_side: openPosition.side,
           status: 'closed'
-        }).catch(err => console.error('Email notification error:', err));
+        };
+        EmailNotifications.positionClosed(tickerUpper, positionClosedData).catch(err => console.error('Email notification error:', err));
+        PushoverNotifications.positionClosed(tickerUpper, positionClosedData).catch(err => console.error('Pushover notification error:', err));
       }
     }
 

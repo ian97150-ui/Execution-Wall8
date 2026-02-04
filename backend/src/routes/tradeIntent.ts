@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../index';
 import { EmailNotifications } from '../services/emailService';
+import { PushoverNotifications } from '../services/pushoverService';
 
 const router = express.Router();
 
@@ -178,15 +179,17 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
 
     console.log(`✅ Trade intent ${id} swiped: ${action}`);
 
-    // Send email notification for signal approval
+    // Send notifications for signal approval
     if (action === 'approve') {
-      EmailNotifications.signalApproved(intent.ticker, {
+      const approvalNotificationData = {
         action: 'approved',
         side: intent.dir,
         price: intent.price,
         quality_tier: intent.quality_tier,
         quality_score: intent.quality_score
-      }).catch(err => console.error('Email notification error:', err));
+      };
+      EmailNotifications.signalApproved(intent.ticker, approvalNotificationData).catch(err => console.error('Email notification error:', err));
+      PushoverNotifications.signalApproved(intent.ticker, approvalNotificationData).catch(err => console.error('Pushover notification error:', err));
     }
 
     res.json(updatedIntent);

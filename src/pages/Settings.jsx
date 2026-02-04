@@ -6,7 +6,7 @@ import { createPageUrl } from "@/utils";
 import {
   ArrowLeft, Save, Clock, Shield, Sliders,
   Webhook, Bell, BarChart3, AlertTriangle, Info, Zap, Plus, Trash2,
-  ExternalLink, Send
+  ExternalLink, Send, Smartphone
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +75,11 @@ export default function Settings() {
         notify_on_close: settings.notify_on_close !== 0 && settings.notify_on_close !== false,
         use_time_schedules: toBool(settings.use_time_schedules),
         timezone: settings.timezone || 'America/New_York',
-        tradingview_chart_id: settings.tradingview_chart_id || ''
+        tradingview_chart_id: settings.tradingview_chart_id || '',
+        // Pushover settings
+        pushover_enabled: toBool(settings.pushover_enabled),
+        pushover_user_key: settings.pushover_user_key || '',
+        pushover_api_token: settings.pushover_api_token || ''
       });
     }
   }, [settings]);
@@ -606,6 +610,106 @@ export default function Settings() {
                     className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
                   >
                     Send Test Email
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pushover Notifications (iPhone Push) */}
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Smartphone className="w-5 h-5 text-green-400" />
+              Push Notifications (Pushover)
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              Instant push notifications to your iPhone
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+              <div>
+                <Label className="text-slate-300">Enable Push Notifications</Label>
+                <p className="text-xs text-slate-500 mt-1">
+                  Get instant alerts on your phone via Pushover
+                </p>
+              </div>
+              <Switch
+                checked={formData.pushover_enabled}
+                onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_enabled: checked }))}
+              />
+            </div>
+
+            {formData.pushover_enabled && (
+              <>
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info className="w-4 h-4 text-green-400" />
+                    <span className="text-xs font-semibold text-green-300">Setup Instructions</span>
+                  </div>
+                  <ol className="text-[11px] text-green-200 space-y-1 list-decimal list-inside">
+                    <li>Download Pushover app from App Store ($5 one-time)</li>
+                    <li>Create account at <a href="https://pushover.net" target="_blank" rel="noopener" className="underline">pushover.net</a></li>
+                    <li>Copy your <strong>User Key</strong> from dashboard</li>
+                    <li>Create an Application to get an <strong>API Token</strong></li>
+                  </ol>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-slate-300">User Key</Label>
+                  <Input
+                    type="text"
+                    placeholder="Your Pushover User Key"
+                    value={formData.pushover_user_key}
+                    onChange={(e) => setFormData(f => ({ ...f, pushover_user_key: e.target.value }))}
+                    className="bg-slate-800 border-slate-700 text-white font-mono"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-slate-300">API Token</Label>
+                  <Input
+                    type="text"
+                    placeholder="Your Application API Token"
+                    value={formData.pushover_api_token}
+                    onChange={(e) => setFormData(f => ({ ...f, pushover_api_token: e.target.value }))}
+                    className="bg-slate-800 border-slate-700 text-white font-mono"
+                  />
+                </div>
+
+                <div className="text-xs text-slate-400 p-2 bg-slate-800/30 rounded">
+                  <p>Push notifications use the same event preferences as email (above).</p>
+                  <p className="mt-1">High-priority sounds for ORDER and EXECUTED events.</p>
+                </div>
+
+                <div className="pt-3 border-t border-slate-700">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        toast.info('Sending test notification...');
+                        const response = await api.post('/settings/test-pushover', {
+                          user_key: formData.pushover_user_key,
+                          api_token: formData.pushover_api_token
+                        });
+                        if (response.data.success) {
+                          toast.success('Test notification sent to your device!');
+                        } else {
+                          toast.error(response.data.error || 'Test failed');
+                        }
+                      } catch (err) {
+                        console.error('Test pushover error:', err.response?.data || err);
+                        toast.error(err.response?.data?.error || 'Failed to send test notification');
+                      }
+                    }}
+                    disabled={!formData.pushover_user_key || !formData.pushover_api_token}
+                    className="w-full border-green-500/50 text-green-400 hover:bg-green-500/20"
+                  >
+                    Send Test Notification
                   </Button>
                 </div>
               </>

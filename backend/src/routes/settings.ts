@@ -98,7 +98,11 @@ router.put('/', async (req: Request, res: Response) => {
       notify_on_close,
       use_time_schedules,
       timezone,
-      tradingview_chart_id
+      tradingview_chart_id,
+      // Pushover settings
+      pushover_enabled,
+      pushover_user_key,
+      pushover_api_token
     } = req.body;
 
     // Get existing settings or create new
@@ -131,6 +135,10 @@ router.put('/', async (req: Request, res: Response) => {
     if (use_time_schedules !== undefined) updateData.use_time_schedules = use_time_schedules;
     if (timezone !== undefined) updateData.timezone = timezone;
     if (tradingview_chart_id !== undefined) updateData.tradingview_chart_id = tradingview_chart_id;
+    // Pushover settings
+    if (pushover_enabled !== undefined) updateData.pushover_enabled = pushover_enabled;
+    if (pushover_user_key !== undefined) updateData.pushover_user_key = pushover_user_key;
+    if (pushover_api_token !== undefined) updateData.pushover_api_token = pushover_api_token;
 
     console.log('Updating settings with:', updateData);
 
@@ -211,6 +219,56 @@ router.post('/test-email', async (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('❌ Test email error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Test Pushover notification
+router.post('/test-pushover', async (req: Request, res: Response) => {
+  console.log('📱 Test Pushover endpoint called');
+
+  try {
+    const { sendTestPushover } = await import('../services/pushoverService');
+
+    // Get credentials from request body or settings
+    let userKey = req.body.user_key;
+    let apiToken = req.body.api_token;
+
+    if (!userKey || !apiToken) {
+      const settings = await getSettingsSafe();
+      userKey = userKey || settings?.pushover_user_key;
+      apiToken = apiToken || settings?.pushover_api_token;
+    }
+
+    if (!userKey || !apiToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pushover credentials not configured. Enter your User Key and API Token first.'
+      });
+    }
+
+    console.log('📱 Sending test Pushover notification...');
+
+    const result = await sendTestPushover(userKey, apiToken);
+
+    if (result.success) {
+      console.log('✅ Test Pushover sent successfully');
+      res.json({
+        success: true,
+        message: 'Test notification sent to your device'
+      });
+    } else {
+      console.error('❌ Test Pushover failed:', result.error);
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ Test Pushover error:', error.message);
     res.status(500).json({
       success: false,
       error: error.message
