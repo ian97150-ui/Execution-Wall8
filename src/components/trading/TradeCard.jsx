@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  TrendingUp, TrendingDown, ExternalLink, Clock, 
-  Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2
+import {
+  TrendingUp, TrendingDown, ExternalLink, Clock,
+  Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
@@ -43,6 +43,11 @@ export default function TradeCard({
   const sideColor = isLong ? "emerald" : "rose";
   const SideIcon = isLong ? TrendingUp : TrendingDown;
   const sideLabel = intent.dir?.toUpperCase();
+
+  const getSecUrl = (ticker) => {
+    const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2C8-K12B%2C8-K12G3%2C8-K15D5%2CF-3%2CF-3ASR%2CF-3D%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-3%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3AFIN";
+    return `https://www.sec.gov/edgar/search/#/dateRange=30d&category=custom&q=${ticker}&forms=${forms}`;
+  };
 
   const formatPrice = (price) => {
     if (!price || price === undefined || price === null) return "—";
@@ -132,16 +137,27 @@ export default function TradeCard({
                   </span>
                 )}
               </div>
-              <button
-                className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
-                  window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
-                }}
-              >
-                View Chart <ExternalLink className="w-3 h-3" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
+                    window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
+                  }}
+                >
+                  View Chart <ExternalLink className="w-3 h-3" />
+                </button>
+                <button
+                  className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(getSecUrl(intent.ticker), '_blank', 'noopener,noreferrer');
+                  }}
+                >
+                  SEC <FileText className="w-3 h-3" />
+                </button>
+              </div>
             </div>
             <QualityBadge tier={intent.quality_tier || "B"} score={intent.quality_score} size="large" />
           </div>
@@ -195,17 +211,30 @@ export default function TradeCard({
 
           {/* Action buttons for non-swipe interaction */}
           <div className="space-y-3 pt-3">
-            <Button
-              variant="outline"
-              className="w-full h-14 text-base font-semibold border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
-              onClick={(e) => {
-                e.stopPropagation();
-                const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
-                window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
-              }}
-            >
-              Open Chart
-            </Button>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 h-14 text-base font-semibold border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
+                  window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                Open Chart
+              </Button>
+              <Button
+                variant="outline"
+                className="h-14 px-6 text-base font-semibold border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(getSecUrl(intent.ticker), '_blank', 'noopener,noreferrer');
+                }}
+              >
+                <FileText className="w-5 h-5 mr-2" />
+                SEC
+              </Button>
+            </div>
             <div className="flex gap-3">
               <Button 
                 onClick={(e) => { e.stopPropagation(); handleAction('off'); }}
