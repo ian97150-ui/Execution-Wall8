@@ -148,15 +148,15 @@ export default function TradeCard({
                 >
                   View Chart <ExternalLink className="w-3 h-3" />
                 </button>
-                <button
+                <a
+                  href={getSecUrl(intent.ticker)}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.open(getSecUrl(intent.ticker), '_blank', 'noopener,noreferrer');
-                  }}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   SEC <FileText className="w-3 h-3" />
-                </button>
+                </a>
               </div>
             </div>
             <QualityBadge tier={intent.quality_tier || "B"} score={intent.quality_score} size="large" />
