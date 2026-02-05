@@ -330,7 +330,7 @@ export default function Settings() {
               <Slider
                 value={[formData.exit_delay_seconds]}
                 min={0}
-                max={60}
+                max={120}
                 step={5}
                 onValueChange={(v) => setFormData(f => ({ ...f, exit_delay_seconds: v[0] }))}
                 className="[&_[role=slider]]:bg-red-400"
