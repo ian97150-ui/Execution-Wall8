@@ -71,10 +71,23 @@ async function processExpiredDelays() {
 
     for (const execution of expiredExecutions) {
       try {
-        // In safe mode, REQUIRE a linked approved intent before executing
-        // This prevents orders from executing without explicit user approval
+        // Check if this is an EXIT signal (bypasses approval requirement)
+        let isExitSignal = false;
+        if (execution.raw_payload) {
+          try {
+            const payload = JSON.parse(execution.raw_payload);
+            isExitSignal = payload.event === 'EXIT';
+          } catch (e) {
+            // Invalid JSON, not an exit signal
+          }
+        }
 
-        if (execution.intent_id) {
+        // EXIT signals bypass approval - they always execute after delay
+        // This is because exits reduce risk (closing positions) and the original entry was already approved
+        if (isExitSignal) {
+          console.log(`   🚪 EXIT signal for ${execution.ticker} - bypassing approval (auto-execute)`);
+          // Skip directly to execution (fall through to execution logic below)
+        } else if (execution.intent_id) {
           // Has linked intent - check if it's approved
           const linkedIntent = await prisma.tradeIntent.findUnique({
             where: { id: execution.intent_id }

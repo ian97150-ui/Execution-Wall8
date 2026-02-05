@@ -61,6 +61,7 @@ export default function Settings() {
       setFormData({
         execution_mode: settings.execution_mode || 'safe',
         default_delay_bars: settings.default_delay_bars || 2,
+        exit_delay_seconds: settings.exit_delay_seconds ?? 10,
         gate_threshold: settings.gate_threshold || 5,
         limit_edit_window: settings.limit_edit_window || 120,
         max_adjustment_pct: settings.max_adjustment_pct || 2.0,
@@ -319,6 +320,27 @@ export default function Settings() {
               />
               <p className="text-xs text-slate-500">
                 Number of bars to wait before executing a trade
+              </p>
+            </div>
+
+            {/* EXIT Signal Delay */}
+            <div className="space-y-4 pt-4 border-t border-slate-700">
+              <div className="flex items-center justify-between">
+                <Label className="text-slate-300">EXIT Signal Delay (seconds)</Label>
+                <span className="text-lg font-bold text-white font-mono">
+                  {formData.exit_delay_seconds}s
+                </span>
+              </div>
+              <Slider
+                value={[formData.exit_delay_seconds]}
+                min={0}
+                max={60}
+                step={5}
+                onValueChange={(v) => setFormData(f => ({ ...f, exit_delay_seconds: v[0] }))}
+                className="[&_[role=slider]]:bg-red-400"
+              />
+              <p className="text-xs text-slate-500">
+                EXIT signals execute after this delay without requiring approval. Set to 0 for immediate execution.
               </p>
             </div>
           </CardContent>

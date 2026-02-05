@@ -83,6 +83,9 @@ model ExecutionSettings {
   limit_edit_window    Int     @default(120) // seconds
   max_adjustment_pct   Decimal @default(2.0)
 
+  // EXIT signal settings
+  exit_delay_seconds   Int     @default(10) // Delay for EXIT signals (bypasses approval)
+
   // Broker webhook settings
   broker_webhook_url   String?  // URL to forward approved orders to broker
   broker_webhook_enabled Boolean @default(false)

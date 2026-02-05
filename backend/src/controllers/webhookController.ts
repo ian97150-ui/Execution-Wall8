@@ -992,16 +992,21 @@ async function handleExitSignal(data: {
     position_id: openPosition?.id || null
   });
 
-  // Get settings for execution mode and delay configuration
+  // Get settings for execution mode and EXIT-specific delay
   const settings = await getSettingsSafe();
   const executionMode = settings?.execution_mode || 'safe';
-  const delayBars = settings?.default_delay_bars || 2;
-  const barDuration = settings?.bar_duration_minutes || 1;
-  const delayMinutes = delayBars * barDuration;
-  const delayExpiresAt = new Date(Date.now() + delayMinutes * 60 * 1000);
 
-  // In "full" mode, execute immediately. In "safe" mode, create pending with delay.
-  const isFullMode = executionMode === 'full';
+  // EXIT signals use their own shorter delay (bypasses normal approval flow)
+  // Default: 10 seconds. Can be set to 0 for immediate execution.
+  const exitDelaySeconds = (settings as any)?.exit_delay_seconds ?? 10;
+  const delayExpiresAt = exitDelaySeconds > 0
+    ? new Date(Date.now() + exitDelaySeconds * 1000)
+    : null;
+
+  // EXIT signals execute immediately if:
+  // 1. Full mode, OR
+  // 2. exit_delay_seconds is 0
+  const isImmediateExecution = executionMode === 'full' || exitDelaySeconds === 0;
 
   // Create Execution for exit
   // Note: order_type and position_id are stored in raw_payload for backwards compatibility
@@ -1012,16 +1017,16 @@ async function handleExitSignal(data: {
       order_action: action,
       quantity: exitQty,
       limit_price: finalLimitPrice ? finalLimitPrice.toString() : null,
-      status: isFullMode ? 'executing' : 'pending',
-      delay_expires_at: isFullMode ? null : delayExpiresAt,
+      status: isImmediateExecution ? 'executing' : 'pending',
+      delay_expires_at: isImmediateExecution ? null : delayExpiresAt,
       raw_payload: orderPayload  // Contains event: 'EXIT' and position_id for identification
     }
   });
 
   let brokerResult: { success: boolean; error?: string } = { success: false };
 
-  // In full mode, forward to broker immediately and close position
-  if (isFullMode) {
+  // Execute immediately if full mode OR exit_delay is 0
+  if (isImmediateExecution) {
     const { forwardToBroker } = await import('../services/brokerWebhook');
     brokerResult = await forwardToBroker(execution);
 
@@ -1057,7 +1062,7 @@ async function handleExitSignal(data: {
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        event_type: isFullMode ? 'exit_immediate' : 'exit_created',
+        event_type: isImmediateExecution ? 'exit_immediate' : 'exit_created',
         ticker: tickerUpper,
         details: JSON.stringify({
           execution_id: execution.id,
@@ -1069,13 +1074,14 @@ async function handleExitSignal(data: {
           position_quantity: positionQty,
           limit_price: finalLimitPrice,
           mode: executionMode,
-          broker_forwarded: isFullMode ? brokerResult.success : null
+          exit_delay_seconds: exitDelaySeconds,
+          broker_forwarded: isImmediateExecution ? brokerResult.success : null
         })
       }
     });
 
-    // If position was closed in full mode, send notifications
-    if (isFullMode && openPosition && brokerResult.success) {
+    // If position was closed immediately, send notifications
+    if (isImmediateExecution && openPosition && brokerResult.success) {
       const positionWasClosed = (openPosition.quantity - exitQty) <= 0;
       if (positionWasClosed) {
         const positionClosedData = {
@@ -1095,13 +1101,12 @@ async function handleExitSignal(data: {
       position_id: openPosition?.id,
       position_quantity: positionQty,
       exit_quantity: exitQty,
-      message: isFullMode
-        ? `Exit executed immediately (full mode)${brokerResult.success ? ' - forwarded to broker' : ''}`
-        : (openPosition
-            ? `Exit order created for position ${openPosition.id}`
-            : 'Exit order created (no matching position found)'),
+      message: isImmediateExecution
+        ? `Exit executed immediately${brokerResult.success ? ' - forwarded to broker' : ''}`
+        : `Exit order queued (${exitDelaySeconds}s delay)`,
       mode: executionMode,
-      broker_forwarded: isFullMode ? brokerResult.success : undefined,
+      exit_delay_seconds: exitDelaySeconds,
+      broker_forwarded: isImmediateExecution ? brokerResult.success : undefined,
       ...(replacedExitInfo && { replaced: replacedExitInfo })
     };
   } finally {
