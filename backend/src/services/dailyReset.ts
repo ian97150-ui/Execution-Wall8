@@ -69,12 +69,17 @@ export async function performDailyReset(): Promise<void> {
     console.log(`   ✅ Reset ${tickerConfigsReset.count} blocked ticker configs`);
 
     // 2. Clear pending executions (not executed ones, and not positions!)
+    // IMPORTANT: Exclude EXIT orders - they must survive overnight to close positions
     const pendingExecutionsCleared = await prisma.execution.deleteMany({
       where: {
-        status: { in: ['pending', 'cancelled', 'failed'] }
+        status: { in: ['pending', 'cancelled', 'failed'] },
+        // Exclude EXIT signals - they should never be deleted by daily reset
+        NOT: {
+          raw_payload: { contains: '"event":"EXIT"' }
+        }
       }
     });
-    console.log(`   ✅ Cleared ${pendingExecutionsCleared.count} pending/cancelled/failed executions`);
+    console.log(`   ✅ Cleared ${pendingExecutionsCleared.count} pending/cancelled/failed executions (EXIT orders preserved)`);
 
     // 3. Clear expired and non-active trade intents
     const expiredIntentsCleared = await prisma.tradeIntent.deleteMany({

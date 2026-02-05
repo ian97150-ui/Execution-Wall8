@@ -911,6 +911,18 @@ async function handleExitSignal(data: {
     }
   });
 
+  // Validate position exists - EXIT signals require an open position
+  if (!openPosition) {
+    console.warn(`⚠️ EXIT signal rejected: No open position found for ${tickerUpper}`);
+    releaseSymbolLock(tickerUpper, 'exit');
+    return {
+      execution_id: null,
+      message: `No open position found for ${tickerUpper} - EXIT signal rejected`,
+      rejected: true,
+      reason: 'no_position'
+    };
+  }
+
   // Check for existing pending exit and REPLACE it with the new one
   // This ensures the latest exit signal takes precedence
   let replacedExitInfo = null;
@@ -1044,11 +1056,22 @@ async function handleExitSignal(data: {
     if (openPosition) {
       const newQuantity = openPosition.quantity - exitQty;
       if (newQuantity <= 0) {
+        // Full close - mark position as closed
         await prisma.position.update({
           where: { id: openPosition.id },
           data: { closed_at: new Date() }
         });
+
+        // Block ticker for 5 minutes to prevent immediate re-entry
+        const blockUntil = new Date(Date.now() + 5 * 60 * 1000);
+        await prisma.tickerConfig.upsert({
+          where: { ticker: tickerUpper },
+          update: { blocked_until: blockUntil },
+          create: { ticker: tickerUpper, enabled: true, blocked_until: blockUntil }
+        });
+        console.log(`🔒 Ticker ${tickerUpper} blocked for 5 minutes after EXIT close`);
       } else {
+        // Partial close - reduce quantity
         await prisma.position.update({
           where: { id: openPosition.id },
           data: { quantity: newQuantity }
@@ -1056,7 +1079,7 @@ async function handleExitSignal(data: {
       }
     }
 
-    console.log(`⚡ Full mode: Immediately executed EXIT ${tickerUpper} ${action} ${exitQty}`);
+    console.log(`⚡ Immediately executed EXIT ${tickerUpper} ${action} ${exitQty}`);
   }
 
     // Create audit log
@@ -1080,10 +1103,13 @@ async function handleExitSignal(data: {
       }
     });
 
-    // If position was closed immediately, send notifications
+    // If position was closed or partially closed, send notifications
     if (isImmediateExecution && openPosition && brokerResult.success) {
-      const positionWasClosed = (openPosition.quantity - exitQty) <= 0;
+      const newQuantity = openPosition.quantity - exitQty;
+      const positionWasClosed = newQuantity <= 0;
+
       if (positionWasClosed) {
+        // Full close notification
         const positionClosedData = {
           action,
           quantity: exitQty,
@@ -1093,6 +1119,18 @@ async function handleExitSignal(data: {
         };
         EmailNotifications.positionClosed(tickerUpper, positionClosedData).catch(err => console.error('Email notification error:', err));
         PushoverNotifications.positionClosed(tickerUpper, positionClosedData).catch(err => console.error('Pushover notification error:', err));
+      } else {
+        // Partial close notification - use same positionClosed method with partial status
+        const partialCloseData = {
+          action,
+          quantity: exitQty,
+          limit_price: finalLimitPrice,
+          position_side: openPosition.side,
+          status: 'partial',
+          remaining_quantity: newQuantity
+        };
+        EmailNotifications.positionClosed(tickerUpper, partialCloseData).catch(err => console.error('Email notification error:', err));
+        PushoverNotifications.positionClosed(tickerUpper, partialCloseData).catch(err => console.error('Pushover notification error:', err));
       }
     }
 
