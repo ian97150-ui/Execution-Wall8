@@ -142,10 +142,6 @@ export default function Settings() {
       errors.push('Max adjustment percent must be between 0.1% and 10%');
     }
 
-    if (formData.limit_edit_window < 30 || formData.limit_edit_window > 600) {
-      errors.push('Edit window must be between 30 and 600 seconds');
-    }
-
     return errors;
   };
 
@@ -389,36 +385,23 @@ export default function Settings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-slate-300">Edit Window (seconds)</Label>
-                <Input
-                  type="number"
-                  min={30}
-                  max={600}
-                  value={formData.limit_edit_window}
-                  onChange={(e) => setFormData(f => ({ ...f, limit_edit_window: parseInt(e.target.value) || 120 }))}
-                  className="bg-slate-800 border-slate-700 text-white"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-300">Max Adjustment (%)</Label>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={10}
-                  step={0.1}
-                  value={formData.max_adjustment_pct}
-                  onChange={(e) => setFormData(f => ({ ...f, max_adjustment_pct: parseFloat(e.target.value) || 2 }))}
-                  className="bg-slate-800 border-slate-700 text-white"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Max Adjustment (%)</Label>
+              <Input
+                type="number"
+                min={0.1}
+                max={10}
+                step={0.1}
+                value={formData.max_adjustment_pct}
+                onChange={(e) => setFormData(f => ({ ...f, max_adjustment_pct: parseFloat(e.target.value) || 2 }))}
+                className="bg-slate-800 border-slate-700 text-white w-32"
+              />
             </div>
             <div className="flex items-start gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/30">
               <Info className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
               <p className="text-xs text-purple-300">
+                Edit window matches the delay period (delay bars × bar duration).
                 Limit edits are one-time overrides that apply to the next execution only.
-                The original strategy limit resumes after the override is used.
               </p>
             </div>
           </CardContent>

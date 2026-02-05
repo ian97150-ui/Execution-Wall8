@@ -552,24 +552,31 @@ export default function Dashboard() {
     }
   });
 
+  // Calculate edit window from delay settings (delay_bars × bar_duration × 60)
+  const getEditWindowSeconds = useCallback(() => {
+    const delayBars = settings?.default_delay_bars || 2;
+    const barDuration = settings?.bar_duration_minutes || 1;
+    return delayBars * barDuration * 60; // Convert to seconds
+  }, [settings]);
+
   // Check if limit edit is available for an intent
   const canEditLimit = useCallback((intent) => {
     if (!intent.limit_price) return false;
-    const windowSeconds = settings?.limit_edit_window || 120;
+    const windowSeconds = getEditWindowSeconds();
     const createdAt = new Date(intent.created_date).getTime();
     const now = Date.now();
     return (now - createdAt) < (windowSeconds * 1000);
-  }, [settings]);
+  }, [settings, getEditWindowSeconds]);
 
   // Get remaining time for limit edit
   const getLimitEditTimeRemaining = useCallback((intent) => {
     if (!intent.limit_price) return 0;
-    const windowSeconds = settings?.limit_edit_window || 120;
+    const windowSeconds = getEditWindowSeconds();
     const createdAt = new Date(intent.created_date).getTime();
     const expiresAt = createdAt + (windowSeconds * 1000);
     const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
     return remaining;
-  }, [settings]);
+  }, [settings, getEditWindowSeconds]);
 
   const handleEditLimit = async (exec) => {
     // Check if this is an exit order
