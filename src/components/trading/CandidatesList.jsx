@@ -36,7 +36,7 @@ export default function CandidatesList({
         return (
           <div key={intent.id} className={cn(
             "relative bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-colors",
-            isBlocked ? "opacity-70" : "hover:bg-slate-800/70"
+            "hover:bg-slate-800/70"
           )}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">

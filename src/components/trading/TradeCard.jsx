@@ -108,23 +108,12 @@ export default function TradeCard({
         )}
       </AnimatePresence>
 
-      {/* Blocked overlay - dimmed card with "Alerts Blocked" text */}
-      {isBlocked && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center backdrop-blur-[2px] rounded-3xl bg-slate-900/60 pointer-events-none">
-          <div className="flex flex-col items-center gap-2">
-            <ShieldOff className="w-16 h-16 text-orange-400/80" />
-            <span className="text-lg font-bold text-orange-400/90 tracking-wide">Alerts Blocked</span>
-          </div>
-        </div>
-      )}
-
       {/* Card content */}
       <div className={cn(
         "h-full rounded-3xl overflow-hidden",
         "bg-gradient-to-b from-slate-800/95 to-slate-900/95",
         "border border-slate-700/50",
-        "backdrop-blur-xl shadow-2xl",
-        isBlocked && "opacity-60"
+        "backdrop-blur-xl shadow-2xl"
       )}>
         {/* Header with side indicator */}
         <div className={cn(
