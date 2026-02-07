@@ -11,6 +11,8 @@ export default function SwipeDeck({
   onSwipeOn,
   onSwipeOff,
   onDeny,
+  onBlockAlerts,
+  isBlockingAlerts = false,
   onRefresh,
   isLoading = false,
   tickers = [],
@@ -69,6 +71,8 @@ export default function SwipeDeck({
               const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
               const isEnabled = tickerConfig?.enabled || false;
               
+              const isBlocked = tickerConfig?.enabled === false;
+
               return (
                 <TradeCard
                   key={intent.id}
@@ -81,6 +85,9 @@ export default function SwipeDeck({
                   onSwipeOn={onSwipeOn}
                   onSwipeOff={onSwipeOff}
                   onDeny={onDeny}
+                  onBlockAlerts={onBlockAlerts}
+                  isBlockingAlerts={isBlockingAlerts}
+                  isBlocked={isBlocked}
                   isEnabled={isEnabled}
                   tradingviewChartId={tradingviewChartId}
                   style={{

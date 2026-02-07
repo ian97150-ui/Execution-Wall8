@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, ExternalLink, Clock,
-  Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText
+  Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText, ShieldOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
@@ -15,6 +15,9 @@ export default function TradeCard({
   onSwipeOn,
   onSwipeOff,
   onDeny,
+  onBlockAlerts,
+  isBlockingAlerts = false,
+  isBlocked = false,
   isTopCard = false,
   style = {},
   isEnabled = false,
@@ -29,6 +32,12 @@ export default function TradeCard({
       setShowOverlay('success');
     } else if (action === 'off' || action === 'deny') {
       setShowOverlay('rejected');
+    }
+
+    // Block alerts doesn't use overlay animation — card stays in place
+    if (action === 'blockAlerts') {
+      onBlockAlerts?.(intent);
+      return;
     }
 
     // Wait a bit then trigger the action
@@ -94,12 +103,23 @@ export default function TradeCard({
         )}
       </AnimatePresence>
 
+      {/* Blocked overlay - dimmed card with "Alerts Blocked" text */}
+      {isBlocked && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center backdrop-blur-[2px] rounded-3xl bg-slate-900/60 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <ShieldOff className="w-16 h-16 text-orange-400/80" />
+            <span className="text-lg font-bold text-orange-400/90 tracking-wide">Alerts Blocked</span>
+          </div>
+        </div>
+      )}
+
       {/* Card content */}
       <div className={cn(
         "h-full rounded-3xl overflow-hidden",
         "bg-gradient-to-b from-slate-800/95 to-slate-900/95",
         "border border-slate-700/50",
-        "backdrop-blur-xl shadow-2xl"
+        "backdrop-blur-xl shadow-2xl",
+        isBlocked && "opacity-40"
       )}>
         {/* Header with side indicator */}
         <div className={cn(
@@ -241,7 +261,7 @@ export default function TradeCard({
                 ON
               </Button>
             </div>
-            <Button 
+            <Button
               onClick={(e) => { e.stopPropagation(); handleAction('deny'); }}
               variant="outline"
               className="w-full h-12 border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
@@ -249,6 +269,21 @@ export default function TradeCard({
             >
               <X className="w-4 h-4 mr-2" />
               Deny Order
+            </Button>
+            <Button
+              onClick={(e) => { e.stopPropagation(); handleAction('blockAlerts'); }}
+              variant={isBlocked ? "default" : "outline"}
+              className={cn(
+                "w-full h-12",
+                isBlocked
+                  ? "bg-orange-500/20 text-orange-400 border border-orange-500/50 cursor-default"
+                  : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
+              )}
+              disabled={showOverlay || isBlockingAlerts || isBlocked}
+              title="Block all WALL alerts for this ticker until next daily reset"
+            >
+              <ShieldOff className={cn("w-4 h-4 mr-2", isBlockingAlerts && "animate-pulse")} />
+              {isBlocked ? "Alerts Blocked" : "Block Alerts"}
             </Button>
           </div>
         </div>

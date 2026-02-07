@@ -539,6 +539,7 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
       toast.success('Wall alerts blocked until next daily reset');
     },
@@ -737,6 +738,8 @@ export default function Dashboard() {
                   onSwipeOn={(intent) => swipeOnMutation.mutate(intent)}
                   onSwipeOff={(intent) => swipeOffMutation.mutate(intent)}
                   onDeny={(intent) => denyOrderMutation.mutate(intent)}
+                  onBlockAlerts={(intent) => blockWallAlertsMutation.mutate(intent.ticker)}
+                  isBlockingAlerts={blockWallAlertsMutation.isPending}
                   onRefresh={refetchCandidates}
                   isLoading={candidatesLoading}
                   tickers={tickers}
@@ -753,6 +756,8 @@ export default function Dashboard() {
                     onApprove={(intent) => swipeOnMutation.mutate(intent)}
                     onReject={(intent) => swipeOffMutation.mutate(intent)}
                     onDeny={(intent) => denyOrderMutation.mutate(intent)}
+                    onBlockAlerts={(intent) => blockWallAlertsMutation.mutate(intent.ticker)}
+                    isBlockingAlerts={blockWallAlertsMutation.isPending}
                     tickers={tickers}
                     tradingviewChartId={settings?.tradingview_chart_id}
                   />

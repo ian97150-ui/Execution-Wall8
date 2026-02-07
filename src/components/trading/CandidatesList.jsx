@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
 import GateProgress from "./GateProgress";
@@ -10,6 +10,8 @@ export default function CandidatesList({
   onApprove,
   onReject,
   onDeny,
+  onBlockAlerts,
+  isBlockingAlerts = false,
   tickers = [],
   tradingviewChartId
 }) {
@@ -28,9 +30,13 @@ export default function CandidatesList({
         const sideLabel = intent.dir?.toUpperCase();
         const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
         const isEnabled = tickerConfig?.enabled || false;
+        const isBlocked = tickerConfig?.enabled === false;
 
         return (
-          <div key={intent.id} className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 hover:bg-slate-800/70 transition-colors">
+          <div key={intent.id} className={cn(
+            "relative bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-colors",
+            isBlocked ? "opacity-50" : "hover:bg-slate-800/70"
+          )}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <span className="text-xl font-bold text-white">{intent.ticker}</span>
@@ -44,6 +50,12 @@ export default function CandidatesList({
                 {isEnabled && (
                   <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500 text-emerald-950">
                     ON
+                  </span>
+                )}
+                {isBlocked && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-orange-500/20 text-orange-400">
+                    <ShieldOff className="w-3 h-3" />
+                    ALERTS BLOCKED
                   </span>
                 )}
                 {intent.quality_tier && (
@@ -133,6 +145,22 @@ export default function CandidatesList({
                   Chart
                 </Button>
               </div>
+              <Button
+                onClick={() => onBlockAlerts?.(intent)}
+                variant={isBlocked ? "default" : "outline"}
+                size="sm"
+                className={cn(
+                  "w-full",
+                  isBlocked
+                    ? "bg-orange-500/20 text-orange-400 border border-orange-500/50 cursor-default"
+                    : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
+                )}
+                disabled={isBlockingAlerts || isBlocked}
+                title="Block all WALL alerts for this ticker until next daily reset"
+              >
+                <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
+                {isBlocked ? "Alerts Blocked" : "Block Alerts"}
+              </Button>
             </div>
           </div>
         );
