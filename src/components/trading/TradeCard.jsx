@@ -119,7 +119,7 @@ export default function TradeCard({
         "bg-gradient-to-b from-slate-800/95 to-slate-900/95",
         "border border-slate-700/50",
         "backdrop-blur-xl shadow-2xl",
-        isBlocked && "opacity-40"
+        isBlocked && "opacity-60"
       )}>
         {/* Header with side indicator */}
         <div className={cn(
