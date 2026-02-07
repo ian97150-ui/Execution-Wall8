@@ -12,6 +12,7 @@ export default function SwipeDeck({
   onSwipeOff,
   onDeny,
   onBlockAlerts,
+  onUnblockAlerts,
   isBlockingAlerts = false,
   onRefresh,
   isLoading = false,
@@ -86,6 +87,7 @@ export default function SwipeDeck({
                   onSwipeOff={onSwipeOff}
                   onDeny={onDeny}
                   onBlockAlerts={onBlockAlerts}
+                  onUnblockAlerts={onUnblockAlerts}
                   isBlockingAlerts={isBlockingAlerts}
                   isBlocked={isBlocked}
                   isEnabled={isEnabled}

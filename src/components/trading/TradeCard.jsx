@@ -16,6 +16,7 @@ export default function TradeCard({
   onSwipeOff,
   onDeny,
   onBlockAlerts,
+  onUnblockAlerts,
   isBlockingAlerts = false,
   isBlocked = false,
   isTopCard = false,
@@ -34,9 +35,13 @@ export default function TradeCard({
       setShowOverlay('rejected');
     }
 
-    // Block alerts doesn't use overlay animation — card stays in place
+    // Block/unblock alerts doesn't use overlay animation — card stays in place
     if (action === 'blockAlerts') {
       onBlockAlerts?.(intent);
+      return;
+    }
+    if (action === 'unblockAlerts') {
+      onUnblockAlerts?.(intent);
       return;
     }
 
@@ -271,19 +276,19 @@ export default function TradeCard({
               Deny Order
             </Button>
             <Button
-              onClick={(e) => { e.stopPropagation(); handleAction('blockAlerts'); }}
-              variant={isBlocked ? "default" : "outline"}
+              onClick={(e) => { e.stopPropagation(); handleAction(isBlocked ? 'unblockAlerts' : 'blockAlerts'); }}
+              variant="outline"
               className={cn(
                 "w-full h-12",
                 isBlocked
-                  ? "bg-orange-500/20 text-orange-400 border border-orange-500/50 cursor-default"
+                  ? "border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
                   : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
               )}
-              disabled={showOverlay || isBlockingAlerts || isBlocked}
-              title="Block all WALL alerts for this ticker until next daily reset"
+              disabled={showOverlay || isBlockingAlerts}
+              title={isBlocked ? "Unblock WALL alerts for this ticker" : "Block all WALL alerts for this ticker until next daily reset"}
             >
               <ShieldOff className={cn("w-4 h-4 mr-2", isBlockingAlerts && "animate-pulse")} />
-              {isBlocked ? "Alerts Blocked" : "Block Alerts"}
+              {isBlocked ? "Unblock Alerts" : "Block Alerts"}
             </Button>
           </div>
         </div>

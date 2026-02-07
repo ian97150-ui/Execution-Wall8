@@ -548,6 +548,33 @@ export default function Dashboard() {
     }
   });
 
+  // Unblock wall alerts for a ticker
+  const unblockAlertsMutation = useMutation({
+    mutationFn: async (ticker) => {
+      await api.put(`/ticker-configs/${ticker}`, {
+        enabled: true,
+        blocked_until: null
+      });
+
+      await api.post('/audit-logs', {
+        event_type: 'wall_alerts_unblocked',
+        ticker: ticker,
+        details: JSON.stringify({
+          reason: 'User unblocked wall alerts'
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('Wall alerts unblocked');
+    },
+    onError: () => {
+      toast.error('Failed to unblock alerts');
+    }
+  });
+
   // Calculate edit window from delay settings (delay_bars × bar_duration × 60)
   const getEditWindowSeconds = useCallback(() => {
     const delayBars = settings?.default_delay_bars || 2;
@@ -739,7 +766,8 @@ export default function Dashboard() {
                   onSwipeOff={(intent) => swipeOffMutation.mutate(intent)}
                   onDeny={(intent) => denyOrderMutation.mutate(intent)}
                   onBlockAlerts={(intent) => blockWallAlertsMutation.mutate(intent.ticker)}
-                  isBlockingAlerts={blockWallAlertsMutation.isPending}
+                  onUnblockAlerts={(intent) => unblockAlertsMutation.mutate(intent.ticker)}
+                  isBlockingAlerts={blockWallAlertsMutation.isPending || unblockAlertsMutation.isPending}
                   onRefresh={refetchCandidates}
                   isLoading={candidatesLoading}
                   tickers={tickers}
@@ -757,7 +785,8 @@ export default function Dashboard() {
                     onReject={(intent) => swipeOffMutation.mutate(intent)}
                     onDeny={(intent) => denyOrderMutation.mutate(intent)}
                     onBlockAlerts={(intent) => blockWallAlertsMutation.mutate(intent.ticker)}
-                    isBlockingAlerts={blockWallAlertsMutation.isPending}
+                    onUnblockAlerts={(intent) => unblockAlertsMutation.mutate(intent.ticker)}
+                    isBlockingAlerts={blockWallAlertsMutation.isPending || unblockAlertsMutation.isPending}
                     tickers={tickers}
                     tradingviewChartId={settings?.tradingview_chart_id}
                   />

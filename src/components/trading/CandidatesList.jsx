@@ -11,6 +11,7 @@ export default function CandidatesList({
   onReject,
   onDeny,
   onBlockAlerts,
+  onUnblockAlerts,
   isBlockingAlerts = false,
   tickers = [],
   tradingviewChartId
@@ -146,20 +147,20 @@ export default function CandidatesList({
                 </Button>
               </div>
               <Button
-                onClick={() => onBlockAlerts?.(intent)}
-                variant={isBlocked ? "default" : "outline"}
+                onClick={() => isBlocked ? onUnblockAlerts?.(intent) : onBlockAlerts?.(intent)}
+                variant="outline"
                 size="sm"
                 className={cn(
                   "w-full",
                   isBlocked
-                    ? "bg-orange-500/20 text-orange-400 border border-orange-500/50 cursor-default"
+                    ? "border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
                     : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
                 )}
-                disabled={isBlockingAlerts || isBlocked}
-                title="Block all WALL alerts for this ticker until next daily reset"
+                disabled={isBlockingAlerts}
+                title={isBlocked ? "Unblock WALL alerts for this ticker" : "Block all WALL alerts for this ticker until next daily reset"}
               >
                 <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
-                {isBlocked ? "Alerts Blocked" : "Block Alerts"}
+                {isBlocked ? "Unblock Alerts" : "Block Alerts"}
               </Button>
             </div>
           </div>
