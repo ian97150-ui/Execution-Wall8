@@ -30,7 +30,18 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(sqlite3:*)",
+      "Bash(node -e:*)",
+      "Bash(cd:*)",
+      "Bash(npx prisma migrate:*)",
+      "Bash(npx prisma:*)",
+      "Bash(node:*)",
+      "Bash(gh api:*)",
+      "Bash(echo:*)"
     ]
   }
 }
