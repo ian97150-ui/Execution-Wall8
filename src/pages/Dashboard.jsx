@@ -521,31 +521,26 @@ export default function Dashboard() {
     }
   });
 
-  // Block wall alerts for a ticker (until end of day)
+  // Block wall alerts for a ticker (until next daily reset)
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
-      // Calculate 11:59 PM today
-      const endOfDay = new Date();
-      endOfDay.setHours(23, 59, 0, 0);
-
       await api.put(`/ticker-configs/${ticker}`, {
         enabled: false,
-        blocked_until: endOfDay.toISOString()
+        blocked_until: null
       });
 
       await api.post('/audit-logs', {
         event_type: 'wall_alerts_blocked',
         ticker: ticker,
         details: JSON.stringify({
-          reason: 'User blocked wall alerts for today',
-          blocked_until: endOfDay.toISOString()
+          reason: 'User blocked wall alerts until next daily reset'
         })
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
-      toast.success('Wall alerts blocked until 11:59 PM');
+      toast.success('Wall alerts blocked until next daily reset');
     },
     onError: () => {
       toast.error('Failed to block alerts');

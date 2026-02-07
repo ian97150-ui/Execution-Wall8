@@ -131,17 +131,14 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
         }
       });
     } else if (action === 'off') {
-      // Calculate 11:59 PM today for auto-reset
-      const endOfDay = new Date();
-      endOfDay.setHours(23, 59, 0, 0);
-
+      // Block ticker until next daily reset (no timer needed - daily reset handles unblocking)
       await prisma.tickerConfig.upsert({
         where: { ticker: intent.ticker },
-        update: { enabled: false, blocked_until: endOfDay },
+        update: { enabled: false, blocked_until: null },
         create: {
           ticker: intent.ticker,
           enabled: false,
-          blocked_until: endOfDay
+          blocked_until: null
         }
       });
 

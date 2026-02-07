@@ -336,19 +336,20 @@ async function processExpiredDelays() {
 }
 
 /**
- * Check for blocked tickers that should be unblocked (blocked_until has passed)
- * Runs as part of the scheduler to auto-reset blocked tickers at end of day
+ * Check for tickers with short cooldown blocks that have expired (e.g. 5-min post-position-close).
+ * Swipe-off blocks have no timer (blocked_until = null) and are only cleared by daily reset or manual revive.
  */
 async function processExpiredBlocks() {
   try {
     const now = new Date();
 
-    // Find tickers where blocked_until has passed
+    // Only find tickers with an explicit blocked_until that has passed (cooldown blocks)
     const expiredBlocks = await prisma.tickerConfig.findMany({
       where: {
         enabled: false,
         blocked_until: {
-          lte: now // blocked_until <= now (expired)
+          not: null,
+          lte: now
         }
       }
     });
@@ -357,10 +358,9 @@ async function processExpiredBlocks() {
       return;
     }
 
-    console.log(`🔓 Found ${expiredBlocks.length} expired block(s) - auto-unblocking...`);
+    console.log(`🔓 Found ${expiredBlocks.length} expired cooldown block(s) - auto-unblocking...`);
 
     for (const ticker of expiredBlocks) {
-      // Re-enable the ticker
       await prisma.tickerConfig.update({
         where: { ticker: ticker.ticker },
         data: {
@@ -369,13 +369,12 @@ async function processExpiredBlocks() {
         }
       });
 
-      // Create audit log
       await prisma.auditLog.create({
         data: {
           event_type: 'ticker_auto_unblocked',
           ticker: ticker.ticker,
           details: JSON.stringify({
-            reason: 'Block expired at end of day',
+            reason: 'Cooldown block expired',
             blocked_until: ticker.blocked_until
           })
         }

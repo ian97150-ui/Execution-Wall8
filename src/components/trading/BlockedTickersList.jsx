@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, RefreshCw, Ban, Clock, ShieldOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+
 import QualityBadge from "./QualityBadge";
 
 export default function BlockedTickersList({
@@ -87,12 +87,10 @@ export default function BlockedTickersList({
                     size="small"
                   />
 
-                  {/* Expires info */}
+                  {/* Block status */}
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <Clock className="w-3 h-3" />
-                    <span>
-                      Expires {format(new Date(intent.expires_at), "HH:mm")}
-                    </span>
+                    <span>Blocked until reset</span>
                   </div>
                 </div>
 
@@ -104,7 +102,7 @@ export default function BlockedTickersList({
                     variant="outline"
                     className="border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
                     disabled={isBlockingAlerts}
-                    title="Block all WALL alerts for this ticker today"
+                    title="Block all WALL alerts for this ticker until next daily reset"
                   >
                     <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
                     Block Alerts
