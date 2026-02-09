@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  TrendingUp, TrendingDown, RefreshCw, Ban, Clock, ShieldOff
+  TrendingUp, TrendingDown, RefreshCw, Ban, Clock, ShieldOff, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -91,6 +91,14 @@ export default function BlockedTickersList({
                     size="small"
                   />
 
+                  {/* Alerts blocked badge */}
+                  {isAlertsBlocked && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-orange-500/20 text-orange-400">
+                      <ShieldOff className="w-3 h-3" />
+                      ALERTS BLOCKED
+                    </span>
+                  )}
+
                   {/* Block status */}
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <Clock className="w-3 h-3" />
@@ -103,16 +111,19 @@ export default function BlockedTickersList({
                   <Button
                     onClick={() => isAlertsBlocked ? onUnblockAlerts?.(intent.ticker) : onBlockWallAlerts?.(intent.ticker)}
                     size="sm"
-                    variant="outline"
+                    variant={isAlertsBlocked ? "default" : "outline"}
                     className={cn(
                       isAlertsBlocked
-                        ? "border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
+                        ? "bg-orange-500/80 text-white hover:bg-orange-500 border-orange-500"
                         : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
                     )}
                     disabled={isBlockingAlerts}
                     title={isAlertsBlocked ? "Unblock WALL alerts for this ticker" : "Block all WALL alerts for this ticker until next daily reset"}
                   >
-                    <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
+                    {isAlertsBlocked
+                      ? <ShieldCheck className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
+                      : <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
+                    }
                     {isAlertsBlocked ? "Unblock Alerts" : "Block Alerts"}
                   </Button>
                   <Button
