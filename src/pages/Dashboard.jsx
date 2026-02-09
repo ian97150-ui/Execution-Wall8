@@ -222,9 +222,12 @@ export default function Dashboard() {
       return intent.id;
     },
     onSuccess: (intentId) => {
-      // Remove approved card from the deck (it's now in the execution pipeline)
+      // Move approved card to back of deck so user sees the next card
+      // It drops off on next refetch since swiped_on is excluded from the query
       queryClient.setQueryData(['candidates'], (old = []) => {
-        return old.filter(i => i.id !== intentId);
+        const filtered = old.filter(i => i.id !== intentId);
+        const actioned = old.find(i => i.id === intentId);
+        return actioned ? [...filtered, actioned] : filtered;
       });
 
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
