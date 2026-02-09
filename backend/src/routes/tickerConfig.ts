@@ -41,17 +41,19 @@ router.get('/:ticker', async (req: Request, res: Response) => {
 router.put('/:ticker', async (req: Request, res: Response) => {
   try {
     const ticker = req.params.ticker as string;
-    const { enabled, blocked_until } = req.body;
+    const { enabled, alerts_blocked, blocked_until } = req.body;
 
     const config = await prisma.tickerConfig.upsert({
       where: { ticker: ticker.toUpperCase() },
       update: {
         ...(enabled !== undefined && { enabled }),
+        ...(alerts_blocked !== undefined && { alerts_blocked }),
         ...(blocked_until !== undefined && { blocked_until: blocked_until ? new Date(blocked_until) : null })
       },
       create: {
         ticker: ticker.toUpperCase(),
         enabled: enabled !== undefined ? enabled : true,
+        alerts_blocked: alerts_blocked !== undefined ? alerts_blocked : false,
         blocked_until: blocked_until ? new Date(blocked_until) : null
       }
     });
@@ -60,7 +62,7 @@ router.put('/:ticker', async (req: Request, res: Response) => {
       data: {
         event_type: 'ticker_config_updated',
         ticker: ticker.toUpperCase(),
-        details: JSON.stringify({ enabled, blocked_until })
+        details: JSON.stringify({ enabled, alerts_blocked, blocked_until })
       }
     });
 

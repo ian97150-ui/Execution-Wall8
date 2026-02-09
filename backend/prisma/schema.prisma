@@ -63,12 +63,13 @@ model TradeIntent {
 }
 
 model TickerConfig {
-  id            String    @id @default(uuid())
-  ticker        String    @unique
-  enabled       Boolean   @default(true)
-  blocked_until DateTime?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  ticker          String    @unique
+  enabled         Boolean   @default(true)
+  alerts_blocked  Boolean   @default(false)
+  blocked_until   DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
   @@index([ticker])
   @@map("ticker_configs")

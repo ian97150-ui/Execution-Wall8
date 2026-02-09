@@ -399,8 +399,9 @@ async function handleWallSignal(data: {
     where: { ticker: tickerUpper }
   });
 
-  if (tickerConfig && tickerConfig.enabled === false) {
-    console.log(`⚠️ WALL signal rejected: ${tickerUpper} is blocked`);
+  if (tickerConfig && (tickerConfig.enabled === false || tickerConfig.alerts_blocked === true)) {
+    const reason = tickerConfig.alerts_blocked ? 'alerts blocked' : 'ticker disabled';
+    console.log(`⚠️ WALL signal rejected: ${tickerUpper} (${reason})`);
     return {
       intent_id: null,
       message: `Ticker ${tickerUpper} is blocked - signal rejected`,

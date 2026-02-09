@@ -31,7 +31,7 @@ export default function CandidatesList({
         const sideLabel = intent.dir?.toUpperCase();
         const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
         const isEnabled = tickerConfig?.enabled || false;
-        const isBlocked = tickerConfig?.enabled === false;
+        const isBlocked = tickerConfig?.alerts_blocked === true;
 
         return (
           <div key={intent.id} className={cn(

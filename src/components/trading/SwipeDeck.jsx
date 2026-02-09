@@ -72,7 +72,7 @@ export default function SwipeDeck({
               const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
               const isEnabled = tickerConfig?.enabled || false;
               
-              const isBlocked = tickerConfig?.enabled === false;
+              const isBlocked = tickerConfig?.alerts_blocked === true;
 
               return (
                 <TradeCard

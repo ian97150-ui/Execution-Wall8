@@ -525,8 +525,7 @@ export default function Dashboard() {
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
       await api.put(`/ticker-configs/${ticker}`, {
-        enabled: false,
-        blocked_until: null
+        alerts_blocked: true
       });
 
       await api.post('/audit-logs', {
@@ -552,8 +551,7 @@ export default function Dashboard() {
   const unblockAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
       await api.put(`/ticker-configs/${ticker}`, {
-        enabled: true,
-        blocked_until: null
+        alerts_blocked: false
       });
 
       await api.post('/audit-logs', {

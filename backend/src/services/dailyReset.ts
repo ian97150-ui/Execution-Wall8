@@ -56,13 +56,17 @@ export async function performDailyReset(): Promise<void> {
 
     console.log('🌅 Performing daily reset...');
 
-    // 1. Reset all ticker configs to enabled: true (unblock all tickers)
+    // 1. Reset all ticker configs to enabled: true and unblock alerts
     const tickerConfigsReset = await prisma.tickerConfig.updateMany({
       where: {
-        enabled: false
+        OR: [
+          { enabled: false },
+          { alerts_blocked: true }
+        ]
       },
       data: {
         enabled: true,
+        alerts_blocked: false,
         blocked_until: null
       }
     });
