@@ -71,12 +71,17 @@ export default function Dashboard() {
       const response = await api.get('/trade-intents', {
         params: {
           card_state: 'ARMED,ELIGIBLE,WAITING_DIP',
-          status: 'pending'
+          status: 'pending,swiped_on'
         }
       });
-      // Filter out expired intents
+      // Filter out expired intents, then sort so pending cards come first (swiped_on at the back)
       const now = new Date();
-      return (response.data || []).filter(intent => new Date(intent.expires_at) > now);
+      const valid = (response.data || []).filter(intent => new Date(intent.expires_at) > now);
+      return valid.sort((a, b) => {
+        if (a.status === 'pending' && b.status !== 'pending') return -1;
+        if (a.status !== 'pending' && b.status === 'pending') return 1;
+        return new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at);
+      });
     },
     enabled: !!settings,
     refetchInterval: 5000
