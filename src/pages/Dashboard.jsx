@@ -71,7 +71,7 @@ export default function Dashboard() {
       const response = await api.get('/trade-intents', {
         params: {
           card_state: 'ARMED,ELIGIBLE,WAITING_DIP',
-          status: 'pending,swiped_on'
+          status: 'pending'
         }
       });
       // Filter out expired intents
@@ -222,11 +222,9 @@ export default function Dashboard() {
       return intent.id;
     },
     onSuccess: (intentId) => {
-      // Move the actioned card to the back of the deck
+      // Remove approved card from the deck (it's now in the execution pipeline)
       queryClient.setQueryData(['candidates'], (old = []) => {
-        const filtered = old.filter(i => i.id !== intentId);
-        const actioned = old.find(i => i.id === intentId);
-        return actioned ? [...filtered, actioned] : filtered;
+        return old.filter(i => i.id !== intentId);
       });
 
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
