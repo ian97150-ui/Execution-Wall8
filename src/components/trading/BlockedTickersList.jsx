@@ -12,8 +12,10 @@ export default function BlockedTickersList({
   blockedIntents = [],
   onRevive,
   onBlockWallAlerts,
+  onUnblockAlerts,
   isLoading = false,
-  isBlockingAlerts = false
+  isBlockingAlerts = false,
+  tickers = []
 }) {
   // Deduplicate by ticker - keep only the most recent intent per ticker
   const uniqueBlockedIntents = React.useMemo(() => {
@@ -51,6 +53,8 @@ export default function BlockedTickersList({
           {uniqueBlockedIntents.map((intent) => {
             const isLong = intent.dir === "Long";
             const SideIcon = isLong ? TrendingUp : TrendingDown;
+            const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
+            const isAlertsBlocked = tickerConfig?.alerts_blocked === true;
 
             return (
               <motion.div
@@ -97,15 +101,19 @@ export default function BlockedTickersList({
                 {/* Action Buttons */}
                 <div className="flex items-center gap-2">
                   <Button
-                    onClick={() => onBlockWallAlerts?.(intent.ticker)}
+                    onClick={() => isAlertsBlocked ? onUnblockAlerts?.(intent.ticker) : onBlockWallAlerts?.(intent.ticker)}
                     size="sm"
                     variant="outline"
-                    className="border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
+                    className={cn(
+                      isAlertsBlocked
+                        ? "border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20"
+                        : "border-orange-500/50 text-orange-400 hover:bg-orange-500/20"
+                    )}
                     disabled={isBlockingAlerts}
-                    title="Block all WALL alerts for this ticker until next daily reset"
+                    title={isAlertsBlocked ? "Unblock WALL alerts for this ticker" : "Block all WALL alerts for this ticker until next daily reset"}
                   >
                     <ShieldOff className={cn("w-4 h-4 mr-1", isBlockingAlerts && "animate-pulse")} />
-                    Block Alerts
+                    {isAlertsBlocked ? "Unblock Alerts" : "Block Alerts"}
                   </Button>
                   <Button
                     onClick={() => onRevive?.(intent)}

@@ -803,8 +803,10 @@ export default function Dashboard() {
                     blockedIntents={blockedIntents}
                     onRevive={(intent) => reviveTickerMutation.mutate(intent)}
                     onBlockWallAlerts={(ticker) => blockWallAlertsMutation.mutate(ticker)}
+                    onUnblockAlerts={(ticker) => unblockAlertsMutation.mutate(ticker)}
                     isLoading={reviveTickerMutation.isPending}
-                    isBlockingAlerts={blockWallAlertsMutation.isPending}
+                    isBlockingAlerts={blockWallAlertsMutation.isPending || unblockAlertsMutation.isPending}
+                    tickers={tickers}
                   />
                 </div>
               )}

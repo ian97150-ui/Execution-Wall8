@@ -124,10 +124,11 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
     if (action === 'approve' || action === 'revive') {
       await prisma.tickerConfig.upsert({
         where: { ticker: intent.ticker },
-        update: { enabled: true, blocked_until: null },
+        update: { enabled: true, alerts_blocked: false, blocked_until: null },
         create: {
           ticker: intent.ticker,
-          enabled: true
+          enabled: true,
+          alerts_blocked: false
         }
       });
     } else if (action === 'off') {
