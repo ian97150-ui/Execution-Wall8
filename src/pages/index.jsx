@@ -8,6 +8,8 @@ import Settings from "./Settings";
 
 import WebhookLogs from "./WebhookLogs";
 
+import AuditLog from "./AuditLog";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -19,6 +21,8 @@ const PAGES = {
     Settings: Settings,
 
     WebhookLogs: WebhookLogs,
+
+    AuditLog: AuditLog,
 
 }
 
@@ -54,6 +58,8 @@ function PagesContent() {
                 <Route path="/Settings" element={<Settings />} />
 
                 <Route path="/WebhookLogs" element={<WebhookLogs />} />
+
+                <Route path="/AuditLog" element={<AuditLog />} />
 
             </Routes>
         </Layout>

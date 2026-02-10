@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Layers, Send, History, Settings, X,
-  RefreshCw, Bell, Shield, TrendingUp, Webhook
+  RefreshCw, Bell, Shield, TrendingUp, Webhook, ScrollText
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -657,6 +657,17 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2">
+              <Link to={createPageUrl("AuditLog")}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-slate-400"
+                  title="Audit Log"
+                >
+                  <ScrollText className="w-5 h-5" />
+                </Button>
+              </Link>
+
               <Link to={createPageUrl("WebhookLogs")}>
                 <Button
                   variant="ghost"
