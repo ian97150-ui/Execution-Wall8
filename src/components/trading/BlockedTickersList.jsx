@@ -13,8 +13,10 @@ export default function BlockedTickersList({
   onRevive,
   onBlockWallAlerts,
   onUnblockAlerts,
+  onResetAll,
   isLoading = false,
   isBlockingAlerts = false,
+  isResetting = false,
   tickers = []
 }) {
   // Deduplicate by ticker - keep only the most recent intent per ticker
@@ -41,11 +43,24 @@ export default function BlockedTickersList({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 px-1">
-        <Ban className="w-4 h-4 text-red-400" />
-        <h3 className="text-sm font-semibold text-slate-400">
-          Blocked Tickers ({uniqueBlockedIntents.length})
-        </h3>
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-2">
+          <Ban className="w-4 h-4 text-red-400" />
+          <h3 className="text-sm font-semibold text-slate-400">
+            Blocked Tickers ({uniqueBlockedIntents.length})
+          </h3>
+        </div>
+        <Button
+          onClick={() => onResetAll?.()}
+          size="sm"
+          variant="outline"
+          className="border-red-500/50 text-red-400 hover:bg-red-500/20"
+          disabled={isResetting}
+          title="Reset all blocked tickers — re-enables all tickers and clears blocked list"
+        >
+          <RefreshCw className={cn("w-4 h-4 mr-1", isResetting && "animate-spin")} />
+          Reset All
+        </Button>
       </div>
 
       <div className="space-y-2">

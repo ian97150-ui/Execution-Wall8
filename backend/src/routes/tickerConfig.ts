@@ -37,6 +37,56 @@ router.get('/:ticker', async (req: Request, res: Response) => {
   }
 });
 
+// Reset all blocked tickers
+router.post('/reset-all', async (req: Request, res: Response) => {
+  try {
+    // Re-enable all disabled/blocked ticker configs
+    const tickerConfigsReset = await prisma.tickerConfig.updateMany({
+      where: {
+        OR: [
+          { enabled: false },
+          { alerts_blocked: true }
+        ]
+      },
+      data: {
+        enabled: true,
+        alerts_blocked: false,
+        blocked_until: null
+      }
+    });
+
+    // Delete swiped_off intents so they clear from the blocked list
+    const intentsDeleted = await prisma.tradeIntent.deleteMany({
+      where: {
+        status: 'swiped_off'
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'manual_reset',
+        ticker: null,
+        details: JSON.stringify({
+          tickers_reset: tickerConfigsReset.count,
+          intents_cleared: intentsDeleted.count,
+          source: 'user'
+        })
+      }
+    });
+
+    console.log(`🔄 Manual reset: ${tickerConfigsReset.count} tickers re-enabled, ${intentsDeleted.count} blocked intents cleared`);
+
+    res.json({
+      success: true,
+      tickers_reset: tickerConfigsReset.count,
+      intents_cleared: intentsDeleted.count
+    });
+  } catch (error: any) {
+    console.error('Error resetting blocked tickers:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update ticker config
 router.put('/:ticker', async (req: Request, res: Response) => {
   try {

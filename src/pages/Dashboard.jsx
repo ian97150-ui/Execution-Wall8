@@ -527,6 +527,21 @@ export default function Dashboard() {
     }
   });
 
+  // Reset all blocked tickers
+  const resetAllBlockedMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/ticker-configs/reset-all');
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['blockedIntents'] });
+      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success(`Reset complete — ${data.tickers_reset} tickers re-enabled`);
+    }
+  });
+
   // Block wall alerts for a ticker (until next daily reset)
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
@@ -815,8 +830,10 @@ export default function Dashboard() {
                     onRevive={(intent) => reviveTickerMutation.mutate(intent)}
                     onBlockWallAlerts={(ticker) => blockWallAlertsMutation.mutate(ticker)}
                     onUnblockAlerts={(ticker) => unblockAlertsMutation.mutate(ticker)}
+                    onResetAll={() => resetAllBlockedMutation.mutate()}
                     isLoading={reviveTickerMutation.isPending}
                     isBlockingAlerts={blockWallAlertsMutation.isPending || unblockAlertsMutation.isPending}
+                    isResetting={resetAllBlockedMutation.isPending}
                     tickers={tickers}
                   />
                 </div>
