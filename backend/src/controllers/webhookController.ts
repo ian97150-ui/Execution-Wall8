@@ -410,12 +410,18 @@ async function handleWallSignal(data: {
     where: { ticker: tickerUpper }
   });
 
-  if (tickerConfig && (tickerConfig.enabled === false || tickerConfig.alerts_blocked === true)) {
-    const reason = tickerConfig.alerts_blocked ? 'alerts blocked' : 'ticker disabled';
+  if (tickerConfig && (
+    tickerConfig.enabled === false ||
+    tickerConfig.alerts_blocked === true ||
+    (tickerConfig.blocked_until && new Date(tickerConfig.blocked_until) > new Date())
+  )) {
+    const reason = tickerConfig.alerts_blocked ? 'alerts blocked'
+      : tickerConfig.blocked_until && new Date(tickerConfig.blocked_until) > new Date() ? 'temporarily blocked'
+      : 'ticker disabled';
     console.log(`⚠️ WALL signal rejected: ${tickerUpper} (${reason})`);
     return {
       intent_id: null,
-      message: `Ticker ${tickerUpper} is blocked - signal rejected`,
+      message: `Ticker ${tickerUpper} is blocked - signal rejected (${reason})`,
       rejected: true
     };
   }
@@ -640,6 +646,27 @@ async function handleOrderSignal(data: {
       message: `Duplicate order blocked - ${tickerUpper} is currently being processed`,
       blocked: true,
       reason: 'symbol_locked'
+    };
+  }
+
+  // Check if ticker is temporarily blocked (e.g. after SL_HIT, EXIT, or mark-flat)
+  const tickerConfigForOrder = await prisma.tickerConfig.findUnique({
+    where: { ticker: tickerUpper }
+  });
+
+  if (tickerConfigForOrder && (
+    tickerConfigForOrder.enabled === false ||
+    (tickerConfigForOrder.blocked_until && new Date(tickerConfigForOrder.blocked_until) > new Date())
+  )) {
+    const reason = tickerConfigForOrder.blocked_until && new Date(tickerConfigForOrder.blocked_until) > new Date()
+      ? 'temporarily blocked' : 'ticker disabled';
+    console.warn(`⚠️ ORDER signal blocked for ${tickerUpper} - ${reason}`);
+    releaseSymbolLock(tickerUpper, 'order');
+    return {
+      execution_id: null,
+      message: `Order blocked - ${tickerUpper} is ${reason}`,
+      blocked: true,
+      reason: 'ticker_blocked'
     };
   }
 
@@ -928,13 +955,13 @@ async function handleExitSignal(data: {
 
   const tickerUpper = ticker.toUpperCase();
 
-  // Try to acquire symbol lock to prevent duplicate exits from race conditions
-  // Lock TTL: 3 seconds - prevents double webhooks arriving simultaneously
-  if (!acquireSymbolLock(tickerUpper, 'exit', 3000)) {
-    console.warn(`⚠️ Duplicate EXIT signal blocked for ${tickerUpper} - symbol locked`);
+  // Try to acquire position_close lock — shared with SL_HIT and mark-flat
+  // to prevent race conditions between different close paths
+  if (!acquireSymbolLock(tickerUpper, 'position_close', 5000)) {
+    console.warn(`⚠️ EXIT signal blocked for ${tickerUpper} - position close in progress`);
     return {
       execution_id: null,
-      message: `Duplicate exit blocked - ${tickerUpper} is currently being processed`,
+      message: `Exit blocked - ${tickerUpper} position close already in progress`,
       blocked: true,
       reason: 'symbol_locked'
     };
@@ -952,7 +979,7 @@ async function handleExitSignal(data: {
   // Validate position exists - EXIT signals require an open position
   if (!openPosition) {
     console.warn(`⚠️ EXIT signal rejected: No open position found for ${tickerUpper}`);
-    releaseSymbolLock(tickerUpper, 'exit');
+    releaseSymbolLock(tickerUpper, 'position_close');
     return {
       execution_id: null,
       message: `No open position found for ${tickerUpper} - EXIT signal rejected`,
@@ -1187,7 +1214,7 @@ async function handleExitSignal(data: {
     };
   } finally {
     // Always release the lock when done
-    releaseSymbolLock(tickerUpper, 'exit');
+    releaseSymbolLock(tickerUpper, 'position_close');
   }
 }
 
@@ -1204,11 +1231,12 @@ async function handleStopLossHit(data: {
   const { ticker, stop_price } = data;
   const tickerUpper = ticker.toUpperCase();
 
-  // Acquire symbol lock to prevent race conditions with simultaneous EXIT signals
-  if (!acquireSymbolLock(tickerUpper, 'sl_hit', 3000)) {
-    console.warn(`⚠️ Duplicate SL_HIT signal blocked for ${tickerUpper} - symbol locked`);
+  // Acquire position_close lock — shared with EXIT and mark-flat
+  // to prevent race conditions between different close paths
+  if (!acquireSymbolLock(tickerUpper, 'position_close', 5000)) {
+    console.warn(`⚠️ SL_HIT signal blocked for ${tickerUpper} - position close in progress`);
     return {
-      message: `Duplicate SL_HIT blocked - ${tickerUpper} is currently being processed`,
+      message: `SL_HIT blocked - ${tickerUpper} position close already in progress`,
       blocked: true,
       reason: 'symbol_locked'
     };
@@ -1232,50 +1260,55 @@ async function handleStopLossHit(data: {
       };
     }
 
-    // Close the position locally (broker already closed it)
-    await prisma.position.update({
-      where: { id: openPosition.id },
-      data: { closed_at: new Date() }
-    });
-
-    // Block ticker for 5 minutes to prevent immediate re-entry
+    // All DB writes in a transaction for atomicity — if any fail, all roll back
     const blockUntil = new Date(Date.now() + 5 * 60 * 1000);
-    await prisma.tickerConfig.upsert({
-      where: { ticker: tickerUpper },
-      update: { blocked_until: blockUntil },
-      create: { ticker: tickerUpper, enabled: true, blocked_until: blockUntil }
+    const txResult = await prisma.$transaction(async (tx) => {
+      // Close the position locally (broker already closed it)
+      await tx.position.update({
+        where: { id: openPosition.id },
+        data: { closed_at: new Date() }
+      });
+
+      // Block ticker for 5 minutes to prevent immediate re-entry
+      await tx.tickerConfig.upsert({
+        where: { ticker: tickerUpper },
+        update: { blocked_until: blockUntil },
+        create: { ticker: tickerUpper, enabled: true, blocked_until: blockUntil }
+      });
+
+      // Cancel any pending executions for this ticker (stale orders)
+      const cancelledExecs = await tx.execution.updateMany({
+        where: {
+          ticker: tickerUpper,
+          status: { in: ['pending', 'executing'] }
+        },
+        data: { status: 'cancelled' }
+      });
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          event_type: 'stop_loss_hit',
+          ticker: tickerUpper,
+          details: JSON.stringify({
+            position_id: openPosition.id,
+            side: openPosition.side,
+            quantity: openPosition.quantity,
+            entry_price: openPosition.entry_price,
+            stop_price: stop_price || null,
+            blocked_until: blockUntil.toISOString(),
+            cancelled_pending_executions: cancelledExecs.count,
+            broker_order_sent: false
+          })
+        }
+      });
+
+      return { cancelledExecs: cancelledExecs.count };
     });
 
-    // Cancel any pending executions for this ticker (stale orders)
-    const cancelledExecs = await prisma.execution.updateMany({
-      where: {
-        ticker: tickerUpper,
-        status: { in: ['pending', 'executing'] }
-      },
-      data: { status: 'cancelled' }
-    });
-
-    if (cancelledExecs.count > 0) {
-      console.log(`🗑️ Cancelled ${cancelledExecs.count} pending execution(s) for ${tickerUpper} after SL_HIT`);
+    if (txResult.cancelledExecs > 0) {
+      console.log(`🗑️ Cancelled ${txResult.cancelledExecs} pending execution(s) for ${tickerUpper} after SL_HIT`);
     }
-
-    // Create audit log
-    await prisma.auditLog.create({
-      data: {
-        event_type: 'stop_loss_hit',
-        ticker: tickerUpper,
-        details: JSON.stringify({
-          position_id: openPosition.id,
-          side: openPosition.side,
-          quantity: openPosition.quantity,
-          entry_price: openPosition.entry_price,
-          stop_price: stop_price || null,
-          blocked_until: blockUntil.toISOString(),
-          cancelled_pending_executions: cancelledExecs.count,
-          broker_order_sent: false
-        })
-      }
-    });
 
     console.log(`🛑 SL_HIT: ${tickerUpper} position closed locally (stop @ ${stop_price || 'unknown'}). No broker order sent.`);
 
@@ -1294,11 +1327,11 @@ async function handleStopLossHit(data: {
       position_id: openPosition.id,
       message: `Stop loss hit - ${tickerUpper} position closed locally. Broker already closed it.`,
       stop_price: stop_price || null,
-      cancelled_pending_executions: cancelledExecs.count,
+      cancelled_pending_executions: txResult.cancelledExecs,
       broker_order_sent: false
     };
   } finally {
-    releaseSymbolLock(tickerUpper, 'sl_hit');
+    releaseSymbolLock(tickerUpper, 'position_close');
   }
 }
 

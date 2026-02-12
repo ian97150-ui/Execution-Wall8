@@ -19,13 +19,14 @@ const DEFAULT_LOCK_TTL = 3000;
 /**
  * Attempt to acquire a lock for a symbol
  * @param symbol - The ticker symbol to lock
- * @param lockType - Type of lock ('order', 'exit', or 'wall') - allows different lock namespaces
+ * @param lockType - Type of lock. 'position_close' is shared by EXIT, SL_HIT, and mark-flat
+ *   to prevent race conditions between different close paths. 'order' and 'wall' are separate.
  * @param ttlMs - Lock TTL in milliseconds (default: 3000ms)
  * @returns true if lock acquired, false if already locked
  */
 export function acquireSymbolLock(
   symbol: string,
-  lockType: 'order' | 'exit' | 'wall' | 'sl_hit' = 'order',
+  lockType: 'order' | 'position_close' | 'wall' = 'order',
   ttlMs: number = DEFAULT_LOCK_TTL
 ): boolean {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
@@ -57,9 +58,9 @@ export function acquireSymbolLock(
 /**
  * Release a symbol lock early (before TTL expires)
  * @param symbol - The ticker symbol to unlock
- * @param lockType - Type of lock ('order', 'exit', or 'wall')
+ * @param lockType - Type of lock
  */
-export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' | 'wall' | 'sl_hit' = 'order'): void {
+export function releaseSymbolLock(symbol: string, lockType: 'order' | 'position_close' | 'wall' = 'order'): void {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
   if (symbolLocks.delete(lockKey)) {
     console.log(`🔓 Released lock for ${lockKey}`);
@@ -69,10 +70,10 @@ export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' | '
 /**
  * Check if a symbol is currently locked
  * @param symbol - The ticker symbol to check
- * @param lockType - Type of lock ('order', 'exit', or 'wall')
+ * @param lockType - Type of lock
  * @returns true if locked, false if not locked
  */
-export function isSymbolLocked(symbol: string, lockType: 'order' | 'exit' | 'wall' = 'order'): boolean {
+export function isSymbolLocked(symbol: string, lockType: 'order' | 'position_close' | 'wall' = 'order'): boolean {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
   const existingLock = symbolLocks.get(lockKey);
 

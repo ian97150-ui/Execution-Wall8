@@ -17,6 +17,7 @@ const EVENT_TYPES = [
   { value: "all", label: "All Events" },
   { value: "intent_created,intent_updated", label: "WALL Alerts" },
   { value: "execution_created", label: "ORDER Signals" },
+  { value: "stop_loss_hit,exit_immediate,exit_created,position_closed", label: "Position Exits" },
   { value: "swiped_approve,swiped_off,swiped_deny,swiped_revive", label: "Swipe Actions" },
 ];
 
