@@ -656,6 +656,32 @@ async function handleOrderSignal(data: {
     };
   }
 
+  // Check for existing pending/executing order - block duplicate entry orders
+  const existingPendingExecution = await prisma.execution.findFirst({
+    where: {
+      ticker: tickerUpper,
+      status: { in: ['pending', 'executing'] }
+    },
+    orderBy: { created_at: 'desc' }
+  });
+
+  if (existingPendingExecution) {
+    console.warn(`⚠️ ORDER signal blocked for ${tickerUpper} - pending execution already exists (id: ${existingPendingExecution.id})`);
+    releaseSymbolLock(tickerUpper, 'order');
+    return {
+      execution_id: null,
+      message: `Order blocked - ${tickerUpper} already has a pending order`,
+      blocked: true,
+      reason: 'pending_execution_exists',
+      existing_execution: {
+        id: existingPendingExecution.id,
+        order_action: existingPendingExecution.order_action,
+        quantity: existingPendingExecution.quantity,
+        limit_price: existingPendingExecution.limit_price
+      }
+    };
+  }
+
   // Check if the corresponding WALL intent was denied or swiped off - block the order
   const rejectedIntent = await prisma.tradeIntent.findFirst({
     where: {
