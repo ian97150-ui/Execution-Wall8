@@ -25,7 +25,7 @@ const DEFAULT_LOCK_TTL = 3000;
  */
 export function acquireSymbolLock(
   symbol: string,
-  lockType: 'order' | 'exit' | 'wall' = 'order',
+  lockType: 'order' | 'exit' | 'wall' | 'sl_hit' = 'order',
   ttlMs: number = DEFAULT_LOCK_TTL
 ): boolean {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
@@ -59,7 +59,7 @@ export function acquireSymbolLock(
  * @param symbol - The ticker symbol to unlock
  * @param lockType - Type of lock ('order', 'exit', or 'wall')
  */
-export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' | 'wall' = 'order'): void {
+export function releaseSymbolLock(symbol: string, lockType: 'order' | 'exit' | 'wall' | 'sl_hit' = 'order'): void {
   const lockKey = `${symbol.toUpperCase()}:${lockType}`;
   if (symbolLocks.delete(lockKey)) {
     console.log(`🔓 Released lock for ${lockKey}`);

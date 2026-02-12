@@ -149,6 +149,8 @@ async function processWebhookAsync(body: any, logId: string) {
       gates_total,
       primary_blocker,
       card_state,
+      // Stop loss fields
+      stop_price,         // Price at which stop loss was triggered (SL_HIT signals)
       // Tick-based pricing fields (for TradingView integer cents workaround)
       price_ticks,        // Integer ticks for price (WALL signals)
       limit_price_ticks,  // Integer ticks for limit_price (ORDER/EXIT signals)
@@ -243,6 +245,15 @@ async function processWebhookAsync(body: any, logId: string) {
           price: normalizedPrice,  // Use reconstructed price
           limit_price: normalizedLimitPrice,  // Use reconstructed limit price
           quantity
+        });
+        break;
+
+      case 'SL_HIT':
+      case 'STOPLOSS':
+        // Handle broker-side stop loss hit — close position locally, no broker order
+        result = await handleStopLossHit({
+          ticker: normalizedTicker,
+          stop_price: stop_price ? parseFloat(stop_price) : undefined
         });
         break;
 
@@ -1177,6 +1188,117 @@ async function handleExitSignal(data: {
   } finally {
     // Always release the lock when done
     releaseSymbolLock(tickerUpper, 'exit');
+  }
+}
+
+/**
+ * Handle SL_HIT signal - broker-side stop loss was triggered
+ * The broker has already closed the position, so we only close it locally.
+ * No order is forwarded to the broker. Any subsequent EXIT from the main TV
+ * strategy will be auto-rejected since no open position exists.
+ */
+async function handleStopLossHit(data: {
+  ticker: string;
+  stop_price?: number;
+}) {
+  const { ticker, stop_price } = data;
+  const tickerUpper = ticker.toUpperCase();
+
+  // Acquire symbol lock to prevent race conditions with simultaneous EXIT signals
+  if (!acquireSymbolLock(tickerUpper, 'sl_hit', 3000)) {
+    console.warn(`⚠️ Duplicate SL_HIT signal blocked for ${tickerUpper} - symbol locked`);
+    return {
+      message: `Duplicate SL_HIT blocked - ${tickerUpper} is currently being processed`,
+      blocked: true,
+      reason: 'symbol_locked'
+    };
+  }
+
+  try {
+    // Find matching open position
+    const openPosition = await prisma.position.findFirst({
+      where: {
+        ticker: tickerUpper,
+        closed_at: null
+      }
+    });
+
+    if (!openPosition) {
+      console.warn(`⚠️ SL_HIT rejected: No open position for ${tickerUpper} (may already be closed)`);
+      return {
+        message: `No open position found for ${tickerUpper} - stop loss may have already been processed`,
+        rejected: true,
+        reason: 'no_position'
+      };
+    }
+
+    // Close the position locally (broker already closed it)
+    await prisma.position.update({
+      where: { id: openPosition.id },
+      data: { closed_at: new Date() }
+    });
+
+    // Block ticker for 5 minutes to prevent immediate re-entry
+    const blockUntil = new Date(Date.now() + 5 * 60 * 1000);
+    await prisma.tickerConfig.upsert({
+      where: { ticker: tickerUpper },
+      update: { blocked_until: blockUntil },
+      create: { ticker: tickerUpper, enabled: true, blocked_until: blockUntil }
+    });
+
+    // Cancel any pending executions for this ticker (stale orders)
+    const cancelledExecs = await prisma.execution.updateMany({
+      where: {
+        ticker: tickerUpper,
+        status: { in: ['pending', 'executing'] }
+      },
+      data: { status: 'cancelled' }
+    });
+
+    if (cancelledExecs.count > 0) {
+      console.log(`🗑️ Cancelled ${cancelledExecs.count} pending execution(s) for ${tickerUpper} after SL_HIT`);
+    }
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'stop_loss_hit',
+        ticker: tickerUpper,
+        details: JSON.stringify({
+          position_id: openPosition.id,
+          side: openPosition.side,
+          quantity: openPosition.quantity,
+          entry_price: openPosition.entry_price,
+          stop_price: stop_price || null,
+          blocked_until: blockUntil.toISOString(),
+          cancelled_pending_executions: cancelledExecs.count,
+          broker_order_sent: false
+        })
+      }
+    });
+
+    console.log(`🛑 SL_HIT: ${tickerUpper} position closed locally (stop @ ${stop_price || 'unknown'}). No broker order sent.`);
+
+    // Send notifications
+    const slData = {
+      side: openPosition.side,
+      quantity: openPosition.quantity,
+      entry_price: openPosition.entry_price,
+      stop_price: stop_price || null,
+      status: 'stop_loss_hit'
+    };
+    EmailNotifications.positionClosed(tickerUpper, slData).catch(err => console.error('Email notification error:', err));
+    PushoverNotifications.positionClosed(tickerUpper, slData).catch(err => console.error('Pushover notification error:', err));
+
+    return {
+      position_id: openPosition.id,
+      message: `Stop loss hit - ${tickerUpper} position closed locally. Broker already closed it.`,
+      stop_price: stop_price || null,
+      cancelled_pending_executions: cancelledExecs.count,
+      broker_order_sent: false
+    };
+  } finally {
+    releaseSymbolLock(tickerUpper, 'sl_hit');
   }
 }
 
