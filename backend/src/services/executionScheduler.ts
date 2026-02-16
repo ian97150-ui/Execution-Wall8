@@ -303,18 +303,20 @@ async function processExpiredDelays() {
           console.log(`      ⚠️ Broker forward failed: ${brokerResult.error}`);
         }
 
-        // Send notifications for order executed
-        const executedNotificationData = {
-          action: execution.order_action,
-          side: execution.dir,
-          quantity: execution.quantity,
-          limit_price: execution.limit_price,
-          status: 'executed',
-          broker_result: brokerResult.success ? 'forwarded' : 'failed',
-          trigger: 'delay_expired'
-        };
-        EmailNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Email notification error:', err));
-        PushoverNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Pushover notification error:', err));
+        // Send notifications for order executed (entries only — EXIT notifications fire on signal receipt)
+        if (!isExitSignal) {
+          const executedNotificationData = {
+            action: execution.order_action,
+            side: execution.dir,
+            quantity: execution.quantity,
+            limit_price: execution.limit_price,
+            status: 'executed',
+            broker_result: brokerResult.success ? 'forwarded' : 'failed',
+            trigger: 'delay_expired'
+          };
+          EmailNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Email notification error:', err));
+          PushoverNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Pushover notification error:', err));
+        }
 
       } catch (execError: any) {
         console.error(`   ❌ Failed to auto-execute ${execution.id}:`, execError.message);

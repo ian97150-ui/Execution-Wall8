@@ -1100,6 +1100,18 @@ async function handleExitSignal(data: {
     }
   });
 
+  // Notify immediately on EXIT signal receipt — before any delay or execution
+  const exitReceivedData = {
+    action,
+    quantity: exitQty,
+    limit_price: finalLimitPrice,
+    position_side: openPosition.side,
+    status: isImmediateExecution ? 'closing' : 'exit_queued',
+    exit_delay_seconds: exitDelaySeconds
+  };
+  EmailNotifications.positionClosed(tickerUpper, exitReceivedData).catch(err => console.error('Email notification error:', err));
+  PushoverNotifications.positionClosed(tickerUpper, exitReceivedData).catch(err => console.error('Pushover notification error:', err));
+
   let brokerResult: { success: boolean; error?: string } = { success: false };
 
   // Execute immediately if full mode OR exit_delay is 0
