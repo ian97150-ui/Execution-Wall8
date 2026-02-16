@@ -1107,7 +1107,8 @@ async function handleExitSignal(data: {
     limit_price: finalLimitPrice,
     position_side: openPosition.side,
     status: isImmediateExecution ? 'closing' : 'exit_queued',
-    exit_delay_seconds: exitDelaySeconds
+    exit_delay_seconds: exitDelaySeconds,
+    is_signal: true
   };
   EmailNotifications.positionClosed(tickerUpper, exitReceivedData).catch(err => console.error('Email notification error:', err));
   PushoverNotifications.positionClosed(tickerUpper, exitReceivedData).catch(err => console.error('Pushover notification error:', err));

@@ -28,7 +28,7 @@ export default function WebhookLogs() {
       const response = await api.get(`/webhook/logs?${params.toString()}`);
       return response.data;
     },
-    refetchInterval: 5000
+    refetchInterval: 30000
   });
 
   const logs = data?.logs || [];

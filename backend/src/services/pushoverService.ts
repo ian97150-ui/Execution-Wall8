@@ -101,8 +101,12 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
 
 /**
  * Get notification title based on event type
+ * If details.is_signal is true, EXIT signals show "EXIT SIGNAL" instead of "CLOSED"
  */
-function getTitle(eventType: PushoverEventType, ticker: string): string {
+function getTitle(eventType: PushoverEventType, ticker: string, details?: Record<string, any>): string {
+  if (eventType === 'position_closed' && details?.is_signal) {
+    return `EXIT SIGNAL: ${ticker}`;
+  }
   const titles: Record<PushoverEventType, string> = {
     'wall_signal': `WALL: ${ticker}`,
     'order_received': `ORDER: ${ticker}`,
@@ -180,7 +184,7 @@ export async function sendPushoverNotification(payload: PushoverPayload): Promis
     const formData = new URLSearchParams();
     formData.append('token', apiToken);
     formData.append('user', userKey);
-    formData.append('title', getTitle(eventType, ticker));
+    formData.append('title', getTitle(eventType, ticker, details));
     formData.append('message', getMessage(eventType, ticker, details));
     formData.append('priority', String(priority ?? getDefaultPriority(eventType)));
     formData.append('sound', getSound(eventType));
@@ -210,6 +214,28 @@ export async function sendPushoverNotification(payload: PushoverPayload): Promis
     return true;
   } catch (error: any) {
     console.error(`❌ Failed to send Pushover for ${eventType}:`, error.message);
+    // Retry once after 5 seconds
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    try {
+      const { send, userKey, apiToken } = await shouldSendPushover(eventType);
+      if (!send || !userKey || !apiToken) return false;
+      const retryForm = new URLSearchParams();
+      retryForm.append('token', apiToken);
+      retryForm.append('user', userKey);
+      retryForm.append('title', getTitle(eventType, ticker, details));
+      retryForm.append('message', getMessage(eventType, ticker, details));
+      retryForm.append('priority', String(priority ?? getDefaultPriority(eventType)));
+      retryForm.append('sound', getSound(eventType));
+      retryForm.append('timestamp', String(Math.floor(Date.now() / 1000)));
+      const retryResponse = await fetch(PUSHOVER_API_URL, { method: 'POST', body: retryForm });
+      const retryResult = await retryResponse.json() as PushoverResponse;
+      if (retryResult.status === 1) {
+        console.log(`✅ Pushover retry succeeded: ${eventType} for ${ticker}`);
+        return true;
+      }
+    } catch (retryError: any) {
+      console.error(`❌ Pushover retry also failed for ${eventType}:`, retryError.message);
+    }
     return false;
   }
 }

@@ -99,8 +99,12 @@ async function shouldSendEmail(eventType: EmailEventType): Promise<{ send: boole
 
 /**
  * Format email subject based on event type
+ * If details.is_signal is true, EXIT signals show "Exit Signal" instead of "Position Closed"
  */
-function getEmailSubject(eventType: EmailEventType, ticker: string): string {
+function getEmailSubject(eventType: EmailEventType, ticker: string, details?: Record<string, any>): string {
+  if (eventType === 'position_closed' && details?.is_signal) {
+    return `🚪 Exit Signal: ${ticker}`;
+  }
   const subjects: Record<EmailEventType, string> = {
     'wall_signal': `🎯 WALL Signal: ${ticker}`,
     'order_received': `📥 Order Received: ${ticker}`,
@@ -269,7 +273,7 @@ export async function sendEmailNotification(payload: EmailPayload): Promise<bool
     const { data, error } = await client.emails.send({
       from: fromEmail,
       to: toEmail,
-      subject: getEmailSubject(eventType, ticker),
+      subject: getEmailSubject(eventType, ticker, details),
       html: getEmailHtml(eventType, ticker, details),
       text: getEmailText(eventType, ticker, details)
     });
@@ -283,6 +287,28 @@ export async function sendEmailNotification(payload: EmailPayload): Promise<bool
     return true;
   } catch (error: any) {
     console.error(`❌ Failed to send email for ${eventType}:`, error.message);
+    // Retry once after 5 seconds
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    try {
+      const { send, toEmail: retryEmail } = await shouldSendEmail(eventType);
+      if (!send || !retryEmail) return false;
+      const retryClient = getResendClient();
+      if (!retryClient) return false;
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'Execution Wall <onboarding@resend.dev>';
+      const { data: retryData, error: retryError } = await retryClient.emails.send({
+        from: fromEmail,
+        to: retryEmail,
+        subject: getEmailSubject(eventType, ticker, details),
+        html: getEmailHtml(eventType, ticker, details),
+        text: getEmailText(eventType, ticker, details)
+      });
+      if (!retryError) {
+        console.log(`✅ Email retry succeeded: ${eventType} for ${ticker} (id: ${retryData?.id})`);
+        return true;
+      }
+    } catch (retryError: any) {
+      console.error(`❌ Email retry also failed for ${eventType}:`, retryError.message);
+    }
     return false;
   }
 }

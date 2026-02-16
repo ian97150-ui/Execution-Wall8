@@ -84,7 +84,7 @@ export default function Dashboard() {
       });
     },
     enabled: !!settings,
-    refetchInterval: 5000
+    refetchInterval: 15000
   });
 
   // Fetch blocked intents (swiped_off status - for revive section)
@@ -114,7 +114,7 @@ export default function Dashboard() {
       });
       return response.data || [];
     },
-    refetchInterval: 3000
+    refetchInterval: 10000
   });
 
   // Force execute an order
@@ -168,7 +168,7 @@ export default function Dashboard() {
       });
       return response.data || [];
     },
-    refetchInterval: 5000
+    refetchInterval: 15000
   });
 
   // Calculate stats
