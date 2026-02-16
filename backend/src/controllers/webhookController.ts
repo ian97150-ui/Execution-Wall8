@@ -184,9 +184,19 @@ async function processWebhookAsync(body: any, logId: string) {
       throw new Error('Missing required field: ticker or symbol');
     }
 
-    // Determine signal type: "event" field takes priority, then "type"
-    // If action (buy/sell) is present without event, infer ORDER
-    const signalType = (event || type || (action ? 'ORDER' : 'WALL')).toUpperCase();
+    // event is required — reject payloads that omit it to prevent misclassification
+    if (!event && !type) {
+      throw new Error('Missing required field: event (must be WALL, ORDER, EXIT, or SL_HIT)');
+    }
+
+    // Determine signal type from event field (no inference fallback)
+    const signalType = (event || type).toUpperCase();
+
+    // Validate event is a known type
+    const validEventTypes = ['WALL', 'SIGNAL', 'ORDER', 'EXIT', 'SL_HIT'];
+    if (!validEventTypes.includes(signalType)) {
+      throw new Error(`Unknown event type: "${signalType}". Must be one of: ${validEventTypes.join(', ')}`);
+    }
 
     // Validate event type
     if (signalType === 'WALL' || signalType === 'SIGNAL') {
