@@ -1,25 +1,20 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../index';
 import { forwardToBroker } from '../services/brokerWebhook';
-import * as XLSX from 'xlsx';
 
 const router = express.Router();
 
-// ─── Excel Export ────────────────────────────────────────────────────────────
+// ─── CSV Export (no external dependencies) ───────────────────────────────────
 // GET /api/executions/export
-// Downloads an Excel workbook with 3 sheets:
-//   1. All Orders    — full execution history
-//   2. Price Ranges  — summary grouped by price bucket
-//   3. Indicator Stats — quality/gate data from linked trade intents
+// Downloads a CSV file with all order signals — opens directly in Excel.
+// Sections: All Orders, Price Range Summary, Indicator Stats
 router.get('/export', async (req: Request, res: Response) => {
   try {
-    // Fetch all executions with linked trade intent for indicator data
     const executions = await prisma.execution.findMany({
       orderBy: { created_at: 'desc' },
       take: 5000
     });
 
-    // Fetch linked intents in one query
     const intentIds = executions
       .map(e => e.intent_id)
       .filter((id): id is string => !!id);
@@ -30,144 +25,142 @@ router.get('/export', async (req: Request, res: Response) => {
 
     const intentMap = new Map(intents.map(i => [i.id, i]));
 
-    // ── Sheet 1: All Orders ──────────────────────────────────────────────────
-    const allOrdersRows = executions.map(e => {
-      let isExit = false;
-      try { isExit = e.raw_payload ? JSON.parse(e.raw_payload).event === 'EXIT' : false; } catch {}
-
-      const intent = e.intent_id ? intentMap.get(e.intent_id) : null;
-
-      return {
-        'Date':          e.created_at ? new Date(e.created_at).toLocaleString() : '',
-        'Ticker':        e.ticker,
-        'Type':          isExit ? 'EXIT' : 'ENTRY',
-        'Direction':     e.dir || '',
-        'Action':        (e.order_action || '').toUpperCase(),
-        'Quantity':      e.quantity,
-        'Price':         e.limit_price ? Number(e.limit_price) : '',
-        'Status':        e.status,
-        'Executed At':   e.executed_at ? new Date(e.executed_at).toLocaleString() : '',
-        'Error':         e.error_message || '',
-        // Indicator columns from linked WALL intent
-        'Quality Tier':  intent?.quality_tier || '',
-        'Quality Score': intent?.quality_score ?? '',
-        'Gates Hit':     intent?.gates_hit ?? '',
-        'Gates Total':   intent?.gates_total ?? '',
-        'Confidence %':  intent ? (intent.confidence * 100).toFixed(1) + '%' : '',
-        'Strategy':      intent?.strategy_id || '',
-        'Timeframe':     intent?.timeframe || ''
-      };
-    });
-
-    // ── Sheet 2: Price Ranges ─────────────────────────────────────────────────
-    const priceBuckets: Record<string, { total: number; executed: number; cancelled: number; failed: number; pending: number }> = {
-      'Under $10':        { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      '$10 – $100':       { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      '$100 – $500':      { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      '$500 – $1,000':    { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      '$1,000 – $5,000':  { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      '$5,000 – $20,000': { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      'Over $20,000':     { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 },
-      'No Price':         { total: 0, executed: 0, cancelled: 0, failed: 0, pending: 0 }
+    // Escape a CSV cell value
+    const csv = (v: any): string => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const getBucket = (price: number): string => {
-      if (price < 10)      return 'Under $10';
-      if (price < 100)     return '$10 – $100';
-      if (price < 500)     return '$100 – $500';
-      if (price < 1000)    return '$500 – $1,000';
-      if (price < 5000)    return '$1,000 – $5,000';
-      if (price < 20000)   return '$5,000 – $20,000';
-      return 'Over $20,000';
+    const row = (...cells: any[]) => cells.map(csv).join(',');
+    const lines: string[] = [];
+
+    // ── Section 1: All Orders ────────────────────────────────────────────────
+    lines.push('=== ALL ORDERS ===');
+    lines.push(row('Date','Ticker','Type','Direction','Action','Quantity','Price',
+      'Status','Executed At','Error','Quality Tier','Quality Score',
+      'Gates Hit','Gates Total','Confidence %','Strategy','Timeframe'));
+
+    for (const e of executions) {
+      let isExit = false;
+      try { isExit = e.raw_payload ? JSON.parse(e.raw_payload).event === 'EXIT' : false; } catch {}
+      const intent = e.intent_id ? intentMap.get(e.intent_id) : null;
+
+      lines.push(row(
+        e.created_at ? new Date(e.created_at).toLocaleString() : '',
+        e.ticker,
+        isExit ? 'EXIT' : 'ENTRY',
+        e.dir || '',
+        (e.order_action || '').toUpperCase(),
+        e.quantity,
+        e.limit_price ? Number(e.limit_price) : '',
+        e.status,
+        e.executed_at ? new Date(e.executed_at).toLocaleString() : '',
+        e.error_message || '',
+        intent?.quality_tier || '',
+        intent?.quality_score ?? '',
+        intent?.gates_hit ?? '',
+        intent?.gates_total ?? '',
+        intent ? (Number(intent.confidence) * 100).toFixed(1) + '%' : '',
+        intent?.strategy_id || '',
+        intent?.timeframe || ''
+      ));
+    }
+
+    // ── Section 2: Price Range Summary ──────────────────────────────────────
+    lines.push('');
+    lines.push('=== PRICE RANGE SUMMARY ===');
+    lines.push(row('Price Range','Total','Executed','Cancelled','Failed','Pending','Success Rate'));
+
+    const buckets: Record<string, number[]> = {
+      'Under $10':        [0,0,0,0,0],
+      '$10 - $100':       [0,0,0,0,0],
+      '$100 - $500':      [0,0,0,0,0],
+      '$500 - $1000':     [0,0,0,0,0],
+      '$1000 - $5000':    [0,0,0,0,0],
+      '$5000 - $20000':   [0,0,0,0,0],
+      'Over $20000':      [0,0,0,0,0],
+      'No Price':         [0,0,0,0,0]
+    };
+
+    const getBucket = (p: number) => {
+      if (p < 10)    return 'Under $10';
+      if (p < 100)   return '$10 - $100';
+      if (p < 500)   return '$100 - $500';
+      if (p < 1000)  return '$500 - $1000';
+      if (p < 5000)  return '$1000 - $5000';
+      if (p < 20000) return '$5000 - $20000';
+      return 'Over $20000';
     };
 
     for (const e of executions) {
       const price = e.limit_price ? Number(e.limit_price) : null;
-      const bucket = price !== null && price > 0 ? getBucket(price) : 'No Price';
-      const b = priceBuckets[bucket];
-      b.total++;
-      if (e.status === 'executed')  b.executed++;
-      if (e.status === 'cancelled') b.cancelled++;
-      if (e.status === 'failed')    b.failed++;
-      if (e.status === 'pending')   b.pending++;
+      const b = buckets[price && price > 0 ? getBucket(price) : 'No Price'];
+      b[0]++;
+      if (e.status === 'executed')  b[1]++;
+      if (e.status === 'cancelled') b[2]++;
+      if (e.status === 'failed')    b[3]++;
+      if (e.status === 'pending')   b[4]++;
     }
 
-    const priceRangeRows = Object.entries(priceBuckets).map(([range, counts]) => ({
-      'Price Range':    range,
-      'Total Orders':  counts.total,
-      'Executed':      counts.executed,
-      'Cancelled':     counts.cancelled,
-      'Failed':        counts.failed,
-      'Pending':       counts.pending,
-      'Success Rate':  counts.total > 0 ? (counts.executed / counts.total * 100).toFixed(1) + '%' : '—'
-    }));
+    for (const [range, b] of Object.entries(buckets)) {
+      const rate = b[0] > 0 ? (b[1] / b[0] * 100).toFixed(1) + '%' : '-';
+      lines.push(row(range, b[0], b[1], b[2], b[3], b[4], rate));
+    }
 
-    // ── Sheet 3: Indicator Stats ──────────────────────────────────────────────
-    const indicatorRows = executions
-      .filter(e => e.intent_id && intentMap.has(e.intent_id!))
-      .map(e => {
+    // ── Section 3: Indicator Stats ───────────────────────────────────────────
+    const withIntent = executions.filter(e => e.intent_id && intentMap.has(e.intent_id!));
+    if (withIntent.length > 0) {
+      lines.push('');
+      lines.push('=== INDICATOR STATS (orders with WALL intent) ===');
+
+      // Collect all gate names across all intents
+      const allGates = new Set<string>();
+      for (const e of withIntent) {
+        const intent = intentMap.get(e.intent_id!)!;
+        try {
+          const gates = intent.gates_data ? JSON.parse(intent.gates_data) : {};
+          Object.keys(gates).forEach(g => allGates.add(g));
+        } catch {}
+      }
+      const gateNames = [...allGates];
+
+      lines.push(row('Date','Ticker','Type','Direction','Price','Status',
+        'Quality Tier','Quality Score','Gates Hit','Gates Total','Confidence %',
+        'Strategy','Timeframe','Primary Blocker',
+        ...gateNames.map(g => `Gate: ${g}`)));
+
+      for (const e of withIntent) {
         const intent = intentMap.get(e.intent_id!)!;
         let gates: Record<string, boolean> = {};
         try { gates = intent.gates_data ? JSON.parse(intent.gates_data) : {}; } catch {}
-
         let isExit = false;
         try { isExit = e.raw_payload ? JSON.parse(e.raw_payload).event === 'EXIT' : false; } catch {}
 
-        const row: Record<string, any> = {
-          'Date':           e.created_at ? new Date(e.created_at).toLocaleString() : '',
-          'Ticker':         e.ticker,
-          'Type':           isExit ? 'EXIT' : 'ENTRY',
-          'Direction':      e.dir || '',
-          'Price':          e.limit_price ? Number(e.limit_price) : '',
-          'Status':         e.status,
-          'Quality Tier':   intent.quality_tier,
-          'Quality Score':  intent.quality_score,
-          'Gates Hit':      intent.gates_hit,
-          'Gates Total':    intent.gates_total,
-          'Confidence %':   (intent.confidence * 100).toFixed(1) + '%',
-          'Strategy':       intent.strategy_id || '',
-          'Timeframe':      intent.timeframe || '',
-          'Primary Blocker': intent.primary_blocker || ''
-        };
+        lines.push(row(
+          e.created_at ? new Date(e.created_at).toLocaleString() : '',
+          e.ticker,
+          isExit ? 'EXIT' : 'ENTRY',
+          e.dir || '',
+          e.limit_price ? Number(e.limit_price) : '',
+          e.status,
+          intent.quality_tier,
+          intent.quality_score,
+          intent.gates_hit,
+          intent.gates_total,
+          (Number(intent.confidence) * 100).toFixed(1) + '%',
+          intent.strategy_id || '',
+          intent.timeframe || '',
+          intent.primary_blocker || '',
+          ...gateNames.map(g => gates[g] === true ? 'PASS' : gates[g] === false ? 'FAIL' : '')
+        ));
+      }
+    }
 
-        // Spread individual gate results as columns
-        for (const [gateName, passed] of Object.entries(gates)) {
-          row[`Gate: ${gateName}`] = passed ? 'PASS' : 'FAIL';
-        }
-
-        return row;
-      });
-
-    // ── Build Workbook ────────────────────────────────────────────────────────
-    const wb = XLSX.utils.book_new();
-
-    const ws1 = XLSX.utils.json_to_sheet(allOrdersRows);
-    const ws2 = XLSX.utils.json_to_sheet(priceRangeRows);
-    const ws3 = indicatorRows.length > 0
-      ? XLSX.utils.json_to_sheet(indicatorRows)
-      : XLSX.utils.json_to_sheet([{ Note: 'No executions with linked WALL intent found' }]);
-
-    // Set column widths for readability
-    ws1['!cols'] = [
-      { wch: 20 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 8 },
-      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 30 },
-      { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 14 },
-      { wch: 14 }, { wch: 10 }
-    ];
-    ws2['!cols'] = [
-      { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }
-    ];
-
-    XLSX.utils.book_append_sheet(wb, ws1, 'All Orders');
-    XLSX.utils.book_append_sheet(wb, ws2, 'Price Ranges');
-    XLSX.utils.book_append_sheet(wb, ws3, 'Indicator Stats');
-
-    const filename = `execution-wall-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
+    const filename = `execution-wall-${new Date().toISOString().slice(0, 10)}.csv`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buf);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send('\uFEFF' + lines.join('\r\n')); // BOM prefix for Excel UTF-8 detection
 
   } catch (error: any) {
     console.error('❌ Export error:', error);

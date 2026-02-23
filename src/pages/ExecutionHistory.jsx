@@ -20,11 +20,11 @@ export default function ExecutionHistory() {
     setExporting(true);
     try {
       const response = await api.get('/executions/export', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
       const link = document.createElement('a');
       link.href = url;
       const date = new Date().toISOString().slice(0, 10);
-      link.setAttribute('download', `execution-wall-export-${date}.xlsx`);
+      link.setAttribute('download', `execution-wall-${date}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
