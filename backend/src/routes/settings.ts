@@ -83,6 +83,7 @@ router.put('/', async (req: Request, res: Response) => {
     const {
       execution_mode,
       default_delay_bars,
+      exit_delay_seconds,
       bar_duration_minutes,
       gate_threshold,
       limit_edit_window,
@@ -124,6 +125,7 @@ router.put('/', async (req: Request, res: Response) => {
 
     if (execution_mode !== undefined) updateData.execution_mode = execution_mode;
     if (default_delay_bars !== undefined) updateData.default_delay_bars = default_delay_bars;
+    if (exit_delay_seconds !== undefined) updateData.exit_delay_seconds = exit_delay_seconds;
     if (bar_duration_minutes !== undefined) updateData.bar_duration_minutes = bar_duration_minutes;
     if (gate_threshold !== undefined) updateData.gate_threshold = gate_threshold;
     if (limit_edit_window !== undefined) updateData.limit_edit_window = limit_edit_window;
