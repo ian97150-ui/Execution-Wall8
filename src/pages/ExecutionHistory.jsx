@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, TrendingUp, TrendingDown,
-  CheckCircle2, XCircle, Clock, AlertTriangle
+  CheckCircle2, XCircle, Clock, AlertTriangle, Download
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -14,6 +14,27 @@ import api from "@/api/apiClient";
 
 export default function ExecutionHistory() {
   const [statusFilter, setStatusFilter] = useState("all");
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const response = await api.get('/executions/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      link.setAttribute('download', `execution-wall-export-${date}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const { data: executions = [], isLoading } = useQuery({
     queryKey: ['executionHistory', statusFilter],
@@ -61,10 +82,20 @@ export default function ExecutionHistory() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <div>
+          <div className="flex-1">
             <h1 className="font-bold text-white text-lg">Execution History</h1>
             <p className="text-xs text-slate-500">{executions.length} total records</p>
           </div>
+          <Button
+            onClick={handleExport}
+            disabled={exporting}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? 'Exporting...' : 'Export Excel'}
+          </Button>
         </div>
       </header>
 
