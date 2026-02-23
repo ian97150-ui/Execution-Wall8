@@ -3,7 +3,75 @@ import { forwardToBroker } from './brokerWebhook';
 import { EmailNotifications } from './emailService';
 import { PushoverNotifications } from './pushoverService';
 
-let schedulerInterval: NodeJS.Timeout | null = null;
+// Smart scheduler state: two modes
+// IDLE  — cheap COUNT query every 60s (near-zero CPU when no trades active)
+// ACTIVE — full logic every 10s (when pending orders or blocked tickers exist)
+type SchedulerMode = 'idle' | 'active';
+let currentMode: SchedulerMode = 'idle';
+let activeInterval: NodeJS.Timeout | null = null; // 10s full tick
+let idleInterval: NodeJS.Timeout | null = null;   // 60s heartbeat
+
+/**
+ * Quick check: does the DB have any pending orders or blocked tickers?
+ * Two cheap COUNT queries — used to decide idle vs active mode.
+ */
+async function checkHasPendingWork(): Promise<boolean> {
+  const [pendingCount, blockedCount] = await Promise.all([
+    prisma.execution.count({ where: { status: 'pending' } }),
+    prisma.tickerConfig.count({ where: { blocked_until: { not: null } } })
+  ]);
+  return pendingCount > 0 || blockedCount > 0;
+}
+
+/**
+ * Switch to ACTIVE mode (10s ticks).
+ * Called by webhookController when a pending execution is created,
+ * and internally when idle heartbeat detects pending work.
+ * Safe to call multiple times — guards against double-start.
+ */
+export function activateScheduler(): void {
+  if (activeInterval) return; // already active, nothing to do
+
+  // Stop idle heartbeat before going active
+  if (idleInterval) {
+    clearInterval(idleInterval);
+    idleInterval = null;
+  }
+
+  currentMode = 'active';
+  console.log('⚡ Execution scheduler ACTIVE (10s ticks)');
+
+  // Run immediately, then every 10 seconds
+  runSchedulerTick();
+  activeInterval = setInterval(runSchedulerTick, 10 * 1000);
+}
+
+/**
+ * Switch to IDLE mode (60s heartbeat).
+ * Only the scheduler itself calls this — after a tick finds no more work.
+ */
+function deactivateToIdle(): void {
+  if (activeInterval) {
+    clearInterval(activeInterval);
+    activeInterval = null;
+  }
+
+  currentMode = 'idle';
+  console.log('💤 Execution scheduler IDLE (60s heartbeat)');
+
+  // Safety heartbeat: re-activate if work appears (catches any missed webhook activations)
+  idleInterval = setInterval(async () => {
+    try {
+      const hasPending = await checkHasPendingWork();
+      if (hasPending) {
+        console.log('🔔 Idle heartbeat detected pending work — activating scheduler');
+        activateScheduler();
+      }
+    } catch (err: any) {
+      console.error('❌ Idle heartbeat check error:', err.message);
+    }
+  }, 60 * 1000);
+}
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -391,39 +459,62 @@ async function processExpiredBlocks() {
 }
 
 /**
- * Start the execution scheduler
- * Runs every 10 seconds to check for expired delays
- */
-/**
- * Combined scheduler tick - runs all periodic checks
+ * Combined scheduler tick — runs all periodic checks.
+ * After processing, checks if any work remains.
+ * If nothing is left, drops back to IDLE mode automatically.
  */
 async function runSchedulerTick() {
   await processExpiredDelays();
   await processExpiredBlocks();
-}
 
-export function startExecutionScheduler() {
-  if (schedulerInterval) {
-    console.log('⚠️ Execution scheduler already running');
-    return;
+  // Only check for deactivation when in active mode
+  if (currentMode === 'active') {
+    try {
+      const hasPending = await checkHasPendingWork();
+      if (!hasPending) {
+        deactivateToIdle();
+      }
+    } catch (err: any) {
+      console.error('❌ Work check error after tick:', err.message);
+      // On error, stay active (safe fallback)
+    }
   }
-
-  console.log('🕐 Starting execution scheduler (checks every 10 seconds)');
-
-  // Run immediately on start
-  runSchedulerTick();
-
-  // Then run every 10 seconds
-  schedulerInterval = setInterval(runSchedulerTick, 10 * 1000);
 }
 
 /**
- * Stop the execution scheduler
+ * Start the execution scheduler.
+ * Checks DB on startup — activates immediately if pending work exists,
+ * otherwise starts in idle heartbeat mode.
  */
-export function stopExecutionScheduler() {
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-    console.log('🛑 Execution scheduler stopped');
+export async function startExecutionScheduler(): Promise<void> {
+  console.log('🕐 Starting execution scheduler (smart idle/active mode)');
+
+  try {
+    const hasPending = await checkHasPendingWork();
+    if (hasPending) {
+      console.log('📋 Pending work found on startup — starting in ACTIVE mode');
+      activateScheduler();
+    } else {
+      deactivateToIdle();
+    }
+  } catch (err: any) {
+    console.error('❌ Startup work check failed — defaulting to ACTIVE mode:', err.message);
+    activateScheduler(); // Safe fallback: active is always correct, just uses more CPU
   }
+}
+
+/**
+ * Stop the execution scheduler entirely (used on graceful shutdown).
+ */
+export function stopExecutionScheduler(): void {
+  if (activeInterval) {
+    clearInterval(activeInterval);
+    activeInterval = null;
+  }
+  if (idleInterval) {
+    clearInterval(idleInterval);
+    idleInterval = null;
+  }
+  currentMode = 'idle';
+  console.log('🛑 Execution scheduler stopped');
 }

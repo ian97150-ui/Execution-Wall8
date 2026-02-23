@@ -3,6 +3,7 @@ import { prisma } from '../index';
 import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
 import { EmailNotifications } from '../services/emailService';
 import { PushoverNotifications } from '../services/pushoverService';
+import { activateScheduler } from '../services/executionScheduler';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -799,6 +800,11 @@ async function handleOrderSignal(data: {
     }
   });
 
+  // Wake up the scheduler whenever a pending order is created (safe mode only)
+  if (!isFullMode) {
+    activateScheduler();
+  }
+
   let brokerResult: { success: boolean; error?: string } = { success: false };
 
   // In full mode, forward to broker immediately
@@ -1109,6 +1115,11 @@ async function handleExitSignal(data: {
       raw_payload: orderPayload  // Contains event: 'EXIT' and position_id for identification
     }
   });
+
+  // Wake up the scheduler if exit is queued (not immediate)
+  if (!isImmediateExecution) {
+    activateScheduler();
+  }
 
   // Notify immediately on EXIT signal receipt — before any delay or execution
   const exitReceivedData = {

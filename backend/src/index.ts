@@ -112,8 +112,8 @@ app.listen(PORT, () => {
   // Start automatic database cleanup scheduler
   startCleanupScheduler();
 
-  // Start execution scheduler (auto-executes orders when delay expires)
-  startExecutionScheduler();
+  // Start execution scheduler (smart idle/active mode — activates on demand)
+  startExecutionScheduler().catch(err => console.error('❌ Failed to start execution scheduler:', err));
 
   // Start daily reset scheduler (resets ticker configs at midnight or app startup)
   startDailyResetScheduler();
