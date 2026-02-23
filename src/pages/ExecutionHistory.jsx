@@ -14,26 +14,16 @@ import api from "@/api/apiClient";
 
 export default function ExecutionHistory() {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [exporting, setExporting] = useState(false);
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const response = await api.get('/executions/export', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
-      const link = document.createElement('a');
-      link.href = url;
-      const date = new Date().toISOString().slice(0, 10);
-      link.setAttribute('download', `execution-wall-${date}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Export failed:', err);
-    } finally {
-      setExporting(false);
-    }
+  const handleExport = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || '/api';
+    const link = document.createElement('a');
+    link.href = `${apiUrl}/executions/export`;
+    const date = new Date().toISOString().slice(0, 10);
+    link.setAttribute('download', `execution-wall-${date}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const { data: executions = [], isLoading } = useQuery({
@@ -88,13 +78,12 @@ export default function ExecutionHistory() {
           </div>
           <Button
             onClick={handleExport}
-            disabled={exporting}
             variant="outline"
             size="sm"
             className="flex items-center gap-2 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
           >
             <Download className="w-4 h-4" />
-            {exporting ? 'Exporting...' : 'Export Excel'}
+            Export CSV
           </Button>
         </div>
       </header>
