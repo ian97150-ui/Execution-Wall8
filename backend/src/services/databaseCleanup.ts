@@ -140,7 +140,7 @@ async function cleanupClosedPositions(): Promise<number> {
 }
 
 /**
- * Delete old executed orders
+ * Delete old executions — executed, cancelled, and failed records
  */
 async function cleanupExecutedOrders(): Promise<number> {
   const cutoffDate = new Date();
@@ -148,11 +148,18 @@ async function cleanupExecutedOrders(): Promise<number> {
 
   const result = await prisma.execution.deleteMany({
     where: {
-      executed_at: {
-        not: null,
-        lt: cutoffDate
-      },
-      status: 'executed'
+      OR: [
+        // Executed orders: use executed_at timestamp
+        {
+          status: 'executed',
+          executed_at: { not: null, lt: cutoffDate }
+        },
+        // Cancelled/failed orders: use created_at (no executed_at set)
+        {
+          status: { in: ['cancelled', 'failed'] },
+          created_at: { lt: cutoffDate }
+        }
+      ]
     }
   });
 
