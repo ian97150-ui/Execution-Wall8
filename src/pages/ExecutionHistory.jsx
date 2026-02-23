@@ -22,7 +22,7 @@ export default function ExecutionHistory() {
       if (statusFilter !== "all") {
         params.status = statusFilter;
       }
-      const response = await api.get('/trade-intents', { params });
+      const response = await api.get('/executions', { params });
       return response.data || [];
     },
     refetchInterval: 10000
@@ -105,6 +105,8 @@ export default function ExecutionHistory() {
             const statusBadge = getStatusBadge(exec.status);
             const StatusIcon = statusBadge.icon;
             const isLong = exec.dir === "Long";
+            let isExit = false;
+            try { isExit = exec.raw_payload && JSON.parse(exec.raw_payload).event === 'EXIT'; } catch {}
 
             return (
               <motion.div
@@ -125,7 +127,7 @@ export default function ExecutionHistory() {
                       {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                       {exec.dir?.toUpperCase()}
                     </span>
-                    {exec.order_type === 'exit' && (
+                    {isExit && (
                       <span className="px-2 py-0.5 rounded text-xs font-bold bg-orange-500 text-orange-950">
                         EXIT
                       </span>
@@ -139,7 +141,7 @@ export default function ExecutionHistory() {
                     </span>
                   </div>
                   <span className="text-xs text-slate-500">
-                    {exec.created_date && format(new Date(exec.created_date), "MMM d, HH:mm")}
+                    {exec.created_at && format(new Date(exec.created_at), "MMM d, HH:mm")}
                   </span>
                 </div>
 
@@ -147,22 +149,22 @@ export default function ExecutionHistory() {
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div>
                     <p className="text-xs text-slate-500 uppercase mb-1">Action</p>
-                    <p className="font-medium text-white text-sm">{exec.order_action?.toUpperCase() || exec.dir}</p>
+                    <p className="font-medium text-white text-sm">{exec.order_action?.toUpperCase()}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500 uppercase mb-1">Quality</p>
-                    <p className="font-medium text-white text-sm">{exec.quality_tier} ({exec.quality_score})</p>
+                    <p className="text-xs text-slate-500 uppercase mb-1">Quantity</p>
+                    <p className="font-medium text-white text-sm">{exec.quantity ?? "—"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase mb-1">Price</p>
-                    <p className="font-medium text-white text-sm">{formatPrice(exec.price)}</p>
+                    <p className="font-medium text-white text-sm">{formatPrice(exec.limit_price)}</p>
                   </div>
                 </div>
 
-                {/* Failure reason if failed */}
-                {exec.status === 'failed' && exec.failure_reason && (
+                {/* Error message if failed/cancelled */}
+                {(exec.status === 'failed' || exec.status === 'cancelled') && exec.error_message && (
                   <div className="mt-3 p-2 rounded-lg bg-red-500/10 border border-red-500/30">
-                    <p className="text-xs text-red-400">{exec.failure_reason}</p>
+                    <p className="text-xs text-red-400">{exec.error_message}</p>
                   </div>
                 )}
               </motion.div>
