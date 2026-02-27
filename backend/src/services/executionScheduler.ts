@@ -272,6 +272,25 @@ async function processExpiredDelays() {
           }
         }
 
+        // For EXIT signals: verify an open position exists BEFORE calling broker.
+        // This prevents phantom exit orders reaching the broker when no position is tracked.
+        if (isExitSignal) {
+          const openPosition = await prisma.position.findFirst({
+            where: { ticker: execution.ticker, closed_at: null }
+          });
+          if (!openPosition) {
+            console.error(`❌ EXIT for ${execution.ticker} blocked — no open position tracked, skipping broker call`);
+            await prisma.execution.update({
+              where: { id: execution.id },
+              data: {
+                status: 'failed',
+                error_message: 'No open position found — EXIT blocked before broker'
+              }
+            });
+            continue;
+          }
+        }
+
         // Forward to broker
         const brokerResult = await forwardToBroker(execution);
 
@@ -294,12 +313,20 @@ async function processExpiredDelays() {
         });
 
         if (existingPosition) {
-          const newQuantity = execution.order_action === 'buy'
-            ? existingPosition.quantity + execution.quantity
-            : existingPosition.quantity - execution.quantity;
+          // Position math must account for side:
+          //   Long position:  buy = add, sell = reduce
+          //   Short position: sell = add (adding to short), buy = reduce (covering)
+          const isLong = existingPosition.side === 'Long';
+          const newQuantity = isLong
+            ? (execution.order_action === 'buy'
+                ? existingPosition.quantity + execution.quantity
+                : existingPosition.quantity - execution.quantity)
+            : (execution.order_action === 'sell'
+                ? existingPosition.quantity + execution.quantity
+                : existingPosition.quantity - execution.quantity);
 
-          if (newQuantity === 0) {
-            // Full close
+          if (newQuantity <= 0) {
+            // Full close (or over-close — treat as closed)
             await prisma.position.update({
               where: { id: existingPosition.id },
               data: { closed_at: new Date() }
@@ -312,32 +339,15 @@ async function processExpiredDelays() {
               update: { blocked_until: blockUntil },
               create: { ticker: execution.ticker, enabled: true, blocked_until: blockUntil }
             });
-          } else if (newQuantity > 0) {
+          } else {
             // Partial close or add to position
             await prisma.position.update({
               where: { id: existingPosition.id },
               data: { quantity: newQuantity }
             });
-          } else {
-            // Negative quantity - this shouldn't happen, but handle it
-            console.error(`❌ Invalid quantity calculation for ${execution.ticker}: ${newQuantity}`);
           }
         } else {
-          // No existing position
-          if (isExitSignal) {
-            // EXIT signal with no position - fail the execution
-            console.error(`❌ EXIT for ${execution.ticker} failed - no open position found`);
-            await prisma.execution.update({
-              where: { id: execution.id },
-              data: {
-                status: 'failed',
-                error_message: 'No open position found for EXIT signal'
-              }
-            });
-            continue; // Skip to next execution
-          }
-
-          // Entry order - create new position
+          // Entry order — create new position
           await prisma.position.create({
             data: {
               ticker: execution.ticker,

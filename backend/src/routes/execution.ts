@@ -361,13 +361,20 @@ router.post('/:id/execute', async (req: Request, res: Response) => {
     });
 
     if (existingPosition) {
-      // Update existing position
-      const newQuantity = execution.order_action === 'buy'
-        ? existingPosition.quantity + execution.quantity
-        : existingPosition.quantity - execution.quantity;
+      // Position math must account for side:
+      //   Long position:  buy = add, sell = reduce
+      //   Short position: sell = add (adding to short), buy = reduce (covering)
+      const isLong = existingPosition.side === 'Long';
+      const newQuantity = isLong
+        ? (execution.order_action === 'buy'
+            ? existingPosition.quantity + execution.quantity
+            : existingPosition.quantity - execution.quantity)
+        : (execution.order_action === 'sell'
+            ? existingPosition.quantity + execution.quantity
+            : existingPosition.quantity - execution.quantity);
 
-      if (newQuantity === 0) {
-        // Close position
+      if (newQuantity <= 0) {
+        // Full close (or over-close — treat as closed)
         await prisma.position.update({
           where: { id: existingPosition.id },
           data: { closed_at: new Date() }
