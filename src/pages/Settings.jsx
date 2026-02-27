@@ -62,6 +62,7 @@ export default function Settings() {
         execution_mode: settings.execution_mode || 'safe',
         default_delay_bars: settings.default_delay_bars || 2,
         exit_delay_seconds: settings.exit_delay_seconds ?? 10,
+        exit_use_position_size: toBool(settings.exit_use_position_size),
         gate_threshold: settings.gate_threshold || 5,
         limit_edit_window: settings.limit_edit_window || 120,
         max_adjustment_pct: settings.max_adjustment_pct || 2.0,
@@ -338,6 +339,21 @@ export default function Settings() {
               <p className="text-xs text-slate-500">
                 EXIT signals execute after this delay without requiring approval. Set to 0 for immediate execution.
               </p>
+            </div>
+
+            {/* Use tracked position size */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+              <div>
+                <Label className="text-slate-300">Use Tracked Position Size</Label>
+                <p className="text-xs text-slate-500 mt-1">
+                  Override the quantity in EXIT signals with your tracked position size.
+                  Ensures the full position is closed even if TradingView sends the wrong qty.
+                </p>
+              </div>
+              <Switch
+                checked={formData.exit_use_position_size}
+                onCheckedChange={(checked) => setFormData(f => ({ ...f, exit_use_position_size: checked }))}
+              />
             </div>
           </CardContent>
         </Card>

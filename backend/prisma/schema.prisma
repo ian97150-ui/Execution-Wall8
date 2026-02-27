@@ -85,7 +85,8 @@ model ExecutionSettings {
   max_adjustment_pct   Decimal @default(2.0)
 
   // EXIT signal settings
-  exit_delay_seconds   Int     @default(10) // Delay for EXIT signals (bypasses approval)
+  exit_delay_seconds      Int     @default(10)  // Delay for EXIT signals (bypasses approval)
+  exit_use_position_size  Boolean @default(false) // Override TV qty with tracked position size
 
   // Broker webhook settings
   broker_webhook_url   String?  // URL to forward approved orders to broker

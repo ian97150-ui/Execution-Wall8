@@ -274,6 +274,7 @@ async function processExpiredDelays() {
 
         // For EXIT signals: verify an open position exists BEFORE calling broker.
         // This prevents phantom exit orders reaching the broker when no position is tracked.
+        let exitQtyOverride: number | null = null;
         if (isExitSignal) {
           const openPosition = await prisma.position.findFirst({
             where: { ticker: execution.ticker, closed_at: null }
@@ -289,10 +290,22 @@ async function processExpiredDelays() {
             });
             continue;
           }
+          // If "use tracked position size" is enabled, override the TV-sent quantity
+          // with the actual tracked position size so the full position is closed.
+          if (settings?.exit_use_position_size && openPosition.quantity !== execution.quantity) {
+            exitQtyOverride = openPosition.quantity;
+            console.log(`   📐 EXIT qty override: TV sent ${execution.quantity}, using tracked position size ${exitQtyOverride}`);
+            await prisma.execution.update({
+              where: { id: execution.id },
+              data: { quantity: exitQtyOverride }
+            });
+          }
         }
 
-        // Forward to broker
-        const brokerResult = await forwardToBroker(execution);
+        // Forward to broker (with qty override applied if applicable)
+        const brokerResult = await forwardToBroker(
+          exitQtyOverride !== null ? { ...execution, quantity: exitQtyOverride } : execution
+        );
 
         // Update execution status
         await prisma.execution.update({
