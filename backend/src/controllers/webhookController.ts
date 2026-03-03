@@ -650,7 +650,7 @@ async function handleOrderSignal(data: {
 
   // Try to acquire symbol lock to prevent duplicate orders from race conditions
   // Lock TTL: 3 seconds - prevents double webhooks arriving simultaneously
-  if (!acquireSymbolLock(tickerUpper, 'order', 3000)) {
+  if (!acquireSymbolLock(tickerUpper, 'order', 10000)) {
     console.warn(`⚠️ Duplicate ORDER signal blocked for ${tickerUpper} - symbol locked`);
     return {
       execution_id: null,
