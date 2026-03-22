@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, ShieldOff } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldOff, BookMarked, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
 import GateProgress from "./GateProgress";
@@ -12,6 +12,8 @@ export default function CandidatesList({
   onDeny,
   onBlockAlerts,
   onUnblockAlerts,
+  onSecWatch,
+  onSecConfirm,
   isBlockingAlerts = false,
   tickers = [],
   tradingviewChartId
@@ -61,6 +63,18 @@ export default function CandidatesList({
                 )}
                 {intent.quality_tier && (
                   <QualityBadge tier={intent.quality_tier} score={intent.quality_score} size="sm" />
+                )}
+                {intent.sec_confirmed && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+                    <BadgeCheck className="w-3 h-3" />
+                    SEC ✓
+                  </span>
+                )}
+                {intent.sec_watch && !intent.sec_confirmed && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+                    <BookMarked className="w-3 h-3" />
+                    SEC WATCH
+                  </span>
                 )}
               </div>
             </div>
@@ -146,6 +160,39 @@ export default function CandidatesList({
                   Chart
                 </Button>
               </div>
+              {/* SEC actions */}
+              {!intent.sec_watch && (
+                <Button
+                  onClick={() => onSecWatch?.(intent, 'watch')}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/20"
+                >
+                  <BookMarked className="w-3 h-3 mr-1" />
+                  Add to SEC Watch
+                </Button>
+              )}
+              {intent.sec_watch && !intent.sec_confirmed && (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => onSecWatch?.(intent, 'unwatch')}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-slate-500/50 text-slate-400 hover:bg-slate-500/20"
+                  >
+                    Remove Watch
+                  </Button>
+                  <Button
+                    onClick={() => onSecConfirm?.(intent, 'confirm')}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+                  >
+                    <BadgeCheck className="w-3 h-3 mr-1" />
+                    SEC Confirmed
+                  </Button>
+                </div>
+              )}
               <Button
                 onClick={() => isBlocked ? onUnblockAlerts?.(intent) : onBlockAlerts?.(intent)}
                 variant="outline"

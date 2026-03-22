@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, ExternalLink, Clock,
-  Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText, ShieldOff
+  Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText, ShieldOff,
+  BookMarked, BadgeCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
@@ -17,6 +18,8 @@ export default function TradeCard({
   onDeny,
   onBlockAlerts,
   onUnblockAlerts,
+  onSecWatch,
+  onSecConfirm,
   isBlockingAlerts = false,
   isBlocked = false,
   isTopCard = false,
@@ -150,6 +153,18 @@ export default function TradeCard({
                     </span>
                   </span>
                 )}
+                {intent.sec_confirmed && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+                    <BadgeCheck className="w-3 h-3" />
+                    SEC ✓
+                  </span>
+                )}
+                {intent.sec_watch && !intent.sec_confirmed && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+                    <BookMarked className="w-3 h-3" />
+                    SEC WATCH
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -264,6 +279,52 @@ export default function TradeCard({
               <X className="w-4 h-4 mr-2" />
               Deny Order
             </Button>
+            {/* SEC actions */}
+            {!intent.sec_watch && (
+              <Button
+                onClick={(e) => { e.stopPropagation(); onSecWatch?.(intent, 'watch'); }}
+                variant="outline"
+                className="w-full h-12 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/20"
+                disabled={showOverlay}
+              >
+                <BookMarked className="w-4 h-4 mr-2" />
+                Add to SEC Watch
+              </Button>
+            )}
+            {intent.sec_watch && !intent.sec_confirmed && (
+              <div className="flex gap-3">
+                <Button
+                  onClick={(e) => { e.stopPropagation(); onSecWatch?.(intent, 'unwatch'); }}
+                  variant="outline"
+                  className="flex-1 h-12 border-slate-500/50 text-slate-400 hover:bg-slate-500/20"
+                  disabled={showOverlay}
+                >
+                  <BookMarked className="w-4 h-4 mr-2" />
+                  Remove Watch
+                </Button>
+                <Button
+                  onClick={(e) => { e.stopPropagation(); onSecConfirm?.(intent, 'confirm'); }}
+                  variant="outline"
+                  className="flex-1 h-12 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+                  disabled={showOverlay}
+                >
+                  <BadgeCheck className="w-4 h-4 mr-2" />
+                  SEC Confirmed
+                </Button>
+              </div>
+            )}
+            {intent.sec_confirmed && (
+              <Button
+                onClick={(e) => { e.stopPropagation(); onSecConfirm?.(intent, 'unconfirm'); }}
+                variant="outline"
+                className="w-full h-12 border-cyan-500/30 text-cyan-500/60 hover:bg-cyan-500/10"
+                disabled={showOverlay}
+              >
+                <BadgeCheck className="w-4 h-4 mr-2" />
+                SEC Confirmed — Undo
+              </Button>
+            )}
+
             <Button
               onClick={(e) => { e.stopPropagation(); handleAction(isBlocked ? 'unblockAlerts' : 'blockAlerts'); }}
               variant="outline"

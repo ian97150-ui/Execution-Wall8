@@ -22,6 +22,7 @@ import TickerList from "../components/trading/TickerList";
 import LimitPriceEditor from "../components/trading/LimitPriceEditor";
 import ExecutionEditor from "../components/trading/ExecutionEditor";
 import CandidatesList from "../components/trading/CandidatesList";
+import SecWatchList from "../components/trading/SecWatchList";
 import PositionsList from "../components/trading/PositionsList";
 import BlockedTickersList from "../components/trading/BlockedTickersList";
 import ErrorBoundary from "../components/ErrorBoundary";
@@ -103,6 +104,17 @@ export default function Dashboard() {
     },
     enabled: !!settings,
     refetchInterval: 10000
+  });
+
+  // Fetch SEC watch intents
+  const { data: secWatchIntents = [], refetch: refetchSecWatch } = useQuery({
+    queryKey: ['secWatch'],
+    queryFn: async () => {
+      const response = await api.get('/trade-intents', { params: { sec_watch: 'true' } });
+      return response.data || [];
+    },
+    enabled: !!settings,
+    refetchInterval: 15000
   });
 
   // Fetch executions from the Execution table (only pending/executing - active queue)
@@ -542,6 +554,28 @@ export default function Dashboard() {
     }
   });
 
+  // SEC watch / confirm mutations
+  const secWatchMutation = useMutation({
+    mutationFn: async ({ intent, action }) => {
+      await api.post(`/trade-intents/${intent.id}/sec`, { action });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+    }
+  });
+
+  const secConfirmMutation = useMutation({
+    mutationFn: async ({ intent, action }) => {
+      await api.post(`/trade-intents/${intent.id}/sec`, { action });
+    },
+    onSuccess: (_, { action }) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      toast.success(action === 'confirm' ? 'SEC filing confirmed' : 'SEC confirm removed');
+    }
+  });
+
   // Block wall alerts for a ticker (until next daily reset)
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
@@ -786,6 +820,17 @@ export default function Dashboard() {
                 >
                   Blocked ({blockedIntents.length})
                 </button>
+                <button
+                  onClick={() => setViewMode("sec")}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    viewMode === "sec"
+                      ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
+                      : "bg-slate-800/50 text-slate-400 hover:text-slate-300"
+                  )}
+                >
+                  SEC Watch {secWatchIntents.length > 0 && `(${secWatchIntents.length})`}
+                </button>
               </div>
 
               {viewMode === "deck" && (
@@ -797,6 +842,8 @@ export default function Dashboard() {
                   onDeny={(intent) => denyOrderMutation.mutate(intent)}
                   onBlockAlerts={(intent) => blockWallAlertsMutation.mutate(intent.ticker)}
                   onUnblockAlerts={(intent) => unblockAlertsMutation.mutate(intent.ticker)}
+                  onSecWatch={(intent, action) => secWatchMutation.mutate({ intent, action })}
+                  onSecConfirm={(intent, action) => secConfirmMutation.mutate({ intent, action })}
                   isBlockingAlerts={blockWallAlertsMutation.isPending || unblockAlertsMutation.isPending}
                   onRefresh={refetchCandidates}
                   isLoading={candidatesLoading}
@@ -816,8 +863,23 @@ export default function Dashboard() {
                     onDeny={(intent) => denyOrderMutation.mutate(intent)}
                     onBlockAlerts={(intent) => blockWallAlertsMutation.mutate(intent.ticker)}
                     onUnblockAlerts={(intent) => unblockAlertsMutation.mutate(intent.ticker)}
+                    onSecWatch={(intent, action) => secWatchMutation.mutate({ intent, action })}
+                    onSecConfirm={(intent, action) => secConfirmMutation.mutate({ intent, action })}
                     isBlockingAlerts={blockWallAlertsMutation.isPending || unblockAlertsMutation.isPending}
                     tickers={tickers}
+                    tradingviewChartId={settings?.tradingview_chart_id}
+                  />
+                </div>
+              )}
+
+              {viewMode === "sec" && (
+                <div className="px-4 pb-6 md:mt-0 mt-8">
+                  <SecWatchList
+                    intents={secWatchIntents}
+                    onSecWatch={(intent, action) => secWatchMutation.mutate({ intent, action })}
+                    onSecConfirm={(intent, action) => secConfirmMutation.mutate({ intent, action })}
+                    onApprove={(intent) => swipeOnMutation.mutate(intent)}
+                    onReject={(intent) => swipeOffMutation.mutate(intent)}
                     tradingviewChartId={settings?.tradingview_chart_id}
                   />
                 </div>

@@ -11,6 +11,7 @@ router.get('/', async (req: Request, res: Response) => {
     const card_state = req.query.card_state as string | undefined;
     const status = req.query.status as string | undefined;
     const ticker = req.query.ticker as string | undefined;
+    const sec_watch = req.query.sec_watch as string | undefined;
 
     const where: any = {};
 
@@ -29,14 +30,24 @@ router.get('/', async (req: Request, res: Response) => {
       where.ticker = ticker;
     }
 
-    // Filter out expired intents - but skip for blocked cards (swiped_off)
-    // so they can still be shown in the blocked list for revival
+    // Filter by sec_watch
+    if (sec_watch === 'true') {
+      where.sec_watch = true;
+    }
+
+    // SEC watch list: show all sec_watch cards from last 7 days regardless of expiry
+    const isSecWatchQuery = sec_watch === 'true';
+
+    // Filter out expired intents - but skip for blocked cards (swiped_off) and sec_watch
     const isBlockedQuery = status === 'swiped_off';
-    if (!isBlockedQuery) {
+    if (!isBlockedQuery && !isSecWatchQuery) {
       where.expires_at = { gt: new Date() };
-    } else {
+    } else if (isBlockedQuery) {
       // For blocked cards, only show from last 24 hours
       where.created_date = { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) };
+    } else {
+      // For sec_watch, show from last 7 days
+      where.created_date = { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
     }
 
     const intents = await prisma.tradeIntent.findMany({
@@ -193,6 +204,30 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
     res.json(updatedIntent);
   } catch (error: any) {
     console.error('Error processing swipe:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SEC watch / confirm action
+router.post('/:id/sec', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { action } = req.body; // 'watch' | 'unwatch' | 'confirm' | 'unconfirm'
+
+    const intent = await prisma.tradeIntent.findUnique({ where: { id } });
+    if (!intent) return res.status(404).json({ error: 'Trade intent not found' });
+
+    let updateData: any = {};
+    if (action === 'watch')     updateData = { sec_watch: true };
+    else if (action === 'unwatch') updateData = { sec_watch: false, sec_confirmed: false };
+    else if (action === 'confirm')  updateData = { sec_confirmed: true };
+    else if (action === 'unconfirm') updateData = { sec_confirmed: false };
+    else return res.status(400).json({ error: 'Invalid action. Must be: watch, unwatch, confirm, unconfirm' });
+
+    const updated = await prisma.tradeIntent.update({ where: { id }, data: updateData });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error processing SEC action:', error);
     res.status(500).json({ error: error.message });
   }
 });
