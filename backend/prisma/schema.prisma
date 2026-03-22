@@ -88,6 +88,9 @@ model ExecutionSettings {
   exit_delay_seconds      Int     @default(10)  // Delay for EXIT signals (bypasses approval)
   exit_use_position_size  Boolean @default(false) // Override TV qty with tracked position size
 
+  // CONFIRMED signal settings
+  confirm_window_seconds  Int     @default(60)  // How long after ORDER to accept a CONFIRMED webhook
+
   // Broker webhook settings
   broker_webhook_url   String?  // URL to forward approved orders to broker
   broker_webhook_enabled Boolean @default(false)
@@ -147,9 +150,11 @@ model Execution {
   order_action     String    // buy, sell
   quantity         Int
   limit_price      Decimal?
-  status           String    @default("pending") // pending, executing, executed, failed, cancelled
+  status           String    @default("pending") // pending, executing, executed, confirmed, failed, cancelled
   delay_expires_at DateTime?
   executed_at      DateTime?
+  fill_price       Decimal?  // Actual fill price from CONFIRMED webhook
+  confirmed_at     DateTime? // When CONFIRMED webhook was received
   error_message    String?
 
   // Raw payload for broker forwarding (TradingView ORDER format)

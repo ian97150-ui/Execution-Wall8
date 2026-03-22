@@ -194,7 +194,7 @@ async function processWebhookAsync(body: any, logId: string) {
     const signalType = (event || type).toUpperCase();
 
     // Validate event is a known type
-    const validEventTypes = ['WALL', 'SIGNAL', 'ORDER', 'EXIT', 'SL_HIT'];
+    const validEventTypes = ['WALL', 'SIGNAL', 'ORDER', 'EXIT', 'SL_HIT', 'CONFIRMED'];
     if (!validEventTypes.includes(signalType)) {
       throw new Error(`Unknown event type: "${signalType}". Must be one of: ${validEventTypes.join(', ')}`);
     }
@@ -265,6 +265,17 @@ async function processWebhookAsync(body: any, logId: string) {
         result = await handleStopLossHit({
           ticker: normalizedTicker,
           stop_price: stop_price ? parseFloat(stop_price) : undefined
+        });
+        break;
+
+      case 'CONFIRMED':
+        // Handle order fill confirmation from TradingView
+        result = await handleConfirmedSignal({
+          ticker: normalizedTicker,
+          dir: normalizedDir,
+          quantity,
+          fill_price_ticks: body.fill_price_ticks,
+          mintick: body.mintick
         });
         break;
 
@@ -1367,6 +1378,122 @@ async function handleStopLossHit(data: {
   } finally {
     releaseSymbolLock(tickerUpper, 'position_close');
   }
+}
+
+/**
+ * Handle CONFIRMED signal - order fill confirmation from TradingView
+ * Fired after a limit order is filled. Updates the execution and position with actual fill price.
+ */
+async function handleConfirmedSignal(data: {
+  ticker: string;
+  dir?: string;
+  quantity?: number;
+  fill_price_ticks?: number;
+  mintick?: number;
+}) {
+  const { ticker, dir, quantity, fill_price_ticks, mintick } = data;
+  const tickerUpper = ticker.toUpperCase();
+
+  // Reconstruct fill price from ticks
+  if (fill_price_ticks === undefined || !mintick || mintick <= 0) {
+    throw new Error('CONFIRMED signal missing fill_price_ticks or mintick');
+  }
+  const fillPrice = fill_price_ticks * mintick;
+
+  // Load settings to get the confirmation window
+  const settings = await getSettingsSafe();
+  const windowSeconds = (settings as any)?.confirm_window_seconds ?? 60;
+  const windowStart = new Date(Date.now() - windowSeconds * 1000);
+
+  // Find the most recent execution for this ticker within the window
+  const execution = await prisma.execution.findFirst({
+    where: {
+      ticker: tickerUpper,
+      status: { in: ['pending', 'executing', 'executed'] },
+      created_at: { gte: windowStart }
+    },
+    orderBy: { created_at: 'desc' }
+  });
+
+  if (!execution) {
+    console.warn(`⚠️ CONFIRMED signal rejected for ${tickerUpper}: no matching execution within ${windowSeconds}s window`);
+    return {
+      message: `No matching execution found for ${tickerUpper} within ${windowSeconds}s window`,
+      rejected: true,
+      reason: 'no_matching_execution'
+    };
+  }
+
+  const now = new Date();
+
+  // Update execution with confirmed fill price
+  await prisma.execution.update({
+    where: { id: execution.id },
+    data: {
+      status: 'confirmed',
+      fill_price: fillPrice.toString(),
+      confirmed_at: now
+    }
+  });
+
+  // Update existing open position's entry_price, or create a new one
+  const openPosition = await prisma.position.findFirst({
+    where: { ticker: tickerUpper, closed_at: null }
+  });
+
+  if (openPosition) {
+    await prisma.position.update({
+      where: { id: openPosition.id },
+      data: { entry_price: fillPrice.toString() }
+    });
+    console.log(`✅ CONFIRMED: updated position entry_price to ${fillPrice} for ${tickerUpper}`);
+  } else {
+    const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short'
+      : execution.order_action === 'buy' ? 'Long' : 'Short';
+    await prisma.position.create({
+      data: {
+        ticker: tickerUpper,
+        side,
+        quantity: quantity ?? execution.quantity,
+        entry_price: fillPrice.toString()
+      }
+    });
+    console.log(`✅ CONFIRMED: created position at fill price ${fillPrice} for ${tickerUpper}`);
+  }
+
+  // Audit log
+  await prisma.auditLog.create({
+    data: {
+      event_type: 'order_confirmed',
+      ticker: tickerUpper,
+      details: JSON.stringify({
+        execution_id: execution.id,
+        fill_price: fillPrice,
+        fill_price_ticks,
+        mintick,
+        quantity: quantity ?? execution.quantity,
+        dir: dir || execution.dir,
+        position_updated: !!openPosition
+      })
+    }
+  });
+
+  // Send notifications
+  const confirmedData = {
+    action: execution.order_action,
+    side: dir || execution.dir,
+    quantity: quantity ?? execution.quantity,
+    fill_price: fillPrice,
+    status: 'confirmed'
+  };
+  EmailNotifications.orderExecuted(tickerUpper, confirmedData).catch(err => console.error('Email notification error:', err));
+  PushoverNotifications.orderExecuted(tickerUpper, confirmedData).catch(err => console.error('Pushover notification error:', err));
+
+  return {
+    execution_id: execution.id,
+    fill_price: fillPrice,
+    message: `Order confirmed for ${tickerUpper} at fill price ${fillPrice}`
+  };
 }
 
 /**

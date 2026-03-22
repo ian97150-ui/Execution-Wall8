@@ -63,6 +63,7 @@ export default function Settings() {
         default_delay_bars: settings.default_delay_bars || 2,
         exit_delay_seconds: settings.exit_delay_seconds ?? 10,
         exit_use_position_size: toBool(settings.exit_use_position_size),
+        confirm_window_seconds: settings.confirm_window_seconds ?? 60,
         gate_threshold: settings.gate_threshold || 5,
         limit_edit_window: settings.limit_edit_window || 120,
         max_adjustment_pct: settings.max_adjustment_pct || 2.0,
@@ -338,6 +339,27 @@ export default function Settings() {
               />
               <p className="text-xs text-slate-500">
                 EXIT signals execute after this delay without requiring approval. Set to 0 for immediate execution.
+              </p>
+            </div>
+
+            {/* Order Confirmation Window */}
+            <div className="space-y-4 pt-4 border-t border-slate-700">
+              <div className="flex items-center justify-between">
+                <Label className="text-slate-300">Order Confirmation Window (seconds)</Label>
+                <span className="text-lg font-bold text-white font-mono">
+                  {formData.confirm_window_seconds}s
+                </span>
+              </div>
+              <Slider
+                value={[formData.confirm_window_seconds]}
+                min={10}
+                max={300}
+                step={5}
+                onValueChange={(v) => setFormData(f => ({ ...f, confirm_window_seconds: v[0] }))}
+                className="[&_[role=slider]]:bg-green-400"
+              />
+              <p className="text-xs text-slate-500">
+                How long after an ORDER webhook to accept a CONFIRMED fill webhook. Confirmations arriving outside this window are rejected.
               </p>
             </div>
 
