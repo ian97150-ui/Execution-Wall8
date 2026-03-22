@@ -150,12 +150,14 @@ model Execution {
   order_action     String    // buy, sell
   quantity         Int
   limit_price      Decimal?
-  status           String    @default("pending") // pending, executing, executed, confirmed, failed, cancelled
-  delay_expires_at DateTime?
-  executed_at      DateTime?
-  fill_price       Decimal?  // Actual fill price from CONFIRMED webhook
-  confirmed_at     DateTime? // When CONFIRMED webhook was received
-  error_message    String?
+  status             String    @default("pending") // pending, executing, executed, partially_filled, confirmed, unmatched_confirm, failed, cancelled
+  delay_expires_at   DateTime?
+  executed_at        DateTime?
+  fill_price         Decimal?  // Actual fill price from CONFIRMED webhook
+  confirmed_at       DateTime? // When first CONFIRMED webhook was received
+  filled_quantity    Int?      // Quantity filled so far (accumulates across partial fills)
+  remaining_quantity Int?      // Quantity still pending fill
+  error_message      String?
 
   // Raw payload for broker forwarding (TradingView ORDER format)
   raw_payload      String?   // JSON: original/constructed order payload

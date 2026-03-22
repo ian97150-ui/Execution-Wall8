@@ -1382,7 +1382,12 @@ async function handleStopLossHit(data: {
 
 /**
  * Handle CONFIRMED signal - order fill confirmation from TradingView
- * Fired after a limit order is filled. Updates the execution and position with actual fill price.
+ *
+ * Handles:
+ * - Full fills  → status: "confirmed"
+ * - Partial fills → status: "partially_filled" (subsequent CONFIRMEDs accumulate)
+ * - Unmatched (outside window) → creates orphan execution, still updates position
+ * - Idempotency → fully confirmed executions are skipped on duplicate receipt
  */
 async function handleConfirmedSignal(data: {
   ticker: string;
@@ -1399,67 +1404,111 @@ async function handleConfirmedSignal(data: {
     throw new Error('CONFIRMED signal missing fill_price_ticks or mintick');
   }
   const fillPrice = fill_price_ticks * mintick;
+  const filledQty = quantity ?? 0;
+
+  if (filledQty <= 0) {
+    throw new Error('CONFIRMED signal missing quantity or quantity is 0');
+  }
 
   // Load settings to get the confirmation window
   const settings = await getSettingsSafe();
   const windowSeconds = (settings as any)?.confirm_window_seconds ?? 60;
   const windowStart = new Date(Date.now() - windowSeconds * 1000);
 
-  // Find the most recent execution for this ticker within the window
-  const execution = await prisma.execution.findFirst({
+  // Find matching execution: pending/executing/executed (initial fill) or
+  // partially_filled (subsequent fill for the same order)
+  let execution = await prisma.execution.findFirst({
     where: {
       ticker: tickerUpper,
-      status: { in: ['pending', 'executing', 'executed'] },
+      status: { in: ['pending', 'executing', 'executed', 'partially_filled'] },
       created_at: { gte: windowStart }
     },
     orderBy: { created_at: 'desc' }
   });
 
+  const now = new Date();
+  let isOrphan = false;
+
   if (!execution) {
-    console.warn(`⚠️ CONFIRMED signal rejected for ${tickerUpper}: no matching execution within ${windowSeconds}s window`);
-    return {
-      message: `No matching execution found for ${tickerUpper} within ${windowSeconds}s window`,
-      rejected: true,
-      reason: 'no_matching_execution'
-    };
+    // No match within window — create an orphan execution rather than discarding the fill
+    console.warn(`⚠️ CONFIRMED for ${tickerUpper}: no match within ${windowSeconds}s window — creating orphan`);
+    const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short' : 'Long';
+    execution = await prisma.execution.create({
+      data: {
+        ticker: tickerUpper,
+        dir: dir ?? null,
+        order_action: side === 'Long' ? 'buy' : 'sell',
+        quantity: filledQty,
+        filled_quantity: filledQty,
+        remaining_quantity: 0,
+        fill_price: fillPrice.toString(),
+        status: 'unmatched_confirm',
+        confirmed_at: now
+      }
+    });
+    isOrphan = true;
+  } else {
+    // Idempotency: skip if already fully confirmed
+    if (execution.status === 'confirmed') {
+      console.warn(`⚠️ CONFIRMED duplicate for ${tickerUpper} (execution ${execution.id} already confirmed) — skipping`);
+      return {
+        execution_id: execution.id,
+        fill_price: fillPrice,
+        message: `Duplicate CONFIRMED ignored — execution already fully confirmed`,
+        skipped: true
+      };
+    }
+
+    // Accumulate filled quantity across partial fills
+    const previouslyFilled = (execution as any).filled_quantity ?? 0;
+    const totalFilled = previouslyFilled + filledQty;
+    const remaining = execution.quantity - totalFilled;
+    const newStatus = remaining <= 0 ? 'confirmed' : 'partially_filled';
+
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: {
+        status: newStatus,
+        fill_price: fillPrice.toString(),
+        confirmed_at: execution.confirmed_at ?? now, // only set on first confirmation
+        filled_quantity: totalFilled,
+        remaining_quantity: Math.max(0, remaining)
+      }
+    });
+
+    console.log(`✅ CONFIRMED: ${tickerUpper} filled ${filledQty} (total ${totalFilled}/${execution.quantity}) @ ${fillPrice} — ${newStatus}`);
   }
 
-  const now = new Date();
-
-  // Update execution with confirmed fill price
-  await prisma.execution.update({
-    where: { id: execution.id },
-    data: {
-      status: 'confirmed',
-      fill_price: fillPrice.toString(),
-      confirmed_at: now
-    }
-  });
-
-  // Update existing open position's entry_price, or create a new one
+  // Update open position entry_price and quantity, or create if missing
   const openPosition = await prisma.position.findFirst({
     where: { ticker: tickerUpper, closed_at: null }
   });
 
+  const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short'
+    : execution.order_action === 'buy' ? 'Long' : 'Short';
+
   if (openPosition) {
     await prisma.position.update({
       where: { id: openPosition.id },
-      data: { entry_price: fillPrice.toString() }
+      data: {
+        entry_price: fillPrice.toString(),
+        quantity: filledQty  // update to reflect actual filled quantity
+      }
     });
-    console.log(`✅ CONFIRMED: updated position entry_price to ${fillPrice} for ${tickerUpper}`);
   } else {
-    const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short'
-      : execution.order_action === 'buy' ? 'Long' : 'Short';
     await prisma.position.create({
       data: {
         ticker: tickerUpper,
         side,
-        quantity: quantity ?? execution.quantity,
+        quantity: filledQty,
         entry_price: fillPrice.toString()
       }
     });
-    console.log(`✅ CONFIRMED: created position at fill price ${fillPrice} for ${tickerUpper}`);
   }
+
+  // Determine final status for audit/notifications
+  const execStatus = isOrphan ? 'unmatched_confirm'
+    : (execution as any).remaining_quantity <= 0 ? 'confirmed' : 'partially_filled';
 
   // Audit log
   await prisma.auditLog.create({
@@ -1471,20 +1520,24 @@ async function handleConfirmedSignal(data: {
         fill_price: fillPrice,
         fill_price_ticks,
         mintick,
-        quantity: quantity ?? execution.quantity,
+        filled_quantity: filledQty,
+        total_filled: (execution as any).filled_quantity ?? filledQty,
+        remaining_quantity: (execution as any).remaining_quantity ?? 0,
         dir: dir || execution.dir,
+        status: execStatus,
+        is_orphan: isOrphan,
         position_updated: !!openPosition
       })
     }
   });
 
-  // Send notifications
+  // Notifications
   const confirmedData = {
     action: execution.order_action,
-    side: dir || execution.dir,
-    quantity: quantity ?? execution.quantity,
+    side,
+    quantity: filledQty,
     fill_price: fillPrice,
-    status: 'confirmed'
+    status: execStatus
   };
   EmailNotifications.orderExecuted(tickerUpper, confirmedData).catch(err => console.error('Email notification error:', err));
   PushoverNotifications.orderExecuted(tickerUpper, confirmedData).catch(err => console.error('Pushover notification error:', err));
@@ -1492,7 +1545,12 @@ async function handleConfirmedSignal(data: {
   return {
     execution_id: execution.id,
     fill_price: fillPrice,
-    message: `Order confirmed for ${tickerUpper} at fill price ${fillPrice}`
+    filled_quantity: filledQty,
+    status: execStatus,
+    is_orphan: isOrphan,
+    message: isOrphan
+      ? `Unmatched fill recorded for ${tickerUpper} @ ${fillPrice} (no execution found in window)`
+      : `Order ${execStatus === 'confirmed' ? 'fully confirmed' : 'partially filled'} for ${tickerUpper} @ ${fillPrice}`
   };
 }
 
