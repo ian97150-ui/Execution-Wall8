@@ -218,15 +218,16 @@ async function processExpiredDelays() {
                 data: { intent_id: existingIntent.id }
               });
               console.log(`   🔗 Late-linked ${execution.ticker} to approved intent ${existingIntent.id}`);
-            } else {
-              // Intent exists but not approved - cancel
-              console.log(`   ❌ Cancelling ${execution.ticker} - found unapproved intent (status: ${existingIntent.status})`);
+            } else if (existingIntent.status === 'swiped_off' || existingIntent.status === 'swiped_deny') {
+              // User explicitly rejected this ticker - cancel the execution
+              const reasonText = existingIntent.status === 'swiped_deny' ? 'denied' : 'blocked';
+              console.log(`   ❌ Cancelling ${execution.ticker} - intent was explicitly ${reasonText} by user`);
 
               await prisma.execution.update({
                 where: { id: execution.id },
                 data: {
                   status: 'cancelled',
-                  error_message: `Order cancelled - intent was ${existingIntent.status}`
+                  error_message: `Order cancelled - signal was ${reasonText} by user`
                 }
               });
 
@@ -238,14 +239,18 @@ async function processExpiredDelays() {
                     execution_id: execution.id,
                     found_intent_id: existingIntent.id,
                     intent_status: existingIntent.status,
-                    reason: 'Found unapproved intent for ticker'
+                    reason: `Intent explicitly ${reasonText} by user`
                   })
                 }
               });
 
               continue;
             }
-          } else {
+            // else: intent exists but is pending/cancelled/expired — not an explicit rejection,
+            // fall through to the "no approved intent" block below
+          }
+
+          if (!existingIntent || existingIntent.status !== 'swiped_on') {
             // No intent exists at all - cancel execution (safe mode requires approval)
             console.log(`   ❌ Cancelling ${execution.ticker} - no WALL intent found (safe mode requires approval)`);
 
