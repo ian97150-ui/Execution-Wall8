@@ -113,18 +113,18 @@ export default function TradeCard({
 
       {/* Card content */}
       <div className={cn(
-        "h-full rounded-3xl overflow-hidden",
+        "h-full rounded-3xl flex flex-col overflow-hidden",
         "bg-gradient-to-b from-slate-800/95 to-slate-900/95",
         "border border-slate-700/50",
         "backdrop-blur-xl shadow-2xl"
       )}>
-        {/* Header with side indicator */}
+        {/* Header with side indicator — stays fixed at top */}
         <div className={cn(
-          "h-1.5",
+          "h-1.5 shrink-0",
           isLong ? "bg-gradient-to-r from-emerald-500 to-emerald-400" : "bg-gradient-to-r from-rose-500 to-rose-400"
         )} />
 
-        <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4">
           {/* Top row: Ticker, Side, Quality, Order Live */}
           <div className="flex items-start justify-between">
             <div className="space-y-1">
