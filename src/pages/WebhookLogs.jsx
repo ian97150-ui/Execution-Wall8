@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, CheckCircle2, XCircle, Clock,
-  AlertTriangle, RefreshCw, Webhook, ChevronDown, ChevronUp
+  AlertTriangle, RefreshCw, Webhook, ChevronDown, ChevronUp, ShieldOff
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -36,6 +36,7 @@ export default function WebhookLogs() {
   const statusOptions = [
     { value: "all", label: "All" },
     { value: "success", label: "Success" },
+    { value: "blocked", label: "Blocked" },
     { value: "error", label: "Error" },
     { value: "processing", label: "Processing" }
   ];
@@ -50,6 +51,7 @@ export default function WebhookLogs() {
     const config = {
       success: { icon: CheckCircle2, color: "text-emerald-400 bg-emerald-500/20", label: "Success" },
       error: { icon: XCircle, color: "text-red-400 bg-red-500/20", label: "Error" },
+      blocked: { icon: ShieldOff, color: "text-orange-400 bg-orange-500/20", label: "Blocked" },
       processing: { icon: Clock, color: "text-amber-400 bg-amber-500/20", label: "Processing" }
     };
     return config[status] || config.processing;
@@ -206,11 +208,18 @@ export default function WebhookLogs() {
                 {/* Expanded Content */}
                 {isExpanded && (
                   <div className="px-4 pb-4 space-y-3 border-t border-slate-700/50">
-                    {/* Error message if present */}
+                    {/* Error / blocked message if present */}
                     {log.error && (
-                      <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-                        <p className="text-xs text-red-400 font-medium mb-1">Error:</p>
-                        <p className="text-sm text-red-300">{log.error}</p>
+                      <div className={cn(
+                        "mt-3 p-3 rounded-lg",
+                        log.status === 'blocked'
+                          ? "bg-orange-500/10 border border-orange-500/30"
+                          : "bg-red-500/10 border border-red-500/30"
+                      )}>
+                        <p className={cn("text-xs font-medium mb-1", log.status === 'blocked' ? "text-orange-400" : "text-red-400")}>
+                          {log.status === 'blocked' ? 'Blocked reason:' : 'Error:'}
+                        </p>
+                        <p className={cn("text-sm", log.status === 'blocked' ? "text-orange-300" : "text-red-300")}>{log.error}</p>
                       </div>
                     )}
 

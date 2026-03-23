@@ -300,6 +300,19 @@ async function processWebhookAsync(body: any, logId: string) {
         });
     }
 
+    // If result indicates a blocked/rejected signal, record that in the log
+    if (result?.blocked || result?.rejected) {
+      await prisma.webhookLog.update({
+        where: { id: logId },
+        data: {
+          status: 'blocked',
+          error: result.message || `Blocked: ${result.reason || 'unknown reason'}`
+        }
+      });
+      console.warn(`⚠️ Webhook blocked: ${signalType} ${normalizedTicker} — ${result.message}`);
+      return;
+    }
+
     // Update webhook log as success (response already sent)
     await prisma.webhookLog.update({
       where: { id: logId },
