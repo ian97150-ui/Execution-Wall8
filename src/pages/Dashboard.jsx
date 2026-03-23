@@ -784,7 +784,7 @@ export default function Dashboard() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsContent value="candidates" className="mt-0 flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 240px)' }}>
               {/* View mode toggle — fixed row, never scrolls */}
-              <div className="shrink-0 flex justify-end flex-wrap gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4">
+              <div className="shrink-0 flex gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4 overflow-x-auto">
                 <button
                   onClick={() => setViewMode("deck")}
                   className={cn(
