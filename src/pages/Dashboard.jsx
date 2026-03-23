@@ -782,9 +782,9 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsContent value="candidates" className="mt-0 overflow-y-auto" style={{ height: 'calc(100vh - 240px)' }}>
-              {/* View mode toggle */}
-              <div className="flex justify-end gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4">
+            <TabsContent value="candidates" className="mt-0 flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 240px)' }}>
+              {/* View mode toggle — fixed row, never scrolls */}
+              <div className="shrink-0 flex justify-end flex-wrap gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4">
                 <button
                   onClick={() => setViewMode("deck")}
                   className={cn(
@@ -834,6 +834,7 @@ export default function Dashboard() {
               </div>
 
               {viewMode === "deck" && (
+                <div className="flex-1 relative min-h-0">
                 <SwipeDeck
                   intents={candidates}
                   executions={executions}
@@ -852,10 +853,11 @@ export default function Dashboard() {
                   onCreateDemo={() => createDemoWallMutation.mutate()}
                   isDemoLoading={createDemoWallMutation.isPending}
                 />
+                </div>
               )}
 
               {viewMode === "list" && (
-                <div className="px-4 pb-6 md:mt-0 mt-8">
+                <div className="flex-1 overflow-y-auto px-4 pb-6 md:mt-0 mt-8">
                   <CandidatesList
                     candidates={candidates}
                     onApprove={(intent) => swipeOnMutation.mutate(intent)}
@@ -873,7 +875,7 @@ export default function Dashboard() {
               )}
 
               {viewMode === "sec" && (
-                <div className="px-4 pb-6 md:mt-0 mt-8">
+                <div className="flex-1 overflow-y-auto px-4 pb-6 md:mt-0 mt-8">
                   <SecWatchList
                     intents={secWatchIntents}
                     onSecWatch={(intent, action) => secWatchMutation.mutate({ intent, action })}
@@ -886,7 +888,7 @@ export default function Dashboard() {
               )}
 
               {viewMode === "blocked" && (
-                <div className="px-4 pb-6 md:mt-0 mt-8">
+                <div className="flex-1 overflow-y-auto px-4 pb-6 md:mt-0 mt-8">
                   <BlockedTickersList
                     blockedIntents={blockedIntents}
                     onRevive={(intent) => reviveTickerMutation.mutate(intent)}
