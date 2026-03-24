@@ -1,8 +1,95 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink } from "lucide-react";
+import { TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink, FlaskConical, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
+
+const SEC_SCANNER_URL = import.meta.env.VITE_SEC_SCANNER_URL || 'https://web-production-dcf57.up.railway.app';
+
+function SecScannerTest() {
+  const [ticker, setTicker] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function runTest() {
+    if (!ticker.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${SEC_SCANNER_URL}/sec-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker.trim().toUpperCase(), send_pushover: true })
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      setResult({ error: 'Could not reach SEC scanner: ' + e.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <FlaskConical className="w-4 h-4 text-violet-400" />
+        <span className="text-sm font-semibold text-slate-300">Test SEC Scanner</span>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={ticker}
+          onChange={e => setTicker(e.target.value.toUpperCase())}
+          onKeyDown={e => e.key === 'Enter' && runTest()}
+          placeholder="Enter ticker..."
+          maxLength={10}
+          className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+        />
+        <Button
+          onClick={runTest}
+          disabled={loading || !ticker.trim()}
+          size="sm"
+          className="bg-violet-600 hover:bg-violet-700 text-white"
+        >
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Check'}
+        </Button>
+      </div>
+
+      {result && (
+        <div className={cn(
+          "rounded-lg p-3 text-xs space-y-1",
+          result.error ? "bg-red-500/10 border border-red-500/30" :
+          result.found ? "bg-cyan-500/10 border border-cyan-500/30" :
+          "bg-slate-700/50 border border-slate-600/50"
+        )}>
+          {result.error ? (
+            <div className="flex items-center gap-1.5 text-red-400">
+              <XCircle className="w-3.5 h-3.5" /> {result.error}
+            </div>
+          ) : result.found ? (
+            <>
+              <div className="flex items-center gap-1.5 text-cyan-400 font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Filing found — Pushover sent
+              </div>
+              <p className="text-slate-300">{result.company_name}</p>
+              {result.filings.map((f, i) => (
+                <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-cyan-400 hover:underline">
+                  <FileText className="w-3 h-3" /> {f.form} — {f.date}
+                </a>
+              ))}
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <XCircle className="w-3.5 h-3.5" /> No watched filings for {result.ticker} today
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const getSecUrl = (ticker) => {
   const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2CF-3%2CF-3ASR%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-1MEF%2CS-3%2CS-3ASR%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3%2C6-K";
@@ -19,10 +106,13 @@ export default function SecWatchList({
 }) {
   if (intents.length === 0) {
     return (
-      <div className="text-center py-16 text-slate-500 space-y-2">
-        <BookMarked className="w-10 h-10 mx-auto opacity-30" />
-        <p className="font-medium">No cards in SEC watch list</p>
-        <p className="text-xs text-slate-600">Add cards from the Swipe or Review All view using the "Add to SEC Watch" button.</p>
+      <div className="space-y-4">
+        <SecScannerTest />
+        <div className="text-center py-12 text-slate-500 space-y-2">
+          <BookMarked className="w-10 h-10 mx-auto opacity-30" />
+          <p className="font-medium">No cards in SEC watch list</p>
+          <p className="text-xs text-slate-600">Add cards from the Swipe or Review All view using the "Add to SEC Watch" button.</p>
+        </div>
       </div>
     );
   }
@@ -32,6 +122,7 @@ export default function SecWatchList({
 
   return (
     <div className="space-y-6">
+      <SecScannerTest />
       {/* Waiting section */}
       {waiting.length > 0 && (
         <div className="space-y-3">
