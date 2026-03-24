@@ -193,6 +193,19 @@ async function processExpiredDelays() {
               }
             });
 
+            // Clean up any position that was created by a CONFIRMED signal before
+            // the user had a chance to deny — prevents EXIT from firing on denied entries
+            const orphanPosition = await prisma.position.findFirst({
+              where: { ticker: execution.ticker, closed_at: null }
+            });
+            if (orphanPosition) {
+              await prisma.position.update({
+                where: { id: orphanPosition.id },
+                data: { closed_at: new Date() }
+              });
+              console.log(`   🧹 Closed orphan position for ${execution.ticker} (entry was denied)`);
+            }
+
             await prisma.auditLog.create({
               data: {
                 event_type: 'execution_expired',
@@ -200,7 +213,8 @@ async function processExpiredDelays() {
                 details: JSON.stringify({
                   execution_id: execution.id,
                   intent_id: execution.intent_id,
-                  reason: 'Not approved before delay expired'
+                  reason: 'Not approved before delay expired',
+                  orphan_position_closed: !!orphanPosition
                 })
               }
             });

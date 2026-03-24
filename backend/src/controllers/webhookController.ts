@@ -500,6 +500,9 @@ async function handleWallSignal(data: {
 
   if (existingIntent) {
     // UPDATE existing intent with new data
+    // If the existing intent was cancelled/invalidated (e.g. delay expired unapproved),
+    // a fresh WALL must resurrect it back to pending so the card reappears.
+    const wasInvalidated = existingIntent.status === 'cancelled';
     tradeIntent = await prisma.tradeIntent.update({
       where: { id: existingIntent.id },
       data: {
@@ -512,7 +515,9 @@ async function handleWallSignal(data: {
         confidence: finalConfidence,
         quality_tier: finalQualityTier,
         quality_score: finalQualityScore,
-        card_state: card_state || existingIntent.card_state,
+        // Reset status and card_state when resurrecting a cancelled intent
+        status: wasInvalidated ? 'pending' : existingIntent.status,
+        card_state: wasInvalidated ? (card_state || 'ARMED') : (card_state || existingIntent.card_state),
         primary_blocker: primary_blocker || null,
         intent_data: intent ? JSON.stringify(intent) : existingIntent.intent_data,
         gates_data: gates ? JSON.stringify(gates) : existingIntent.gates_data,
@@ -1500,6 +1505,37 @@ async function handleConfirmedSignal(data: {
     });
 
     console.log(`✅ CONFIRMED: ${tickerUpper} filled ${filledQty} (total ${totalFilled}/${execution.quantity}) @ ${fillPrice} — ${newStatus}`);
+  }
+
+  // Guard: if the execution is linked to a denied/cancelled intent, do not create
+  // a position — this prevents EXIT signals from firing on entries the user rejected.
+  if (!isOrphan && execution.intent_id) {
+    const linkedIntent = await prisma.tradeIntent.findUnique({
+      where: { id: execution.intent_id }
+    });
+    if (linkedIntent && ['swiped_deny', 'swiped_off', 'cancelled'].includes(linkedIntent.status)) {
+      console.warn(`⚠️ CONFIRMED for ${tickerUpper}: linked intent was ${linkedIntent.status} — skipping position update (entry denied)`);
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'confirmed_blocked_denied_intent',
+          ticker: tickerUpper,
+          details: JSON.stringify({
+            execution_id: execution.id,
+            intent_id: execution.intent_id,
+            intent_status: linkedIntent.status,
+            fill_price: fillPrice,
+            reason: 'Entry was denied — position not created'
+          })
+        }
+      });
+      return {
+        execution_id: execution.id,
+        fill_price: fillPrice,
+        filled_quantity: filledQty,
+        status: 'blocked_denied_intent',
+        message: `CONFIRMED blocked — entry was ${linkedIntent.status} by user`
+      };
+    }
   }
 
   // Update open position entry_price and quantity, or create if missing
