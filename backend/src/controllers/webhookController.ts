@@ -280,11 +280,12 @@ async function processWebhookAsync(body: any, logId: string) {
         break;
 
       case 'WALL_55PCT':
-        // Intraday 55%+ mover badge — silent ticker annotation, no notification
+        // Intraday 55%+ mover badge — ticker annotation, notification suppressed when is_delayed=true
         result = await handleWall55PctSignal({
           ticker: normalizedTicker,
-          dayPeakMove: body.dayPeakMove,
-          isDelayed: body.note === 'delayed_live_fire'
+          dir: normalizedDir,
+          dayPeakMove: body.day_peak_move_pct,
+          isDelayed: body.is_delayed === true
         });
         break;
 
@@ -1586,14 +1587,15 @@ async function handleConfirmedSignal(data: {
  */
 async function handleWall55PctSignal(data: {
   ticker: string;
+  dir?: string;
   dayPeakMove?: number;
   isDelayed: boolean;
 }) {
-  const { ticker, dayPeakMove, isDelayed } = data;
+  const { ticker, dir, dayPeakMove, isDelayed } = data;
   const tickerUpper = ticker.toUpperCase();
 
   if (dayPeakMove === undefined || dayPeakMove === null) {
-    throw new Error('WALL_55PCT signal missing dayPeakMove');
+    throw new Error('WALL_55PCT signal missing day_peak_move_pct');
   }
 
   const now = new Date();
@@ -1617,20 +1619,32 @@ async function handleWall55PctSignal(data: {
       event_type: 'wall_55pct_received',
       ticker: tickerUpper,
       details: JSON.stringify({
-        day_peak_move: dayPeakMove,
+        day_peak_move_pct: dayPeakMove,
+        dir: dir || null,
         is_delayed: isDelayed,
         source: 'webhook'
       })
     }
   });
 
-  console.log(`📊 WALL_55PCT: ${tickerUpper} ${dayPeakMove}% intraday move${isDelayed ? ' (delayed)' : ''}`);
+  console.log(`📊 WALL_55PCT: ${tickerUpper} ${dayPeakMove}% intraday move${isDelayed ? ' (delayed — silent)' : ''}`);
+
+  // Non-delayed fires are real-time — push notification via wall_signal channel
+  // Delayed fires suppress the notification (badge silently updated)
+  if (!isDelayed) {
+    const notifData = {
+      side: dir || null,
+      status: `${dayPeakMove}% intraday mover`
+    };
+    EmailNotifications.wallSignal(tickerUpper, notifData).catch(err => console.error('Email notification error:', err));
+    PushoverNotifications.wallSignal(tickerUpper, notifData).catch(err => console.error('Pushover notification error:', err));
+  }
 
   return {
     ticker: tickerUpper,
-    day_peak_move: dayPeakMove,
+    day_peak_move_pct: dayPeakMove,
     is_delayed: isDelayed,
-    message: `Badge updated for ${tickerUpper} — ${dayPeakMove}% intraday move`
+    message: `Badge updated for ${tickerUpper} — ${dayPeakMove}% intraday move${isDelayed ? ' (silent)' : ' (notified)'}`
   };
 }
 
