@@ -67,13 +67,15 @@ model TradeIntent {
 }
 
 model TickerConfig {
-  id              String    @id @default(uuid())
-  ticker          String    @unique
-  enabled         Boolean   @default(true)
-  alerts_blocked  Boolean   @default(false)
-  blocked_until   DateTime?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  ticker               String    @unique
+  enabled              Boolean   @default(true)
+  alerts_blocked       Boolean   @default(false)
+  blocked_until        DateTime?
+  day_peak_move        Float?    // Intraday move % from WALL_55PCT signal (e.g. 62.3)
+  peak_move_updated_at DateTime? // When day_peak_move was last set
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
 
   @@index([ticker])
   @@map("ticker_configs")

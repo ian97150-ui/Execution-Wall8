@@ -73,8 +73,8 @@ export default function SwipeDeck({
             {visibleCards.map((intent, index) => {
               const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
               const isEnabled = tickerConfig?.enabled || false;
-              
               const isBlocked = tickerConfig?.alerts_blocked === true;
+              const dayPeakMove = tickerConfig?.day_peak_move ?? null;
 
               return (
                 <TradeCard
@@ -95,6 +95,7 @@ export default function SwipeDeck({
                   isBlockingAlerts={isBlockingAlerts}
                   isBlocked={isBlocked}
                   isEnabled={isEnabled}
+                  dayPeakMove={dayPeakMove}
                   tradingviewChartId={tradingviewChartId}
                   style={{
                     scale: 1 - index * 0.05,

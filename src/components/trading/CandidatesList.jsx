@@ -34,6 +34,7 @@ export default function CandidatesList({
         const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
         const isEnabled = tickerConfig?.enabled || false;
         const isBlocked = tickerConfig?.alerts_blocked === true;
+        const dayPeakMove = tickerConfig?.day_peak_move ?? null;
 
         return (
           <div key={intent.id} className={cn(
@@ -63,6 +64,11 @@ export default function CandidatesList({
                 )}
                 {intent.quality_tier && (
                   <QualityBadge tier={intent.quality_tier} score={intent.quality_score} size="sm" />
+                )}
+                {dayPeakMove !== null && (
+                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                    {Number(dayPeakMove).toFixed(1)}% mover
+                  </span>
                 )}
                 {intent.sec_confirmed && (
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">

@@ -56,21 +56,24 @@ export async function performDailyReset(): Promise<void> {
 
     console.log('🌅 Performing daily reset...');
 
-    // 1. Reset all ticker configs to enabled: true and unblock alerts
+    // 1. Reset all ticker configs to enabled: true, unblock alerts, and clear peak move badges
     const tickerConfigsReset = await prisma.tickerConfig.updateMany({
       where: {
         OR: [
           { enabled: false },
-          { alerts_blocked: true }
+          { alerts_blocked: true },
+          { day_peak_move: { not: null } }
         ]
       },
       data: {
         enabled: true,
         alerts_blocked: false,
-        blocked_until: null
+        blocked_until: null,
+        day_peak_move: null,
+        peak_move_updated_at: null
       }
     });
-    console.log(`   ✅ Reset ${tickerConfigsReset.count} blocked ticker configs`);
+    console.log(`   ✅ Reset ${tickerConfigsReset.count} blocked ticker configs (badges cleared)`);
 
     // 2. Clear pending executions (not executed ones, and not positions!)
     // IMPORTANT: Exclude EXIT orders - they must survive overnight to close positions

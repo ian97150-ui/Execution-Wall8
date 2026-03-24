@@ -194,7 +194,7 @@ async function processWebhookAsync(body: any, logId: string) {
     const signalType = (event || type).toUpperCase();
 
     // Validate event is a known type
-    const validEventTypes = ['WALL', 'SIGNAL', 'ORDER', 'EXIT', 'SL_HIT', 'CONFIRMED'];
+    const validEventTypes = ['WALL', 'SIGNAL', 'ORDER', 'EXIT', 'SL_HIT', 'CONFIRMED', 'WALL_55PCT'];
     if (!validEventTypes.includes(signalType)) {
       throw new Error(`Unknown event type: "${signalType}". Must be one of: ${validEventTypes.join(', ')}`);
     }
@@ -276,6 +276,15 @@ async function processWebhookAsync(body: any, logId: string) {
           quantity,
           fill_price_ticks: body.fill_price_ticks,
           mintick: body.mintick
+        });
+        break;
+
+      case 'WALL_55PCT':
+        // Intraday 55%+ mover badge — silent ticker annotation, no notification
+        result = await handleWall55PctSignal({
+          ticker: normalizedTicker,
+          dayPeakMove: body.dayPeakMove,
+          isDelayed: body.note === 'delayed_live_fire'
         });
         break;
 
@@ -1564,6 +1573,64 @@ async function handleConfirmedSignal(data: {
     message: isOrphan
       ? `Unmatched fill recorded for ${tickerUpper} @ ${fillPrice} (no execution found in window)`
       : `Order ${execStatus === 'confirmed' ? 'fully confirmed' : 'partially filled'} for ${tickerUpper} @ ${fillPrice}`
+  };
+}
+
+/**
+ * Handle WALL_55PCT signal — intraday 55%+ mover badge
+ *
+ * Behaviour:
+ * - Normal: upsert day_peak_move badge on ticker_configs (silent — no notification)
+ * - Delayed (note:"delayed_live_fire"): same upsert — badge already exists, just refresh the value
+ * - No TradeIntent card is created; badge context is visible when WALL arrives later
+ */
+async function handleWall55PctSignal(data: {
+  ticker: string;
+  dayPeakMove?: number;
+  isDelayed: boolean;
+}) {
+  const { ticker, dayPeakMove, isDelayed } = data;
+  const tickerUpper = ticker.toUpperCase();
+
+  if (dayPeakMove === undefined || dayPeakMove === null) {
+    throw new Error('WALL_55PCT signal missing dayPeakMove');
+  }
+
+  const now = new Date();
+
+  await prisma.tickerConfig.upsert({
+    where: { ticker: tickerUpper },
+    update: {
+      day_peak_move: dayPeakMove,
+      peak_move_updated_at: now
+    },
+    create: {
+      ticker: tickerUpper,
+      enabled: true,
+      day_peak_move: dayPeakMove,
+      peak_move_updated_at: now
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      event_type: 'wall_55pct_received',
+      ticker: tickerUpper,
+      details: JSON.stringify({
+        day_peak_move: dayPeakMove,
+        is_delayed: isDelayed,
+        source: 'webhook'
+      })
+    }
+  });
+
+  console.log(`📊 WALL_55PCT: ${tickerUpper} ${dayPeakMove}% intraday move${isDelayed ? ' (delayed)' : ''}`);
+
+  return {
+    ticker: tickerUpper,
+    day_peak_move: dayPeakMove,
+    is_delayed: isDelayed,
+    message: `Badge updated for ${tickerUpper} — ${dayPeakMove}% intraday move`
   };
 }
 

@@ -25,6 +25,7 @@ export default function TradeCard({
   isTopCard = false,
   style = {},
   isEnabled = false,
+  dayPeakMove = null,
   tradingviewChartId
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -151,6 +152,11 @@ export default function TradeCard({
                       <span className="w-2 h-2 rounded-full bg-blue-900 animate-pulse"></span>
                       LIVE ORDER
                     </span>
+                  </span>
+                )}
+                {dayPeakMove !== null && (
+                  <span className="px-2 py-1 rounded-md text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                    {Number(dayPeakMove).toFixed(1)}% mover
                   </span>
                 )}
                 {intent.sec_confirmed && (
