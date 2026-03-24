@@ -62,6 +62,15 @@ export default function TradeCard({
   const SideIcon = isLong ? TrendingUp : TrendingDown;
   const sideLabel = intent.dir?.toUpperCase();
 
+  // Pre-parse expanded detail data
+  let gateEntries = [];
+  try { gateEntries = Object.entries(JSON.parse(intent.gates_data || '{}')); } catch {}
+  let signalEntries = [];
+  try {
+    signalEntries = Object.entries(JSON.parse(intent.intent_data || '{}')).filter(([, v]) => typeof v === 'boolean');
+  } catch {}
+  const hasExpandedData = gateEntries.length > 0 || signalEntries.length > 0 || intent.strategy_id || intent.timeframe;
+
   const getSecUrl = (ticker) => {
     const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2CF-3%2CF-3ASR%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-1MEF%2CS-3%2CS-3ASR%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3%2C6-K";
     return `https://www.sec.gov/edgar/search/#/dateRange=30d&category=custom&entityName=${ticker}&forms=${forms}`;
@@ -250,53 +259,45 @@ export default function TradeCard({
           {/* Expanded details */}
           {expanded && (
             <div className="space-y-3 pb-1">
+              {!hasExpandedData && (
+                <p className="text-xs text-slate-500 text-center py-2">No additional signal data available</p>
+              )}
+
               {/* Gate breakdown */}
-              {intent.gates_data && (() => {
-                let gates = {};
-                try { gates = JSON.parse(intent.gates_data); } catch {}
-                const entries = Object.entries(gates);
-                if (!entries.length) return null;
-                return (
-                  <div className="space-y-1.5">
-                    <p className="text-xs text-slate-500 uppercase tracking-wider">Gate Breakdown</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {entries.map(([key, val]) => (
-                        <div key={key} className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium",
-                          val ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
-                        )}>
-                          <span className="shrink-0">{val ? '✓' : '✗'}</span>
-                          <span className="truncate">{key}</span>
-                        </div>
-                      ))}
-                    </div>
+              {gateEntries.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-slate-500 uppercase tracking-wider">Gate Breakdown</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {gateEntries.map(([key, val]) => (
+                      <div key={key} className={cn(
+                        "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium",
+                        val ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                      )}>
+                        <span className="shrink-0">{val ? '✓' : '✗'}</span>
+                        <span className="truncate">{key}</span>
+                      </div>
+                    ))}
                   </div>
-                );
-              })()}
+                </div>
+              )}
 
               {/* Signals breakdown */}
-              {intent.intent_data && (() => {
-                let signals = {};
-                try { signals = JSON.parse(intent.intent_data); } catch {}
-                const entries = Object.entries(signals).filter(([, v]) => typeof v === 'boolean');
-                if (!entries.length) return null;
-                return (
-                  <div className="space-y-1.5">
-                    <p className="text-xs text-slate-500 uppercase tracking-wider">Signals</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {entries.map(([key, val]) => (
-                        <div key={key} className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium",
-                          val ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/10 text-slate-500"
-                        )}>
-                          <span className="shrink-0">{val ? '✓' : '—'}</span>
-                          <span className="truncate">{key}</span>
-                        </div>
-                      ))}
-                    </div>
+              {signalEntries.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-slate-500 uppercase tracking-wider">Signals</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {signalEntries.map(([key, val]) => (
+                      <div key={key} className={cn(
+                        "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium",
+                        val ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/10 text-slate-500"
+                      )}>
+                        <span className="shrink-0">{val ? '✓' : '—'}</span>
+                        <span className="truncate">{key}</span>
+                      </div>
+                    ))}
                   </div>
-                );
-              })()}
+                </div>
+              )}
 
               {/* Strategy + timeframe */}
               {(intent.strategy_id || intent.timeframe) && (
