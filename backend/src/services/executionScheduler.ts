@@ -156,17 +156,27 @@ async function processExpiredDelays() {
           console.log(`   🚪 EXIT signal for ${execution.ticker} - bypassing approval (auto-execute)`);
           // Skip directly to execution (fall through to execution logic below)
         } else if (execution.intent_id) {
-          // Has linked intent - check if it's approved
+          // Has linked intent - check its status
           const linkedIntent = await prisma.tradeIntent.findUnique({
             where: { id: execution.intent_id }
           });
 
-          // If intent exists but is NOT approved (swiped_on), cancel the execution
-          // User didn't approve in time - order expires
+          if (linkedIntent && linkedIntent.status === 'swiped_on') {
+            // Intent is approved but manual execution is required — clear the delay timer
+            // so this order is no longer picked up by the scheduler.
+            // It stays pending until the user hits Execute in the UI.
+            await prisma.execution.update({
+              where: { id: execution.id },
+              data: { delay_expires_at: null }
+            });
+            console.log(`   ⏳ ${execution.ticker} intent approved — waiting for manual execution`);
+            continue;
+          }
+
+          // Intent is not approved — cancel
           if (linkedIntent && linkedIntent.status !== 'swiped_on') {
             console.log(`   ❌ Cancelling ${execution.ticker} - not approved before delay expired (intent status: ${linkedIntent.status})`);
 
-            // Cancel the execution
             await prisma.execution.update({
               where: { id: execution.id },
               data: {
@@ -175,7 +185,6 @@ async function processExpiredDelays() {
               }
             });
 
-            // Also cancel/invalidate the linked intent
             await prisma.tradeIntent.update({
               where: { id: execution.intent_id },
               data: {
@@ -184,7 +193,6 @@ async function processExpiredDelays() {
               }
             });
 
-            // Create audit log
             await prisma.auditLog.create({
               data: {
                 event_type: 'execution_expired',
@@ -197,7 +205,7 @@ async function processExpiredDelays() {
               }
             });
 
-            continue; // Move to next execution
+            continue;
           }
         } else {
           // NO linked intent - check if there's a rejected/blocked intent for this ticker
@@ -212,12 +220,14 @@ async function processExpiredDelays() {
 
           if (existingIntent) {
             if (existingIntent.status === 'swiped_on') {
-              // Found an approved intent - link it and continue to execution
+              // Found an approved intent — late-link it, then clear the delay timer.
+              // Order stays pending until the user manually executes it.
               await prisma.execution.update({
                 where: { id: execution.id },
-                data: { intent_id: existingIntent.id }
+                data: { intent_id: existingIntent.id, delay_expires_at: null }
               });
-              console.log(`   🔗 Late-linked ${execution.ticker} to approved intent ${existingIntent.id}`);
+              console.log(`   ⏳ Late-linked ${execution.ticker} to approved intent ${existingIntent.id} — waiting for manual execution`);
+              continue;
             } else if (existingIntent.status === 'swiped_off' || existingIntent.status === 'swiped_deny') {
               // User explicitly rejected this ticker - cancel the execution
               const reasonText = existingIntent.status === 'swiped_deny' ? 'denied' : 'blocked';
