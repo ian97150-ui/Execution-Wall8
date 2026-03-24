@@ -160,13 +160,13 @@ export default function TradeCard({
                   </span>
                 )}
                 {intent.sec_confirmed && (
-                  <span className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+                  <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 cursor-help">
                     <BadgeCheck className="w-3 h-3" />
                     SEC ✓
                   </span>
                 )}
                 {intent.sec_watch && !intent.sec_confirmed && (
-                  <span className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+                  <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 cursor-help">
                     <BookMarked className="w-3 h-3" />
                     SEC WATCH
                   </span>
@@ -292,6 +292,7 @@ export default function TradeCard({
                 variant="outline"
                 className="w-full h-12 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/20"
                 disabled={showOverlay}
+                title="55% buffer invalidated"
               >
                 <BookMarked className="w-4 h-4 mr-2" />
                 Add to SEC Watch
@@ -304,6 +305,7 @@ export default function TradeCard({
                   variant="outline"
                   className="flex-1 h-12 border-slate-500/50 text-slate-400 hover:bg-slate-500/20"
                   disabled={showOverlay}
+                  title="55% buffer invalidated"
                 >
                   <BookMarked className="w-4 h-4 mr-2" />
                   Remove Watch
@@ -313,6 +315,7 @@ export default function TradeCard({
                   variant="outline"
                   className="flex-1 h-12 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
                   disabled={showOverlay}
+                  title="55% buffer invalidated"
                 >
                   <BadgeCheck className="w-4 h-4 mr-2" />
                   SEC Confirmed
@@ -325,6 +328,7 @@ export default function TradeCard({
                 variant="outline"
                 className="w-full h-12 border-cyan-500/30 text-cyan-500/60 hover:bg-cyan-500/10"
                 disabled={showOverlay}
+                title="55% buffer invalidated"
               >
                 <BadgeCheck className="w-4 h-4 mr-2" />
                 SEC Confirmed — Undo
