@@ -172,6 +172,11 @@ export default function TradeCard({
                   </span>
                 )}
               </div>
+              {(intent.sec_confirmed || intent.sec_watch) && (
+                <p className="text-xs font-semibold text-amber-400/80 tracking-wide">
+                  ⚠️ 55% buffer invalidated
+                </p>
+              )}
               <div className="flex items-center gap-3">
                 <button
                   className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors"

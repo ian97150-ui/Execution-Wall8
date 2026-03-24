@@ -37,7 +37,7 @@ export default function SecWatchList({
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">
             <BookMarked className="w-4 h-4 text-yellow-400" />
-            <span className="text-sm font-semibold text-yellow-400">Waiting for SEC Filing ({waiting.length})</span>
+            <span title="55% buffer invalidated" className="text-sm font-semibold text-yellow-400 cursor-help">Waiting for SEC Filing ({waiting.length})</span>
           </div>
           {waiting.map(intent => (
             <SecWatchRow
@@ -58,7 +58,7 @@ export default function SecWatchList({
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">
             <BadgeCheck className="w-4 h-4 text-cyan-400" />
-            <span className="text-sm font-semibold text-cyan-400">SEC Filing Confirmed ({confirmed.length})</span>
+            <span title="55% buffer invalidated" className="text-sm font-semibold text-cyan-400 cursor-help">SEC Filing Confirmed ({confirmed.length})</span>
           </div>
           {confirmed.map(intent => (
             <SecWatchRow
@@ -97,12 +97,12 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tr
             {intent.dir?.toUpperCase()}
           </span>
           {intent.sec_confirmed ? (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+            <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 cursor-help">
               <BadgeCheck className="w-3 h-3" />
               SEC ✓
             </span>
           ) : (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+            <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 cursor-help">
               <BookMarked className="w-3 h-3" />
               WATCHING
             </span>
