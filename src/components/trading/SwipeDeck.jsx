@@ -65,56 +65,58 @@ export default function SwipeDeck({
   }
 
   return (
-    <div className="relative h-full w-full">
-      {/* Card stack */}
-      <div className="absolute inset-0 flex items-start justify-center pt-2 sm:pt-4">
-        <div className="relative w-full max-w-[95vw] sm:max-w-sm h-[calc(100vh-320px)] sm:h-[600px] md:h-[680px]">
-          <AnimatePresence mode="popLayout">
-            {visibleCards.map((intent, index) => {
-              const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
-              const isEnabled = tickerConfig?.enabled || false;
-              const isBlocked = tickerConfig?.alerts_blocked === true;
-              const dayPeakMove = tickerConfig?.day_peak_move ?? null;
-
-              return (
-                <TradeCard
-                  key={intent.id}
-                  intent={intent}
-                  hasLiveOrder={executions.some(e =>
-                    e.ticker === intent.ticker &&
-                    ['pending', 'executing'].includes(e.status)
-                  )}
-                  isTopCard={index === 0}
-                  onSwipeOn={onSwipeOn}
-                  onSwipeOff={onSwipeOff}
-                  onDeny={onDeny}
-                  onBlockAlerts={onBlockAlerts}
-                  onUnblockAlerts={onUnblockAlerts}
-                  onSecWatch={onSecWatch}
-                  onSecConfirm={onSecConfirm}
-                  isBlockingAlerts={isBlockingAlerts}
-                  isBlocked={isBlocked}
-                  isEnabled={isEnabled}
-                  dayPeakMove={dayPeakMove}
-                  tradingviewChartId={tradingviewChartId}
-                  style={{
-                    scale: 1 - index * 0.05,
-                    y: index * 10,
-                    zIndex: visibleCards.length - index,
-                  }}
-                />
-              );
-            })}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* Counter badge */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
-        <div className="bg-slate-800/80 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-700/50">
+    <div className="flex flex-col h-full w-full">
+      {/* Counter badge — sits above the card stack, never overlaps buttons */}
+      <div className="flex justify-center pt-1 pb-1 shrink-0">
+        <div className="bg-slate-800/80 backdrop-blur-sm px-4 py-1.5 rounded-full border border-slate-700/50">
           <span className="text-sm font-medium text-slate-300">
             {intents.length} candidate{intents.length !== 1 ? 's' : ''} in queue
           </span>
+        </div>
+      </div>
+
+      {/* Card stack */}
+      <div className="relative flex-1">
+        <div className="absolute inset-0 flex items-start justify-center pt-2 sm:pt-4">
+          <div className="relative w-full max-w-[95vw] sm:max-w-sm h-full">
+            <AnimatePresence mode="popLayout">
+              {visibleCards.map((intent, index) => {
+                const tickerConfig = tickers.find(t => t.ticker === intent.ticker);
+                const isEnabled = tickerConfig?.enabled || false;
+                const isBlocked = tickerConfig?.alerts_blocked === true;
+                const dayPeakMove = tickerConfig?.day_peak_move ?? null;
+
+                return (
+                  <TradeCard
+                    key={intent.id}
+                    intent={intent}
+                    hasLiveOrder={executions.some(e =>
+                      e.ticker === intent.ticker &&
+                      ['pending', 'executing'].includes(e.status)
+                    )}
+                    isTopCard={index === 0}
+                    onSwipeOn={onSwipeOn}
+                    onSwipeOff={onSwipeOff}
+                    onDeny={onDeny}
+                    onBlockAlerts={onBlockAlerts}
+                    onUnblockAlerts={onUnblockAlerts}
+                    onSecWatch={onSecWatch}
+                    onSecConfirm={onSecConfirm}
+                    isBlockingAlerts={isBlockingAlerts}
+                    isBlocked={isBlocked}
+                    isEnabled={isEnabled}
+                    dayPeakMove={dayPeakMove}
+                    tradingviewChartId={tradingviewChartId}
+                    style={{
+                      scale: 1 - index * 0.05,
+                      y: index * 10,
+                      zIndex: visibleCards.length - index,
+                    }}
+                  />
+                );
+              })}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </div>

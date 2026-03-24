@@ -239,7 +239,7 @@ export default function TradeCard({
           </div>
 
           {/* Expand toggle */}
-          <button 
+          <button
             onClick={() => setExpanded(!expanded)}
             className="w-full flex items-center justify-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors py-1"
           >
@@ -247,7 +247,76 @@ export default function TradeCard({
             <ChevronDown className={cn("w-4 h-4 transition-transform", expanded && "rotate-180")} />
           </button>
 
+          {/* Expanded details */}
+          {expanded && (
+            <div className="space-y-3 pb-1">
+              {/* Gate breakdown */}
+              {intent.gates_data && (() => {
+                let gates = {};
+                try { gates = JSON.parse(intent.gates_data); } catch {}
+                const entries = Object.entries(gates);
+                if (!entries.length) return null;
+                return (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">Gate Breakdown</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {entries.map(([key, val]) => (
+                        <div key={key} className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium",
+                          val ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                        )}>
+                          <span className="shrink-0">{val ? '✓' : '✗'}</span>
+                          <span className="truncate">{key}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
+              {/* Signals breakdown */}
+              {intent.intent_data && (() => {
+                let signals = {};
+                try { signals = JSON.parse(intent.intent_data); } catch {}
+                const entries = Object.entries(signals).filter(([, v]) => typeof v === 'boolean');
+                if (!entries.length) return null;
+                return (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">Signals</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {entries.map(([key, val]) => (
+                        <div key={key} className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium",
+                          val ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/10 text-slate-500"
+                        )}>
+                          <span className="shrink-0">{val ? '✓' : '—'}</span>
+                          <span className="truncate">{key}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Strategy + timeframe */}
+              {(intent.strategy_id || intent.timeframe) && (
+                <div className="flex gap-2">
+                  {intent.strategy_id && (
+                    <div className="flex-1 bg-slate-700/30 rounded-lg p-2 text-center">
+                      <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Strategy</p>
+                      <p className="text-xs font-mono font-bold text-slate-300">{intent.strategy_id}</p>
+                    </div>
+                  )}
+                  {intent.timeframe && (
+                    <div className="flex-1 bg-slate-700/30 rounded-lg p-2 text-center">
+                      <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Timeframe</p>
+                      <p className="text-xs font-mono font-bold text-slate-300">{intent.timeframe}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action buttons for non-swipe interaction */}
           <div className="space-y-3 pt-3">
