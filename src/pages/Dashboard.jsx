@@ -816,7 +816,7 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsContent value="candidates" className="mt-0 flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 240px)' }}>
+            <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100vh - 240px)', overflow: 'hidden' } : {}}>
               {/* View mode toggle — fixed row, never scrolls */}
               <div className="shrink-0 flex gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4 overflow-x-auto">
                 <button
@@ -891,7 +891,7 @@ export default function Dashboard() {
               )}
 
               {viewMode === "list" && (
-                <div className="flex-1 overflow-y-auto px-4 pb-6 md:mt-0 mt-8">
+                <div className="px-4 pb-6 md:mt-0 mt-8">
                   <CandidatesList
                     candidates={candidates}
                     onApprove={(intent) => swipeOnMutation.mutate(intent)}
@@ -909,7 +909,7 @@ export default function Dashboard() {
               )}
 
               {viewMode === "sec" && (
-                <div className="flex-1 overflow-y-auto px-4 pb-6 md:mt-0 mt-8">
+                <div className="px-4 pb-6 md:mt-0 mt-8">
                   <SecWatchList
                     intents={secWatchIntents}
                     onSecWatch={(intent, action) => secWatchMutation.mutate({ intent, action })}
@@ -924,7 +924,7 @@ export default function Dashboard() {
               )}
 
               {viewMode === "blocked" && (
-                <div className="flex-1 overflow-y-auto px-4 pb-6 md:mt-0 mt-8">
+                <div className="px-4 pb-6 md:mt-0 mt-8">
                   <BlockedTickersList
                     blockedIntents={blockedIntents}
                     onRevive={(intent) => reviveTickerMutation.mutate(intent)}
