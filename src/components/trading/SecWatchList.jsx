@@ -274,7 +274,12 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, on
             {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
             {intent.dir?.toUpperCase()}
           </span>
-          {!intent.sec_confirmed && (
+          {intent.sec_confirmed ? (
+            <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 cursor-help">
+              <BadgeCheck className="w-3 h-3" />
+              SEC CONFIRMED
+            </span>
+          ) : (
             <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 cursor-help">
               <BookMarked className="w-3 h-3" />
               WATCHING
