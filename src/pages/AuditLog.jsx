@@ -108,7 +108,6 @@ export default function AuditLog() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <div className="max-w-2xl mx-auto">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
         <div className="flex items-center justify-between px-4 h-16">
@@ -349,7 +348,6 @@ export default function AuditLog() {
           </>
         )}
       </div>
-      </div>{/* end max-w-2xl */}
     </div>
   );
 }

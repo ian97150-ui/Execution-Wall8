@@ -726,7 +726,6 @@ export default function Dashboard() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-        <div className="max-w-2xl mx-auto">
         {/* Header */}
         <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
           <div className="flex items-center justify-between px-4 h-16">
@@ -1053,7 +1052,6 @@ export default function Dashboard() {
           timeRemaining={editingExecution ? getLimitEditTimeRemaining(editingExecution) : 0}
           onSave={handleSaveExecution}
         />
-      </div>{/* end max-w-2xl */}
       </div>
     </ErrorBoundary>
   );
