@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import { prisma } from '../index';
 import { EmailNotifications } from '../services/emailService';
 import { PushoverNotifications } from '../services/pushoverService';
+import { checkSecFilings } from '../services/secCallbackService';
+import { runSecWatchScan } from '../services/secWatchScanner';
 
 const router = express.Router();
 
@@ -228,6 +230,54 @@ router.post('/:id/sec', async (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Error processing SEC action:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Scan all watched-but-unconfirmed tickers at once (manual trigger of the scheduled pass)
+router.post('/scan-sec-all', async (req: Request, res: Response) => {
+  try {
+    const results = await runSecWatchScan();
+    const confirmed = results.filter(r => r.found).length;
+    const total = results.length;
+    res.json({ success: true, total, confirmed, results });
+  } catch (error: any) {
+    console.error('Error running bulk SEC scan:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manual SEC scan for a single watched ticker
+router.post('/:id/scan-sec', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const intent = await prisma.tradeIntent.findUnique({ where: { id } });
+    if (!intent) return res.status(404).json({ error: 'Trade intent not found' });
+
+    const result = await checkSecFilings(intent.ticker, false);
+    const now = new Date().toISOString();
+
+    let history: any[] = [];
+    try {
+      if (intent.sec_scan_history) history = JSON.parse(intent.sec_scan_history as string);
+    } catch {}
+
+    const entry: any = { at: now, found: result.found };
+    if (result.found && result.filings) entry.filings = result.filings;
+    if (result.error) entry.error = result.error;
+    history.push(entry);
+    if (history.length > 20) history = history.slice(-20);
+
+    const updateData: any = { sec_scan_history: JSON.stringify(history) };
+    if (result.found) {
+      updateData.sec_confirmed = true;
+      updateData.sec_filings = JSON.stringify(result.filings || []);
+    }
+
+    const updated = await prisma.tradeIntent.update({ where: { id }, data: updateData });
+    res.json({ ...updated, scan_result: result });
+  } catch (error: any) {
+    console.error('Error running manual SEC scan:', error);
     res.status(500).json({ error: error.message });
   }
 });

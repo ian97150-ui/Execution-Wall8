@@ -50,8 +50,10 @@ model TradeIntent {
   raw_payload    String?  // JSON: entire original payload
 
   // SEC filing watch/confirm
-  sec_watch      Boolean  @default(false)  // Added to "Waiting for SEC" list
-  sec_confirmed  Boolean  @default(false)  // SEC filing confirmed by user
+  sec_watch         Boolean  @default(false)  // Added to "Waiting for SEC" list
+  sec_confirmed     Boolean  @default(false)  // SEC filing confirmed by user
+  sec_filings       String?                   // JSON: SEC scanner response (auto-check on WALL)
+  sec_scan_history  String?                   // JSON: array of { at, found, filings?, error? } — periodic watch scan log
 
   expires_at     DateTime
   created_date   DateTime @default(now())
@@ -119,6 +121,7 @@ model ExecutionSettings {
   pushover_on_approval Boolean @default(true)  // Push when signal approved
   pushover_on_execution Boolean @default(true) // Push when order executed
   pushover_on_close    Boolean @default(true)  // Push when position closed
+  pushover_on_sec      Boolean @default(true)  // Push when SEC filing found (sent by SEC scanner)
 
   // Time-based mode scheduling
   use_time_schedules   Boolean @default(false)

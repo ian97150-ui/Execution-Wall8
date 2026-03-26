@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink, FlaskConical, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink, FlaskConical, CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
+import api from '@/api/apiClient';
 
 const SEC_SCANNER_URL = import.meta.env.VITE_SEC_SCANNER_URL || 'https://web-production-dcf57.up.railway.app';
 
@@ -91,6 +92,43 @@ function SecScannerTest() {
   );
 }
 
+// Visual scan history tokens — one dot per scan attempt
+function ScanHistoryTokens({ history }) {
+  if (!history || history.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <span className="text-[10px] text-slate-500 mr-0.5">Scans:</span>
+      {history.map((entry, i) => {
+        const time = new Date(entry.at).toLocaleTimeString('en-US', {
+          timeZone: 'America/New_York',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+        const dotColor = entry.error
+          ? 'bg-red-500/70 border-red-400/60'
+          : entry.found
+            ? 'bg-cyan-400 border-cyan-300'
+            : 'bg-slate-600 border-slate-500';
+        const label = entry.error
+          ? `Error at ${time}: ${entry.error}`
+          : entry.found
+            ? `Found at ${time} — ${entry.filings?.length ?? 1} filing(s)`
+            : `No filing at ${time}`;
+
+        return (
+          <span
+            key={i}
+            title={label}
+            className={cn('w-2.5 h-2.5 rounded-full border cursor-help transition-transform hover:scale-125', dotColor)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 const getSecUrl = (ticker) => {
   const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2CF-3%2CF-3ASR%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-1MEF%2CS-3%2CS-3ASR%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3%2C6-K";
   return `https://www.sec.gov/edgar/search/#/dateRange=30d&category=custom&entityName=${ticker}&forms=${forms}`;
@@ -102,6 +140,8 @@ export default function SecWatchList({
   onSecWatch,
   onApprove,
   onReject,
+  onScanSec,
+  onScanAll,
   tradingviewChartId
 }) {
   if (intents.length === 0) {
@@ -122,7 +162,21 @@ export default function SecWatchList({
 
   return (
     <div className="space-y-6">
-      <SecScannerTest />
+      {/* Test panel + Scan All always visible */}
+      <div className="space-y-2">
+        <SecScannerTest />
+        <Button
+          onClick={onScanAll}
+          size="sm"
+          variant="outline"
+          className="w-full border-slate-600/50 text-slate-300 hover:bg-slate-700/50 gap-2"
+          title="Run SEC scanner against all waiting tickers now"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Scan All Waiting ({waiting.length})
+        </Button>
+      </div>
+
       {/* Waiting section */}
       {waiting.length > 0 && (
         <div className="space-y-3">
@@ -138,6 +192,7 @@ export default function SecWatchList({
               onSecWatch={onSecWatch}
               onApprove={onApprove}
               onReject={onReject}
+              onScanSec={onScanSec}
               tradingviewChartId={tradingviewChartId}
             />
           ))}
@@ -159,6 +214,7 @@ export default function SecWatchList({
               onSecWatch={onSecWatch}
               onApprove={onApprove}
               onReject={onReject}
+              onScanSec={onScanSec}
               tradingviewChartId={tradingviewChartId}
             />
           ))}
@@ -168,14 +224,45 @@ export default function SecWatchList({
   );
 }
 
-function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tradingviewChartId }) {
+function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, onScanSec, tradingviewChartId }) {
   const isLong = intent.dir === "Long";
+  const [scanning, setScanning] = useState(false);
+
+  const scanHistory = React.useMemo(() => {
+    try { return intent.sec_scan_history ? JSON.parse(intent.sec_scan_history) : []; }
+    catch { return []; }
+  }, [intent.sec_scan_history]);
+
+  // Parse confirmed filings for display
+  const filings = React.useMemo(() => {
+    try { return intent.sec_filings ? JSON.parse(intent.sec_filings) : []; }
+    catch { return []; }
+  }, [intent.sec_filings]);
+
+  async function handleScanNow() {
+    setScanning(true);
+    try { await onScanSec?.(intent); }
+    finally { setScanning(false); }
+  }
 
   return (
     <div className={cn(
-      "relative bg-slate-800/50 border rounded-xl p-4 transition-colors hover:bg-slate-800/70",
-      intent.sec_confirmed ? "border-cyan-500/30" : "border-yellow-500/30"
+      "relative border rounded-xl p-4 transition-colors",
+      intent.sec_confirmed
+        ? "bg-cyan-950/30 border-cyan-500/40 hover:bg-cyan-950/40"
+        : "bg-slate-800/50 border-yellow-500/30 hover:bg-slate-800/70"
     )}>
+      {/* Confirmed banner */}
+      {intent.sec_confirmed && (
+        <div className="flex items-center gap-1.5 bg-cyan-500/15 border border-cyan-500/30 rounded-lg px-3 py-1.5 mb-3">
+          <BadgeCheck className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span className="text-xs font-bold text-cyan-300 uppercase tracking-wide">SEC Confirmed</span>
+          {filings.length > 0 && (
+            <span className="ml-auto text-[10px] text-cyan-500">{filings.length} filing{filings.length > 1 ? 's' : ''} found</span>
+          )}
+        </div>
+      )}
+
       {/* Top row */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -187,12 +274,7 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tr
             {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
             {intent.dir?.toUpperCase()}
           </span>
-          {intent.sec_confirmed ? (
-            <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 cursor-help">
-              <BadgeCheck className="w-3 h-3" />
-              SEC ✓
-            </span>
-          ) : (
+          {!intent.sec_confirmed && (
             <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 cursor-help">
               <BookMarked className="w-3 h-3" />
               WATCHING
@@ -225,6 +307,24 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tr
         </div>
       </div>
 
+      {/* Filing links (confirmed only) */}
+      {intent.sec_confirmed && filings.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {filings.map((f, i) => (
+            <a
+              key={i}
+              href={f.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded text-[11px] text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+            >
+              <FileText className="w-3 h-3" />
+              {f.form} — {f.date}
+            </a>
+          ))}
+        </div>
+      )}
+
       {/* Price */}
       <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
         <div>
@@ -237,10 +337,27 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tr
         </div>
       </div>
 
+      {/* Scan history tokens */}
+      {scanHistory.length > 0 && (
+        <div className="mb-3">
+          <ScanHistoryTokens history={scanHistory} />
+        </div>
+      )}
+
       {/* Actions */}
       <div className="space-y-2">
         {!intent.sec_confirmed && (
           <div className="flex gap-2">
+            <Button
+              onClick={handleScanNow}
+              disabled={scanning}
+              variant="outline"
+              size="sm"
+              className="border-slate-600/50 text-slate-400 hover:bg-slate-700/50 px-2"
+              title="Run SEC scanner now for this ticker"
+            >
+              {scanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            </Button>
             <Button
               onClick={() => onSecWatch?.(intent, 'unwatch')}
               variant="outline"
@@ -255,7 +372,7 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tr
               className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
             >
               <BadgeCheck className="w-3 h-3 mr-1" />
-              Mark SEC Confirmed
+              SEC Confirm
             </Button>
           </div>
         )}
@@ -265,35 +382,24 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, tr
               onClick={() => onSecConfirm?.(intent, 'unconfirm')}
               variant="outline"
               size="sm"
-              className="flex-1 border-slate-500/50 text-slate-400 hover:bg-slate-500/20"
+              className="border-slate-500/50 text-slate-400 hover:bg-slate-500/20 px-3"
             >
-              Undo Confirm
+              Undo
             </Button>
-            <Button
-              onClick={() => onApprove?.(intent)}
-              size="sm"
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white"
-            >
-              Approve Trade
-            </Button>
-          </div>
-        )}
-        {intent.sec_watch && !intent.sec_confirmed && (
-          <div className="flex gap-2">
             <Button
               onClick={() => onReject?.(intent)}
               variant="outline"
               size="sm"
-              className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/20"
+              className="border-red-500/50 text-red-400 hover:bg-red-500/20 px-3"
             >
               OFF
             </Button>
             <Button
               onClick={() => onApprove?.(intent)}
               size="sm"
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white"
+              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
             >
-              ON
+              Approve Trade
             </Button>
           </div>
         )}

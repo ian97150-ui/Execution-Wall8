@@ -576,6 +576,40 @@ export default function Dashboard() {
     }
   });
 
+  const scanSecMutation = useMutation({
+    mutationFn: async (intent) => {
+      const { data } = await api.post(`/trade-intents/${intent.id}/scan-sec`);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      if (data?.scan_result?.found) {
+        toast.success(`SEC filing found for ${data.ticker} — auto-confirmed`);
+      } else {
+        toast.info(`No SEC filing found for ${data?.ticker ?? '—'} right now`);
+      }
+    },
+    onError: () => toast.error('SEC scan failed')
+  });
+
+  const scanSecAllMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/trade-intents/scan-sec-all');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      if (data.total === 0) {
+        toast.info('No tickers waiting for SEC confirmation');
+      } else if (data.confirmed > 0) {
+        toast.success(`SEC scan complete — ${data.confirmed}/${data.total} confirmed`);
+      } else {
+        toast.info(`SEC scan complete — no new filings found (${data.total} checked)`);
+      }
+    },
+    onError: () => toast.error('SEC scan all failed')
+  });
+
   // Block wall alerts for a ticker (until next daily reset)
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
@@ -882,6 +916,8 @@ export default function Dashboard() {
                     onSecConfirm={(intent, action) => secConfirmMutation.mutate({ intent, action })}
                     onApprove={(intent) => swipeOnMutation.mutate(intent)}
                     onReject={(intent) => swipeOffMutation.mutate(intent)}
+                    onScanSec={(intent) => scanSecMutation.mutate(intent)}
+                    onScanAll={() => scanSecAllMutation.mutate()}
                     tradingviewChartId={settings?.tradingview_chart_id}
                   />
                 </div>

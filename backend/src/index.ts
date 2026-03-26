@@ -23,6 +23,7 @@ import { startCleanupScheduler } from './services/databaseCleanup';
 import { startExecutionScheduler, stopExecutionScheduler } from './services/executionScheduler';
 import { startDailyResetScheduler, stopDailyResetScheduler } from './services/dailyReset';
 import { startModeScheduler, stopModeScheduler } from './services/modeScheduler';
+import { startSecWatchScanner, stopSecWatchScanner } from './services/secWatchScanner';
 
 // Load environment variables
 dotenv.config();
@@ -120,6 +121,9 @@ app.listen(PORT, () => {
 
   // Start mode scheduler (auto-switches execution mode based on time schedules)
   startModeScheduler();
+
+  // Start SEC watch scanner (polls watched tickers at fixed ET times)
+  startSecWatchScanner();
 });
 
 // Graceful shutdown
@@ -128,6 +132,7 @@ process.on('SIGINT', async () => {
   stopExecutionScheduler();
   stopDailyResetScheduler();
   stopModeScheduler();
+  stopSecWatchScanner();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -137,6 +142,7 @@ process.on('SIGTERM', async () => {
   stopExecutionScheduler();
   stopDailyResetScheduler();
   stopModeScheduler();
+  stopSecWatchScanner();
   await prisma.$disconnect();
   process.exit(0);
 });

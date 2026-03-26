@@ -87,7 +87,8 @@ export default function Settings() {
         pushover_on_order: settings.pushover_on_order !== 0 && settings.pushover_on_order !== false,
         pushover_on_approval: settings.pushover_on_approval !== 0 && settings.pushover_on_approval !== false,
         pushover_on_execution: settings.pushover_on_execution !== 0 && settings.pushover_on_execution !== false,
-        pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false
+        pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false,
+        pushover_on_sec: settings.pushover_on_sec !== 0 && settings.pushover_on_sec !== false
       });
     }
   }, [settings]);
@@ -768,6 +769,14 @@ export default function Settings() {
                     <Switch
                       checked={formData.pushover_on_close}
                       onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_close: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">SEC filing found (scanner)</span>
+                    <Switch
+                      checked={formData.pushover_on_sec}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_sec: checked }))}
                     />
                   </div>
                 </div>

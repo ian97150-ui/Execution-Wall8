@@ -4,6 +4,7 @@ import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
 import { EmailNotifications } from '../services/emailService';
 import { PushoverNotifications } from '../services/pushoverService';
 import { activateScheduler } from '../services/executionScheduler';
+import { checkSecFilings } from '../services/secCallbackService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -552,6 +553,30 @@ async function handleWallSignal(data: {
       }
     });
     console.log(`✨ Created new intent for ${tickerUpper} (id: ${tradeIntent.id})`);
+  }
+
+  // Auto SEC check — call remote scanner if SEC_SCANNER_URL is configured
+  // Only runs if the filing hasn't already been confirmed (e.g. on a WALL update)
+  if (!tradeIntent.sec_confirmed) {
+    const secSettings = await getSettingsSafe();
+    const sendPushover = secSettings?.pushover_enabled && secSettings?.pushover_on_sec !== false;
+    const secResult = await checkSecFilings(tickerUpper, !!sendPushover);
+    if (!secResult.error) {
+      const secUpdate: any = { sec_watch: true };
+      if (secResult.found) {
+        secUpdate.sec_confirmed = true;
+        secUpdate.sec_filings = JSON.stringify(secResult.filings ?? []);
+        console.log(`📋 SEC auto-confirmed for ${tickerUpper}: ${(secResult.filings ?? []).length} filing(s)`);
+      } else {
+        secUpdate.sec_filings = JSON.stringify({ found: false, date: new Date().toISOString().split('T')[0] });
+        console.log(`📋 SEC scanner: no filings found for ${tickerUpper} — manual confirm required`);
+      }
+      await prisma.tradeIntent.update({ where: { id: tradeIntent.id }, data: secUpdate });
+      // Reflect updates on our local reference for the audit log below
+      Object.assign(tradeIntent, secUpdate);
+    } else {
+      console.log(`⚠️ SEC scanner unavailable for ${tickerUpper}: ${secResult.error}`);
+    }
   }
 
   // Check if execution already exists for this ticker (ORDER arrived before WALL)
