@@ -4,11 +4,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, ExternalLink, Clock,
   Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText, ShieldOff,
-  BookMarked, BadgeCheck
+  BookMarked, BadgeCheck, Send, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
 import QualityBadge from "./QualityBadge";
+import api from '@/api/apiClient';
 
 export default function TradeCard({
   intent,
@@ -30,6 +31,10 @@ export default function TradeCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showOverlay, setShowOverlay] = useState(null); // 'success' | 'rejected' | null
+  const [showCustomOrder, setShowCustomOrder] = useState(false);
+  const [customOrder, setCustomOrder] = useState({ action: '', quantity: '', limit_price: '' });
+  const [customOrderStatus, setCustomOrderStatus] = useState(null); // null | 'sending' | 'ok' | 'error'
+  const [customOrderError, setCustomOrderError] = useState('');
 
   const handleAction = async (action) => {
     // Show appropriate overlay based on action
@@ -321,17 +326,118 @@ export default function TradeCard({
 
           {/* Action buttons for non-swipe interaction */}
           <div className="space-y-3 pt-3">
+            {/* Custom Order */}
             <Button
               variant="outline"
-              className="w-full h-14 text-base font-semibold border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
+              className="w-full h-14 text-base font-semibold border-violet-500/50 text-violet-400 hover:bg-violet-500/20"
               onClick={(e) => {
                 e.stopPropagation();
-                const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
-                window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
+                setCustomOrder({
+                  action: isLong ? 'buy' : 'sell',
+                  quantity: '',
+                  limit_price: intent.limit_price ? Number(intent.limit_price).toFixed(2) : ''
+                });
+                setCustomOrderStatus(null);
+                setCustomOrderError('');
+                setShowCustomOrder(v => !v);
               }}
             >
-              Open Chart
+              <Send className="w-5 h-5 mr-2" />
+              {showCustomOrder ? 'Cancel Custom Order' : 'Custom Order'}
             </Button>
+
+            {showCustomOrder && (
+              <div className="bg-slate-900/60 border border-violet-500/30 rounded-xl p-3 space-y-3" onClick={e => e.stopPropagation()}>
+                {/* Action toggle */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCustomOrder(o => ({ ...o, action: 'buy' }))}
+                    className={cn(
+                      'flex-1 py-2 rounded-lg text-sm font-bold border transition-colors',
+                      customOrder.action === 'buy'
+                        ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400'
+                        : 'border-slate-600/50 text-slate-500 hover:text-slate-300'
+                    )}
+                  >BUY</button>
+                  <button
+                    onClick={() => setCustomOrder(o => ({ ...o, action: 'sell' }))}
+                    className={cn(
+                      'flex-1 py-2 rounded-lg text-sm font-bold border transition-colors',
+                      customOrder.action === 'sell'
+                        ? 'bg-rose-500/20 border-rose-500/60 text-rose-400'
+                        : 'border-slate-600/50 text-slate-500 hover:text-slate-300'
+                    )}
+                  >SELL</button>
+                </div>
+
+                {/* Quantity + Limit Price */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wide">Quantity</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={customOrder.quantity}
+                      onChange={e => setCustomOrder(o => ({ ...o, quantity: e.target.value }))}
+                      placeholder="100"
+                      className="w-full mt-1 bg-slate-800/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wide">Limit Price</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={customOrder.limit_price}
+                      onChange={e => setCustomOrder(o => ({ ...o, limit_price: e.target.value }))}
+                      placeholder="0.00"
+                      className="w-full mt-1 bg-slate-800/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                </div>
+
+                {customOrderError && (
+                  <p className="text-xs text-red-400">{customOrderError}</p>
+                )}
+                {customOrderStatus === 'ok' && (
+                  <p className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Order sent to broker</p>
+                )}
+
+                <Button
+                  disabled={customOrderStatus === 'sending' || !customOrder.action || !customOrder.quantity || !customOrder.limit_price}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setCustomOrderStatus('sending');
+                    setCustomOrderError('');
+                    try {
+                      const { data } = await api.post('/executions/custom', {
+                        ticker: intent.ticker,
+                        action: customOrder.action,
+                        quantity: Number(customOrder.quantity),
+                        limit_price: Number(customOrder.limit_price),
+                        intent_id: intent.id
+                      });
+                      if (data.success) {
+                        setCustomOrderStatus('ok');
+                        setTimeout(() => setShowCustomOrder(false), 2000);
+                      } else {
+                        setCustomOrderStatus('error');
+                        setCustomOrderError(data.broker?.error || 'Broker rejected the order');
+                      }
+                    } catch (err) {
+                      setCustomOrderStatus('error');
+                      setCustomOrderError(err.response?.data?.error || 'Failed to send order');
+                    }
+                  }}
+                  className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
+                >
+                  {customOrderStatus === 'sending'
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</>
+                    : <><Send className="w-4 h-4 mr-2" />Send Order</>}
+                </Button>
+              </div>
+            )}
             <div className="flex gap-3">
               <Button 
                 onClick={(e) => { e.stopPropagation(); handleAction('off'); }}

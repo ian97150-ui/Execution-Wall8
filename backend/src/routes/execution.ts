@@ -322,6 +322,80 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// Custom order — create and immediately forward to broker (no delay/scheduler)
+router.post('/custom', async (req: Request, res: Response) => {
+  try {
+    const { ticker, action, quantity, limit_price, intent_id } = req.body;
+
+    if (!ticker || !action || !quantity || !limit_price) {
+      return res.status(400).json({ error: 'Missing required fields: ticker, action, quantity, limit_price' });
+    }
+    if (!['buy', 'sell'].includes(action)) {
+      return res.status(400).json({ error: 'action must be buy or sell' });
+    }
+    if (Number(quantity) <= 0 || Number(limit_price) <= 0) {
+      return res.status(400).json({ error: 'quantity and limit_price must be positive' });
+    }
+
+    const tickerUpper = ticker.toUpperCase();
+    const dir = action === 'buy' ? 'Long' : 'Short';
+
+    const execution = await prisma.execution.create({
+      data: {
+        ticker: tickerUpper,
+        dir,
+        order_action: action,
+        quantity: Number(quantity),
+        limit_price: limit_price.toString(),
+        status: 'pending',
+        intent_id: intent_id || null,
+        raw_payload: JSON.stringify({
+          event: 'ORDER',
+          ticker: tickerUpper,
+          dir,
+          price: Number(limit_price),
+          limit_price: Number(limit_price),
+          quantity: Number(quantity),
+          order_action: action,
+          source: 'custom'
+        })
+      }
+    });
+
+    const brokerResult = await forwardToBroker(execution);
+
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: {
+        status: brokerResult.success ? 'executed' : 'failed',
+        executed_at: brokerResult.success ? new Date() : null,
+        error_message: brokerResult.success ? null : brokerResult.error
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'custom_order_sent',
+        ticker: tickerUpper,
+        details: JSON.stringify({
+          execution_id: execution.id,
+          action,
+          quantity: Number(quantity),
+          limit_price: Number(limit_price),
+          broker_success: brokerResult.success,
+          intent_id: intent_id || null
+        })
+      }
+    });
+
+    console.log(`📤 Custom order: ${tickerUpper} ${action} ${quantity} @ $${limit_price} — broker: ${brokerResult.success ? 'ok' : brokerResult.error}`);
+    res.json({ success: brokerResult.success, execution_id: execution.id, broker: brokerResult });
+  } catch (error: any) {
+    console.error('Error sending custom order:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Execute (force execute)
 router.post('/:id/execute', async (req: Request, res: Response) => {
   try {
