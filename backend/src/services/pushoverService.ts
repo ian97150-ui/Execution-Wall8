@@ -6,7 +6,8 @@ export type PushoverEventType =
   | 'order_received'
   | 'signal_approved'
   | 'order_executed'
-  | 'position_closed';
+  | 'position_closed'
+  | 'sec_filing_found';
 
 // Pushover priority levels
 // -2 = no notification, -1 = quiet, 0 = normal, 1 = high, 2 = emergency (requires ack)
@@ -88,7 +89,8 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
     'order_received': 'pushover_on_order',
     'signal_approved': 'pushover_on_approval',
     'order_executed': 'pushover_on_execution',
-    'position_closed': 'pushover_on_close'
+    'position_closed': 'pushover_on_close',
+    'sec_filing_found': 'pushover_on_sec'
   };
 
   const settingKey = eventSettingMap[eventType];
@@ -112,7 +114,8 @@ function getTitle(eventType: PushoverEventType, ticker: string, details?: Record
     'order_received': `ORDER: ${ticker}`,
     'signal_approved': `APPROVED: ${ticker}`,
     'order_executed': `EXECUTED: ${ticker}`,
-    'position_closed': `CLOSED: ${ticker}`
+    'position_closed': `CLOSED: ${ticker}`,
+    'sec_filing_found': `SEC FILING: ${ticker}`
   };
   return titles[eventType];
 }
@@ -148,7 +151,8 @@ function getDefaultPriority(eventType: PushoverEventType): PushoverPriority {
     'order_received': 1,     // High - needs attention
     'signal_approved': 0,    // Normal
     'order_executed': 1,     // High - trade happened
-    'position_closed': 0     // Normal
+    'position_closed': 0,    // Normal
+    'sec_filing_found': 1    // High - filing clears the trade
   };
   return priorities[eventType];
 }
@@ -162,7 +166,8 @@ function getSound(eventType: PushoverEventType): string {
     'order_received': 'cashregister',
     'signal_approved': 'magic',
     'order_executed': 'cashregister',
-    'position_closed': 'bugle'
+    'position_closed': 'bugle',
+    'sec_filing_found': 'magic'
   };
   return sounds[eventType];
 }
@@ -287,5 +292,8 @@ export const PushoverNotifications = {
     sendPushoverNotification({ eventType: 'order_executed', ticker, details, priority: 1 }),
 
   positionClosed: (ticker: string, details: Record<string, any>) =>
-    sendPushoverNotification({ eventType: 'position_closed', ticker, details })
+    sendPushoverNotification({ eventType: 'position_closed', ticker, details }),
+
+  secFilingFound: (ticker: string, details: Record<string, any>) =>
+    sendPushoverNotification({ eventType: 'sec_filing_found', ticker, details, priority: 1 })
 };

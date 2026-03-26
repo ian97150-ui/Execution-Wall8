@@ -12,6 +12,7 @@
 
 import { prisma } from '../index';
 import { checkSecFilings } from './secCallbackService';
+import { PushoverNotifications } from './pushoverService';
 
 // Fixed ET scan times (HH:MM 24h)
 const SCAN_TIMES_ET = ['06:00', '07:30', '09:00', '11:00', '13:00', '15:30', '17:00'];
@@ -87,6 +88,11 @@ export async function runSecWatchScan(): Promise<{ ticker: string; found: boolea
           }
         });
         console.log(`✅ SEC auto-confirmed (watch scan): ${intent.ticker}`);
+        PushoverNotifications.secFilingFound(intent.ticker, {
+          filings: result.filings?.length ?? 0,
+          forms: result.filings?.map((f: any) => f.form).join(', ') || 'Filing found',
+          source: 'watch_scan'
+        }).catch(err => console.error('Pushover SEC notify error:', err.message));
       } else {
         await prisma.tradeIntent.update({
           where: { id: intent.id },
