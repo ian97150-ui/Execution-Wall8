@@ -373,7 +373,7 @@ router.post('/demo', async (req: Request, res: Response) => {
 // Run full SEC checklist (phases 1-4 automated)
 router.post('/:id/run-checklist', async (req: Request, res: Response) => {
   try {
-    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id } });
+    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id as string } });
     if (!intent) return res.status(404).json({ error: 'Intent not found' });
 
     // Preserve any existing manual fields
@@ -403,7 +403,7 @@ router.post('/:id/run-checklist', async (req: Request, res: Response) => {
 // Apply manual overrides to existing checklist (sympathy_trade, pm_high_override, vwap_override)
 router.patch('/:id/checklist-manual', async (req: Request, res: Response) => {
   try {
-    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id } });
+    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id as string } });
     if (!intent) return res.status(404).json({ error: 'Intent not found' });
     if (!intent.sec_checklist) {
       return res.status(400).json({ error: 'No checklist found — run checklist first' });
