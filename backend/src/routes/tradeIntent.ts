@@ -326,7 +326,7 @@ router.post('/:id/invalidate', async (req: Request, res: Response) => {
 router.post('/demo', async (req: Request, res: Response) => {
   try {
     // Sample tickers for demo
-    const demoTickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META'];
+    const demoTickers = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'MULN'];
     const randomTicker = demoTickers[Math.floor(Math.random() * demoTickers.length)];
     const randomPrice = (50 + Math.random() * 450).toFixed(2);
     const isLong = Math.random() > 0.3; // 70% long, 30% short
