@@ -417,7 +417,6 @@ router.patch('/:id/checklist-manual', async (req: Request, res: Response) => {
 
     const updates = req.body as {
       phase2?: { sympathy_trade?: boolean | null };
-      phase3?: { pm_high_override?: boolean | null; vwap_override?: boolean | null };
     };
 
     const updated = applyManualOverride(existing, updates);

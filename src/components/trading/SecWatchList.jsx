@@ -170,7 +170,7 @@ function ManualToggle({ label, value, onChange }) {
 
 function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, runningChecklist }) {
   if (!checklist) return null;
-  const { phase1, phase2, phase3, phase4, bias, short_signal_count, completion_pct, run_at } = checklist;
+  const { phase1, phase1b, phase2, phase3, phase4, overrides, bias, score, completion_pct, run_at } = checklist;
 
   const runAt = run_at ? new Date(run_at).toLocaleTimeString('en-US', {
     timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true
@@ -183,11 +183,32 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
   };
   const correlationMsg = intent?.sec_confirmed ? CONFIRMATION_CORRELATION[bias] : null;
 
+  // Active overrides for display
+  const activeOverrides = overrides ? [
+    overrides.override_ah_reversal && { key: 'AH_REVERSED', label: `AH Reversed (${phase1b?.ah_reversal_pct?.toFixed(0)}% fade)` },
+    overrides.override_blowoff && { key: 'BLOW_OFF_TOP', label: `Blow-Off Top (wick ${phase3?.wick_ratio?.toFixed(2)}, VWAP failed)` },
+    overrides.override_overextended && { key: 'OVEREXTENDED', label: `Overextended (+${phase1b?.gap_pct?.toFixed(0)}% gap)` },
+    overrides.override_low_float_parabolic && { key: 'PARABOLIC', label: `Parabolic Day ${phase3?.day_of_run} — no new catalyst` },
+    overrides.override_offering_spike && { key: 'OFFERING_SPIKE', label: 'Offering spike — price near PM high with 424B' },
+    overrides.override_weak_hold && { key: 'WEAK_HOLD', label: `Weak hold — ${phase4?.short_float_pct?.toFixed(0)}% short float` },
+  ].filter(Boolean) : [];
+
   return (
     <div className="mt-3 border border-slate-700/50 rounded-lg overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/80 border-b border-slate-700/50">
         <BiasBadge bias={bias} size="sm" />
+        {/* Numeric score chip */}
+        {score !== undefined && (
+          <span className={cn(
+            "text-xs font-mono font-bold px-1.5 py-0.5 rounded shrink-0",
+            score > 5 ? 'bg-red-500/20 text-red-400' :
+            score < -5 ? 'bg-emerald-500/20 text-emerald-400' :
+            'bg-slate-700/50 text-slate-400'
+          )}>
+            {score > 0 ? `+${score}` : score}
+          </span>
+        )}
         <div className="flex-1 flex items-center gap-2">
           <div className="flex-1 bg-slate-700/50 rounded-full h-1.5">
             <div
@@ -197,7 +218,6 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
           </div>
           <span className="text-[10px] text-slate-500 shrink-0">{completion_pct}%</span>
         </div>
-        <span className="text-[10px] text-slate-600 shrink-0">{short_signal_count} signals</span>
         <button
           onClick={() => onRunChecklist?.(intent)}
           disabled={runningChecklist}
@@ -208,7 +228,7 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
         </button>
       </div>
 
-      {/* Correlation banner — shown when sec_confirmed + bias have a meaningful pairing */}
+      {/* Correlation banner */}
       {correlationMsg && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border-b border-cyan-500/20">
           <BadgeCheck className="w-3 h-3 text-cyan-400 shrink-0" />
@@ -222,23 +242,23 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
             <FileText className="w-3 h-3" /> Phase 1 — EDGAR + Analyst
           </p>
-          {phase1.error && (
+          {phase1?.error && (
             <p className="text-[11px] text-red-400/80 mb-1">{phase1.error}</p>
           )}
           <ChecklistRow
             label="Shelf filing"
-            value={phase1.shelf_type
+            value={phase1?.shelf_type
               ? `${phase1.shelf_type} · ${phase1.shelf_age_days}d ago`
               : 'None'}
-            signal={!!phase1.shelf_type}
+            signal={!!phase1?.shelf_type}
           />
           <ChecklistRow
             label="424Bs (12m)"
-            value={`${phase1.prior_424b_count_12m} filing${phase1.prior_424b_count_12m !== 1 ? 's' : ''}${phase1.prior_424b_count_12m >= 2 ? ' ← SERIAL' : ''}`}
-            signal={phase1.prior_424b_count_12m >= 2}
-            neutral={phase1.prior_424b_count_12m === 0}
+            value={`${phase1?.prior_424b_count_12m ?? 0} filing${phase1?.prior_424b_count_12m !== 1 ? 's' : ''}${(phase1?.prior_424b_count_12m ?? 0) >= 2 ? ' ← SERIAL' : ''}`}
+            signal={(phase1?.prior_424b_count_12m ?? 0) >= 2}
+            neutral={(phase1?.prior_424b_count_12m ?? 0) === 0}
           />
-          {phase1.same_day_424b?.length > 0 && (
+          {phase1?.same_day_424b?.length > 0 && (
             <div className="flex flex-wrap gap-1 my-0.5">
               {phase1.same_day_424b.map((f, i) => (
                 <a key={i} href={f.filing_url} target="_blank" rel="noopener noreferrer"
@@ -250,31 +270,85 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
           )}
           <ChecklistRow
             label="8-K (48h)"
-            value={phase1.eightk?.found
+            value={phase1?.eightk?.found
               ? (phase1.eightk.signals?.length > 0
                   ? phase1.eightk.signals.join(', ')
                   : `Found ${phase1.eightk.filing_date}`)
               : 'No 8-K found'}
-            signal={phase1.eightk?.signals?.length > 0}
-            neutral={!phase1.eightk?.found}
+            signal={phase1?.eightk?.signals?.length > 0}
+            neutral={!phase1?.eightk?.found}
           />
-          {phase1.eightk?.found && phase1.eightk?.filing_url && (
+          {phase1?.eightk?.found && phase1?.eightk?.filing_url && (
             <a href={phase1.eightk.filing_url} target="_blank" rel="noopener noreferrer"
               className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5">
               View 8-K ↗
             </a>
           )}
-          {phase1.analyst && !phase1.analyst.error && (
+          {phase1?.analyst && !phase1.analyst.error && (
             <ChecklistRow
               label="Analyst"
               value={phase1.analyst.analyst_bias
-                ? `${phase1.analyst.buy + phase1.analyst.strong_buy}B / ${phase1.analyst.hold}H / ${phase1.analyst.sell + phase1.analyst.strong_sell}S → ${phase1.analyst.analyst_bias}`
+                ? `${(phase1.analyst.buy ?? 0) + (phase1.analyst.strong_buy ?? 0)}B / ${phase1.analyst.hold ?? 0}H / ${(phase1.analyst.sell ?? 0) + (phase1.analyst.strong_sell ?? 0)}S → ${phase1.analyst.analyst_bias}`
                 : 'No data'}
               signal={phase1.analyst.analyst_bias === 'BEARISH'}
               neutral={phase1.analyst.analyst_bias !== 'BEARISH'}
             />
           )}
         </div>
+
+        {/* Phase 1b — After Hours */}
+        {phase1b && (
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+              <Activity className="w-3 h-3" /> Phase 1b — After Hours
+            </p>
+            {phase1b.ah_move_pct !== null ? (
+              <>
+                <ChecklistRow
+                  label="AH move"
+                  value={`${phase1b.ah_move_pct > 0 ? '+' : ''}${phase1b.ah_move_pct?.toFixed(1)}%`}
+                  signal={phase1b.ah_move_pct > 50}
+                  neutral={phase1b.ah_move_pct <= 50}
+                />
+                <ChecklistRow
+                  label="AH type"
+                  value={phase1b.ah_classification === 'THIN_AH_SPIKE'
+                    ? `THIN SPIKE (vol ${phase1b.ah_vol_ratio?.toFixed(2)}x) ← manufactured`
+                    : phase1b.ah_classification === 'HEALTHY_AH_BUILD'
+                    ? `HEALTHY BUILD (vol ${phase1b.ah_vol_ratio?.toFixed(2)}x)`
+                    : '—'}
+                  signal={phase1b.ah_classification === 'THIN_AH_SPIKE'}
+                  neutral={phase1b.ah_classification !== 'THIN_AH_SPIKE'}
+                />
+                {phase1b.ah_reversal_pct !== null && (
+                  <ChecklistRow
+                    label="AH reversal"
+                    value={`${phase1b.ah_reversal_pct > 0 ? '+' : ''}${phase1b.ah_reversal_pct?.toFixed(1)}%${phase1b.ah_reversal_pct < -30 ? ' — STRONG DUMP SIGNAL' : phase1b.ah_reversal_pct < 0 ? ' — fading' : ' — holding'}`}
+                    signal={phase1b.ah_reversal_pct < -30}
+                    neutral={phase1b.ah_reversal_pct >= -30}
+                  />
+                )}
+                {phase1b.prior_close !== null && (
+                  <ChecklistRow
+                    label="Prior close"
+                    value={`$${phase1b.prior_close?.toFixed(2)}`}
+                    neutral
+                  />
+                )}
+                {phase1b.gap_pct !== null && (
+                  <ChecklistRow
+                    label="Gap at open"
+                    value={`+${phase1b.gap_pct?.toFixed(1)}% (PM high vs prior close)${(phase1b.gap_pct ?? 0) > 80 ? ' ⚠️ OVEREXTENDED' : (phase1b.gap_pct ?? 0) > 40 ? ' — elevated' : ''}`}
+                    signal={(phase1b.gap_pct ?? 0) > 80}
+                    neutral={(phase1b.gap_pct ?? 0) <= 80}
+                  />
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] text-slate-600 italic">No AH data — alert may have fired during RTH</p>
+            )}
+          </div>
+        )}
 
         {/* Phase 2 — Catalyst */}
         <div>
@@ -283,20 +357,19 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
           </p>
           <ChecklistRow
             label="Catalyst tier"
-            value={phase2.catalyst_tier !== null
+            value={phase2?.catalyst_tier !== null
               ? `Tier ${phase2.catalyst_tier}${phase2.catalyst_tier >= 3 ? ' — vague PR' : phase2.catalyst_tier === 1 ? ' — FDA/trial' : ''}`
               : 'No 8-K'}
-            signal={phase2.catalyst_tier !== null && phase2.catalyst_tier >= 3}
-            neutral={phase2.catalyst_tier === null}
+            signal={phase2?.catalyst_tier !== null && phase2.catalyst_tier >= 3}
+            neutral={phase2?.catalyst_tier === null}
           />
           <ChecklistRow
             label="Proceeds"
-            value={phase2.proceeds_type ?? 'Unknown'}
-            signal={phase2.proceeds_type === 'LOSSES'}
-            neutral={phase2.proceeds_type !== 'LOSSES'}
+            value={phase2?.proceeds_type ?? 'Unknown'}
+            signal={phase2?.proceeds_type === 'LOSSES'}
+            neutral={phase2?.proceeds_type !== 'LOSSES'}
           />
-          {/* News fallback — shown only when no 8-K found */}
-          {phase2.news_fallback?.length > 0 && (
+          {phase2?.news_fallback?.length > 0 && (
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-slate-600">News (no 8-K found):</p>
               {phase2.news_fallback.map((n, i) => (
@@ -307,11 +380,10 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               ))}
             </div>
           )}
-          {/* Manual: sympathy trade */}
           <div className="mt-1.5">
             <ManualToggle
               label="Sympathy trade (manual)"
-              value={phase2.sympathy_trade}
+              value={phase2?.sympathy_trade}
               onChange={(v) => onToggleManual?.(intent, 'phase2', 'sympathy_trade', v)}
             />
           </div>
@@ -320,12 +392,12 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
         {/* Phase 3 — Price Action */}
         <div>
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-            <Activity className="w-3 h-3" /> Phase 3 — Price Action
+            <BarChart2 className="w-3 h-3" /> Phase 3 — Price Action
           </p>
-          {!phase3.market_open && (
+          {!phase3?.market_open && (
             <p className="text-[11px] text-slate-600 italic mb-1">Market not open yet — RTH data pending</p>
           )}
-          {phase3.pm_high !== null && (
+          {phase3?.pm_high !== null && (
             <ChecklistRow
               label="PM High / RTH Open"
               value={`$${phase3.pm_high?.toFixed(2)} / $${phase3.rth_open?.toFixed(2) ?? '—'} ${phase3.pm_high_reclaimed === false ? '✗ not reclaimed' : phase3.pm_high_reclaimed ? '✓ reclaimed' : ''}`}
@@ -333,7 +405,15 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               neutral={phase3.pm_high_reclaimed !== false}
             />
           )}
-          {phase3.vwap !== null && (
+          {phase1b?.gap_pct !== null && phase3?.pm_high !== null && (
+            <ChecklistRow
+              label="Gap at RTH"
+              value={`+${phase1b?.gap_pct?.toFixed(1)}% (PM vs prior close)`}
+              signal={(phase1b?.gap_pct ?? 0) > 80}
+              neutral={(phase1b?.gap_pct ?? 0) <= 80}
+            />
+          )}
+          {phase3?.vwap !== null && (
             <ChecklistRow
               label="VWAP"
               value={`$${phase3.vwap?.toFixed(2)}${phase3.current_price ? ` · curr $${phase3.current_price?.toFixed(2)}` : ''} ${phase3.vwap_failed ? '✗ failed' : '✓ holding'}`}
@@ -341,15 +421,15 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               neutral={!phase3.vwap_failed}
             />
           )}
-          {phase3.wick_ratio !== null && (
+          {phase3?.wick_ratio !== null && (
             <ChecklistRow
               label="Wick ratio"
-              value={`${phase3.wick_ratio?.toFixed(2)}${phase3.wick_ratio > 0.65 ? ' — distribution' : ' — normal'}`}
+              value={`${phase3.wick_ratio?.toFixed(2)}${phase3.wick_ratio > 0.80 ? ' — BLOW-OFF' : phase3.wick_ratio > 0.65 ? ' — distribution' : ' — normal'}`}
               signal={phase3.wick_ratio > 0.65}
               neutral={phase3.wick_ratio <= 0.65}
             />
           )}
-          {phase3.volume_ratio !== null && (
+          {phase3?.volume_ratio !== null && (
             <ChecklistRow
               label="Volume"
               value={`${phase3.volume_ratio?.toFixed(1)}x avg`}
@@ -357,35 +437,20 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               neutral={phase3.volume_ratio < 5}
             />
           )}
-          {phase3.day_of_run !== null && (
+          {phase3?.day_of_run !== null && (
             <ChecklistRow
               label="Day of run"
-              value={`Day ${phase3.day_of_run}`}
+              value={`Day ${phase3.day_of_run}${phase3.day_of_run >= 3 ? ' ← no exception' : ''}`}
               signal={phase3.day_of_run >= 3}
               neutral={phase3.day_of_run < 3}
             />
-          )}
-          {/* Manual overrides */}
-          {phase3.market_open && (
-            <div className="mt-1.5 space-y-1">
-              <ManualToggle
-                label="PM high override"
-                value={phase3.pm_high_override}
-                onChange={(v) => onToggleManual?.(intent, 'phase3', 'pm_high_override', v)}
-              />
-              <ManualToggle
-                label="VWAP override"
-                value={phase3.vwap_override}
-                onChange={(v) => onToggleManual?.(intent, 'phase3', 'vwap_override', v)}
-              />
-            </div>
           )}
         </div>
 
         {/* Phase 4 — Float & Short Interest */}
         <div>
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-            <BarChart2 className="w-3 h-3" /> Phase 4 — Float &amp; Short Interest
+            <ShortIcon className="w-3 h-3" /> Phase 4 — Float &amp; Short Interest
           </p>
           {phase4?.error === 'NO_API_KEY' ? (
             <p className="text-[11px] text-slate-600 italic">Not configured — add FINNHUB_API_KEY</p>
@@ -395,9 +460,7 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
             <>
               <ChecklistRow
                 label="Shares outstanding"
-                value={phase4?.shares_outstanding
-                  ? `${phase4.shares_outstanding.toFixed(1)}M`
-                  : '—'}
+                value={phase4?.shares_outstanding ? `${phase4.shares_outstanding.toFixed(1)}M` : '—'}
                 neutral
               />
               <ChecklistRow
@@ -409,6 +472,25 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
                 neutral={(phase4?.short_float_pct ?? 0) < 20}
               />
             </>
+          )}
+        </div>
+
+        {/* Overrides — computed (shown always, active ones highlighted) */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> Overrides (computed)
+          </p>
+          {activeOverrides.length > 0 ? (
+            <div className="space-y-0.5">
+              {activeOverrides.map((o) => (
+                <div key={o.key} className="flex items-center gap-1.5 text-[11px] text-red-400">
+                  <XCircle className="w-3 h-3 shrink-0" />
+                  {o.label}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-600 italic">No overrides triggered</p>
           )}
         </div>
 
