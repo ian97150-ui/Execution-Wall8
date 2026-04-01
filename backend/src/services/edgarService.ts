@@ -67,9 +67,10 @@ export async function lookupCIK(ticker: string): Promise<string | null> {
     const res = await edgarFetch(url);
     if (!res.ok) return null;
     const text = await res.text();
-    const match = text.match(/CIK(\d{10})/i);
+    // EDGAR atom returns CIK as <cik>1864581</cik> (variable length, not zero-padded)
+    const match = text.match(/<cik>(\d+)<\/cik>/i);
     if (!match) return null;
-    const cik = match[1];
+    const cik = match[1].padStart(10, '0');
     cikCache.set(upper, cik);
     return cik;
   } catch {
