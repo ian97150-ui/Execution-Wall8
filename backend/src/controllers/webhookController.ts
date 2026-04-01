@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../index';
 import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
-import { EmailNotifications } from '../services/emailService';
 import { PushoverNotifications } from '../services/pushoverService';
 import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
@@ -663,7 +662,6 @@ async function handleWallSignal(data: {
       status: linkedExecutionId ? 'Auto-linked to ORDER' : 'Awaiting review',
       auto_linked: linkedExecutionId ? 'Yes' : 'No'
     };
-    EmailNotifications.wallSignal(tickerUpper, wallNotificationData).catch(err => console.error('Email notification error:', err));
     PushoverNotifications.wallSignal(tickerUpper, wallNotificationData).catch(err => console.error('Pushover notification error:', err));
   } else {
     console.log(`📧 Skipping WALL notifications for ${tickerUpper} - user already holds position`);
@@ -988,7 +986,6 @@ async function handleOrderSignal(data: {
       auto_linked: linkedIntentId ? 'yes' : 'no',
       broker_result: isFullMode ? (brokerResult.success ? 'forwarded' : 'failed') : 'pending'
     };
-    EmailNotifications.orderReceived(tickerUpper, orderReceivedData).catch(err => console.error('Email notification error:', err));
     PushoverNotifications.orderReceived(tickerUpper, orderReceivedData).catch(err => console.error('Pushover notification error:', err));
 
     // If executed immediately in full mode, also send execution notification
@@ -1000,7 +997,6 @@ async function handleOrderSignal(data: {
         limit_price: finalLimitPrice,
         status: 'executed'
       };
-      EmailNotifications.orderExecuted(tickerUpper, orderExecutedData).catch(err => console.error('Email notification error:', err));
       PushoverNotifications.orderExecuted(tickerUpper, orderExecutedData).catch(err => console.error('Pushover notification error:', err));
     }
 
@@ -1195,7 +1191,6 @@ async function handleExitSignal(data: {
     exit_delay_seconds: exitDelaySeconds,
     is_signal: true
   };
-  EmailNotifications.positionClosed(tickerUpper, exitReceivedData).catch(err => console.error('Email notification error:', err));
   PushoverNotifications.positionClosed(tickerUpper, exitReceivedData).catch(err => console.error('Pushover notification error:', err));
 
   let brokerResult: { success: boolean; error?: string } = { success: false };
@@ -1280,7 +1275,6 @@ async function handleExitSignal(data: {
           position_side: openPosition.side,
           status: 'closed'
         };
-        EmailNotifications.positionClosed(tickerUpper, positionClosedData).catch(err => console.error('Email notification error:', err));
         PushoverNotifications.positionClosed(tickerUpper, positionClosedData).catch(err => console.error('Pushover notification error:', err));
       } else {
         // Partial close notification - use same positionClosed method with partial status
@@ -1292,7 +1286,6 @@ async function handleExitSignal(data: {
           status: 'partial',
           remaining_quantity: newQuantity
         };
-        EmailNotifications.positionClosed(tickerUpper, partialCloseData).catch(err => console.error('Email notification error:', err));
         PushoverNotifications.positionClosed(tickerUpper, partialCloseData).catch(err => console.error('Pushover notification error:', err));
       }
     }
@@ -1418,7 +1411,6 @@ async function handleStopLossHit(data: {
       stop_price: stop_price || null,
       status: 'stop_loss_hit'
     };
-    EmailNotifications.positionClosed(tickerUpper, slData).catch(err => console.error('Email notification error:', err));
     PushoverNotifications.positionClosed(tickerUpper, slData).catch(err => console.error('Pushover notification error:', err));
 
     return {
@@ -1623,7 +1615,6 @@ async function handleConfirmedSignal(data: {
     fill_price: fillPrice,
     status: execStatus
   };
-  EmailNotifications.orderExecuted(tickerUpper, confirmedData).catch(err => console.error('Email notification error:', err));
   PushoverNotifications.orderExecuted(tickerUpper, confirmedData).catch(err => console.error('Pushover notification error:', err));
 
   return {
@@ -1697,7 +1688,6 @@ async function handleWall55PctSignal(data: {
       side: dir || null,
       status: `${dayPeakMove}% intraday mover`
     };
-    EmailNotifications.wallSignal(tickerUpper, notifData).catch(err => console.error('Email notification error:', err));
     PushoverNotifications.wallSignal(tickerUpper, notifData).catch(err => console.error('Pushover notification error:', err));
   }
 

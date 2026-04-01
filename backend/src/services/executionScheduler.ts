@@ -1,6 +1,5 @@
 import { prisma } from '../index';
 import { forwardToBroker } from './brokerWebhook';
-import { EmailNotifications } from './emailService';
 import { PushoverNotifications } from './pushoverService';
 
 // Smart scheduler state: two modes
@@ -434,7 +433,6 @@ async function processExpiredDelays() {
             broker_result: brokerResult.success ? 'forwarded' : 'failed',
             trigger: 'delay_expired'
           };
-          EmailNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Email notification error:', err));
           PushoverNotifications.orderExecuted(execution.ticker, executedNotificationData).catch(err => console.error('Pushover notification error:', err));
         }
 

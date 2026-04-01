@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../index';
-import { EmailNotifications } from '../services/emailService';
 
 const router = express.Router();
 
@@ -162,7 +161,6 @@ router.post('/:id/mark-flat', async (req: Request, res: Response) => {
     console.log(`✅ Position marked flat: ${position.ticker}`);
 
     // Send email notification for position closed
-    EmailNotifications.positionClosed(position.ticker, {
       quantity: position.quantity,
       side: position.side,
       entry_price: position.entry_price,

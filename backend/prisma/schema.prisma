@@ -103,9 +103,6 @@ model ExecutionSettings {
   broker_webhook_url   String?  // URL to forward approved orders to broker
   broker_webhook_enabled Boolean @default(false)
 
-  // Email notification settings
-  email_notifications  Boolean @default(false)
-  notification_email   String?
   notify_on_wall       Boolean @default(true) // When WALL signal creates/updates intent
   notify_on_order_received Boolean @default(true) // When ORDER webhook arrives
   notify_on_approval   Boolean @default(true)

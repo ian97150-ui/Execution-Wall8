@@ -43,7 +43,6 @@ async function createSettingsSafe() {
         limit_edit_window: 120,
         max_adjustment_pct: '2.0',
         broker_webhook_enabled: false,
-        email_notifications: false,
         notify_on_wall: true,
         notify_on_order_received: true,
         notify_on_approval: true,
@@ -92,8 +91,6 @@ router.put('/', async (req: Request, res: Response) => {
       max_adjustment_pct,
       broker_webhook_url,
       broker_webhook_enabled,
-      email_notifications,
-      notification_email,
       notify_on_wall,
       notify_on_order_received,
       notify_on_approval,
@@ -136,8 +133,6 @@ router.put('/', async (req: Request, res: Response) => {
     if (max_adjustment_pct !== undefined) updateData.max_adjustment_pct = max_adjustment_pct.toString();
     if (broker_webhook_url !== undefined) updateData.broker_webhook_url = broker_webhook_url;
     if (broker_webhook_enabled !== undefined) updateData.broker_webhook_enabled = broker_webhook_enabled;
-    if (email_notifications !== undefined) updateData.email_notifications = email_notifications;
-    if (notification_email !== undefined) updateData.notification_email = notification_email;
     if (notify_on_wall !== undefined) updateData.notify_on_wall = notify_on_wall;
     if (notify_on_order_received !== undefined) updateData.notify_on_order_received = notify_on_order_received;
     if (notify_on_approval !== undefined) updateData.notify_on_approval = notify_on_approval;
@@ -181,64 +176,6 @@ router.put('/', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error updating settings:', error);
     res.status(500).json({ error: error.message });
-  }
-});
-
-// Test email notification using Resend
-router.post('/test-email', async (req: Request, res: Response) => {
-  console.log('📧 Test email endpoint called');
-
-  try {
-    const { sendTestEmail } = await import('../services/emailService');
-
-    // Check for Resend API key
-    if (!process.env.RESEND_API_KEY) {
-      return res.status(400).json({
-        success: false,
-        error: 'Resend API key not configured',
-        details: { RESEND_API_KEY: 'MISSING' },
-        hint: 'Add RESEND_API_KEY to your Railway environment variables. Get a free API key at resend.com'
-      });
-    }
-
-    // Get the email to send to - from request body or settings
-    let toEmail = req.body.email;
-    if (!toEmail) {
-      const settings = await getSettingsSafe();
-      toEmail = settings?.notification_email;
-    }
-
-    if (!toEmail) {
-      return res.status(400).json({
-        success: false,
-        error: 'No email address provided. Enter an email in the notification email field first.'
-      });
-    }
-
-    console.log('📧 Sending test email to:', toEmail);
-
-    const result = await sendTestEmail(toEmail);
-
-    if (result.success) {
-      console.log(`✅ Test email sent to ${toEmail} (id: ${result.id})`);
-      res.json({
-        success: true,
-        message: `Test email sent to ${toEmail}`,
-        id: result.id
-      });
-    } else {
-      console.error('❌ Test email failed:', result.error);
-      res.status(400).json({
-        success: false,
-        error: result.error
-      });
-    }
-  } catch (error: any) {
-    console.error('❌ Test email error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
   }
 });
 

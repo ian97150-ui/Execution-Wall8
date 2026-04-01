@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../index';
-import { EmailNotifications } from '../services/emailService';
 import { PushoverNotifications } from '../services/pushoverService';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runSecWatchScan } from '../services/secWatchScanner';
@@ -199,7 +198,6 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
         quality_tier: intent.quality_tier,
         quality_score: intent.quality_score
       };
-      EmailNotifications.signalApproved(intent.ticker, approvalNotificationData).catch(err => console.error('Email notification error:', err));
       PushoverNotifications.signalApproved(intent.ticker, approvalNotificationData).catch(err => console.error('Pushover notification error:', err));
     }
 

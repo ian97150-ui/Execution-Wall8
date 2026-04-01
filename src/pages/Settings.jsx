@@ -69,13 +69,6 @@ export default function Settings() {
         max_adjustment_pct: settings.max_adjustment_pct || 2.0,
         broker_webhook_url: settings.broker_webhook_url || '',
         broker_webhook_enabled: toBool(settings.broker_webhook_enabled),
-        email_notifications: toBool(settings.email_notifications),
-        notification_email: settings.notification_email || '',
-        notify_on_wall: settings.notify_on_wall !== 0 && settings.notify_on_wall !== false,
-        notify_on_order_received: settings.notify_on_order_received !== 0 && settings.notify_on_order_received !== false,
-        notify_on_approval: settings.notify_on_approval !== 0 && settings.notify_on_approval !== false,
-        notify_on_execution: settings.notify_on_execution !== 0 && settings.notify_on_execution !== false,
-        notify_on_close: settings.notify_on_close !== 0 && settings.notify_on_close !== false,
         use_time_schedules: toBool(settings.use_time_schedules),
         timezone: settings.timezone || 'America/New_York',
         tradingview_chart_id: settings.tradingview_chart_id || '',
@@ -544,125 +537,6 @@ export default function Settings() {
                 Chart links will open your saved layout with the ticker symbol pre-loaded.
               </p>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Email Notifications */}
-        <Card className="bg-slate-900/50 border-slate-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Bell className="w-5 h-5 text-blue-400" />
-              Email Notifications
-            </CardTitle>
-            <CardDescription className="text-slate-400">
-              Receive alerts for execution requests
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
-              <div>
-                <Label className="text-slate-300">Enable Email Notifications</Label>
-                <p className="text-xs text-slate-500 mt-1">
-                  Get notified when execution requests are awaiting approval
-                </p>
-              </div>
-              <Switch
-                checked={formData.email_notifications}
-                onCheckedChange={(checked) => setFormData(f => ({ ...f, email_notifications: checked }))}
-              />
-            </div>
-
-            {formData.email_notifications && (
-              <>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Notification Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="your@email.com"
-                    value={formData.notification_email}
-                    onChange={(e) => setFormData(f => ({ ...f, notification_email: e.target.value }))}
-                    className="bg-slate-800 border-slate-700 text-white"
-                  />
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  <Label className="text-slate-300">Event Preferences</Label>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">WALL Signal (New/Updated)</span>
-                      <Switch
-                        checked={formData.notify_on_wall}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_wall: checked }))}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Order Received</span>
-                      <Switch
-                        checked={formData.notify_on_order_received}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_order_received: checked }))}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Signal Approved</span>
-                      <Switch
-                        checked={formData.notify_on_approval}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_approval: checked }))}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Order Executed</span>
-                      <Switch
-                        checked={formData.notify_on_execution}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_execution: checked }))}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                      <span className="text-sm text-slate-300">Position Closed</span>
-                      <Switch
-                        checked={formData.notify_on_close}
-                        onCheckedChange={(checked) => setFormData(f => ({ ...f, notify_on_close: checked }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-700">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        toast.info('Sending test email...');
-                        const response = await api.post('/settings/test-email');
-                        if (response.data.success) {
-                          toast.success(response.data.message);
-                        } else {
-                          const details = response.data.details ? JSON.stringify(response.data.details) : '';
-                          const hint = response.data.hint ? ` Hint: ${response.data.hint}` : '';
-                          toast.error(`${response.data.error || 'Test email failed'}${hint} ${details}`);
-                        }
-                      } catch (err) {
-                        console.error('Test email error:', err.response?.data || err);
-                        const data = err.response?.data;
-                        const errorMsg = data?.error || err.message || 'Failed to send test email';
-                        const details = data?.details ? ` Details: ${JSON.stringify(data.details)}` : '';
-                        const hint = data?.hint ? ` Hint: ${data.hint}` : '';
-                        toast.error(`${errorMsg}${hint}${details}`);
-                      }
-                    }}
-                    className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/20"
-                  >
-                    Send Test Email
-                  </Button>
-                </div>
-              </>
-            )}
           </CardContent>
         </Card>
 
