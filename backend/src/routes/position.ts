@@ -160,13 +160,6 @@ router.post('/:id/mark-flat', async (req: Request, res: Response) => {
 
     console.log(`✅ Position marked flat: ${position.ticker}`);
 
-    // Send email notification for position closed
-      quantity: position.quantity,
-      side: position.side,
-      entry_price: position.entry_price,
-      status: 'marked_flat'
-    }).catch(err => console.error('Email notification error:', err));
-
     res.json(normalizePosition(updatedPosition));
   } catch (error: any) {
     console.error('Error marking position flat:', error);
