@@ -13,6 +13,7 @@
 import { prisma } from '../index';
 import { checkSecFilings } from './secCallbackService';
 import { PushoverNotifications } from './pushoverService';
+import { runChecklist } from './secChecklistService';
 
 // Fixed ET scan times (HH:MM 24h)
 const SCAN_TIMES_ET = ['06:00', '07:30', '09:00', '11:00', '13:00', '15:30', '17:00'];
@@ -93,6 +94,16 @@ export async function runSecWatchScan(): Promise<{ ticker: string; found: boolea
           forms: result.filings?.map((f: any) => f.form).join(', ') || 'Filing found',
           source: 'watch_scan'
         }).catch(err => console.error('Pushover SEC notify error:', err.message));
+
+        // Fire-and-forget: refresh SEC checklist now that a filing is confirmed
+        const intentIdForChecklist = intent.id;
+        const tickerForChecklist = intent.ticker;
+        runChecklist(tickerForChecklist)
+          .then(c => prisma.tradeIntent.update({
+            where: { id: intentIdForChecklist },
+            data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
+          }))
+          .catch(err => console.warn(`⚠️ SEC checklist refresh failed for ${tickerForChecklist}: ${err.message}`));
       } else {
         await prisma.tradeIntent.update({
           where: { id: intent.id },

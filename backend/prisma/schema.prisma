@@ -54,6 +54,8 @@ model TradeIntent {
   sec_confirmed     Boolean  @default(false)  // SEC filing confirmed by user
   sec_filings       String?                   // JSON: SEC scanner response (auto-check on WALL)
   sec_scan_history  String?                   // JSON: array of { at, found, filings?, error? } — periodic watch scan log
+  sec_checklist     String?                   // JSON: full SecChecklist object (phases 1-4 automated data)
+  sec_bias          String?                   // Plain string: OFFERING_LIVE | ATM_LIVE | PRIME_SHORT | TRAP_SETUP | CLEAN_TAPE | NO_DATA
 
   expires_at     DateTime
   created_date   DateTime @default(now())

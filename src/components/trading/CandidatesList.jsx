@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, ShieldOff, BookMarked, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
+import BiasBadge from "./BiasBadge";
 import GateProgress from "./GateProgress";
 
 export default function CandidatesList({
@@ -70,6 +71,7 @@ export default function CandidatesList({
                     {Number(dayPeakMove).toFixed(1)}% mover
                   </span>
                 )}
+                {intent.sec_bias && <BiasBadge bias={intent.sec_bias} size="sm" />}
                 {intent.sec_confirmed && (
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
                     <BadgeCheck className="w-3 h-3" />

@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
 import QualityBadge from "./QualityBadge";
+import BiasBadge from "./BiasBadge";
 import api from '@/api/apiClient';
 
 export default function TradeCard({
@@ -173,6 +174,7 @@ export default function TradeCard({
                     {Number(dayPeakMove).toFixed(1)}% mover
                   </span>
                 )}
+                {intent.sec_bias && <BiasBadge bias={intent.sec_bias} />}
                 {intent.sec_confirmed && (
                   <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 cursor-help">
                     <BadgeCheck className="w-3 h-3" />

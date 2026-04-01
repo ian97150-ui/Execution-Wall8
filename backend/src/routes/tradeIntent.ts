@@ -3,6 +3,7 @@ import { prisma } from '../index';
 import { PushoverNotifications } from '../services/pushoverService';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runSecWatchScan } from '../services/secWatchScanner';
+import { runChecklist, applyManualOverride, SecChecklist } from '../services/secChecklistService';
 
 const router = express.Router();
 
@@ -354,6 +355,74 @@ router.post('/demo', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error creating demo WALL card:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Run full SEC checklist (phases 1-4 automated)
+router.post('/:id/run-checklist', async (req: Request, res: Response) => {
+  try {
+    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id } });
+    if (!intent) return res.status(404).json({ error: 'Intent not found' });
+
+    // Preserve any existing manual fields
+    let existing: SecChecklist | null = null;
+    if (intent.sec_checklist) {
+      try { existing = JSON.parse(intent.sec_checklist); } catch { /* ignore */ }
+    }
+
+    const checklist = await runChecklist(intent.ticker, existing);
+
+    const updated = await prisma.tradeIntent.update({
+      where: { id: intent.id },
+      data: {
+        sec_checklist: JSON.stringify(checklist),
+        sec_bias: checklist.bias
+      }
+    });
+
+    console.log(`✅ SEC checklist run for ${intent.ticker}: ${checklist.bias}`);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error running SEC checklist:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Apply manual overrides to existing checklist (sympathy_trade, pm_high_override, vwap_override)
+router.patch('/:id/checklist-manual', async (req: Request, res: Response) => {
+  try {
+    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id } });
+    if (!intent) return res.status(404).json({ error: 'Intent not found' });
+    if (!intent.sec_checklist) {
+      return res.status(400).json({ error: 'No checklist found — run checklist first' });
+    }
+
+    let existing: SecChecklist;
+    try {
+      existing = JSON.parse(intent.sec_checklist);
+    } catch {
+      return res.status(400).json({ error: 'Checklist data is corrupt — run checklist again' });
+    }
+
+    const updates = req.body as {
+      phase2?: { sympathy_trade?: boolean | null };
+      phase3?: { pm_high_override?: boolean | null; vwap_override?: boolean | null };
+    };
+
+    const updated = applyManualOverride(existing, updates);
+
+    const savedIntent = await prisma.tradeIntent.update({
+      where: { id: intent.id },
+      data: {
+        sec_checklist: JSON.stringify(updated),
+        sec_bias: updated.bias
+      }
+    });
+
+    res.json(savedIntent);
+  } catch (error: any) {
+    console.error('Error applying checklist manual override:', error);
     res.status(500).json({ error: error.message });
   }
 });

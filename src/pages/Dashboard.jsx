@@ -610,6 +610,33 @@ export default function Dashboard() {
     onError: () => toast.error('SEC scan all failed')
   });
 
+  // Run full SEC checklist (phases 1-4)
+  const runChecklistMutation = useMutation({
+    mutationFn: async (intent) => {
+      const { data } = await api.post(`/trade-intents/${intent.id}/run-checklist`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    },
+    onError: () => toast.error('Checklist run failed')
+  });
+
+  // Toggle manual override on existing checklist
+  const toggleManualMutation = useMutation({
+    mutationFn: async ({ intent, phase, field, value }) => {
+      const { data } = await api.patch(`/trade-intents/${intent.id}/checklist-manual`, {
+        [phase]: { [field]: value }
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+    },
+    onError: () => toast.error('Manual override failed')
+  });
+
   // Block wall alerts for a ticker (until next daily reset)
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
@@ -918,6 +945,8 @@ export default function Dashboard() {
                     onReject={(intent) => swipeOffMutation.mutate(intent)}
                     onScanSec={(intent) => scanSecMutation.mutate(intent)}
                     onScanAll={() => scanSecAllMutation.mutate()}
+                    onRunChecklist={(intent) => runChecklistMutation.mutateAsync(intent)}
+                    onToggleManual={(intent, phase, field, value) => toggleManualMutation.mutate({ intent, phase, field, value })}
                     tradingviewChartId={settings?.tradingview_chart_id}
                   />
                 </div>

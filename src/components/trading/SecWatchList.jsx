@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink, FlaskConical, CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink,
+  FlaskConical, CheckCircle2, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp,
+  AlertTriangle, BarChart2, Activity, TrendingDown as ShortIcon
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
+import BiasBadge from "./BiasBadge";
 import api from '@/api/apiClient';
 
 const SEC_SCANNER_URL = import.meta.env.VITE_SEC_SCANNER_URL || 'https://web-production-dcf57.up.railway.app';
@@ -92,31 +97,24 @@ function SecScannerTest() {
   );
 }
 
-// Visual scan history tokens — one dot per scan attempt
+// Visual scan history tokens
 function ScanHistoryTokens({ history }) {
   if (!history || history.length === 0) return null;
-
   return (
     <div className="flex items-center gap-1 flex-wrap">
       <span className="text-[10px] text-slate-500 mr-0.5">Scans:</span>
       {history.map((entry, i) => {
         const time = new Date(entry.at).toLocaleTimeString('en-US', {
           timeZone: 'America/New_York',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
+          hour: 'numeric', minute: '2-digit', hour12: true
         });
         const dotColor = entry.error
           ? 'bg-red-500/70 border-red-400/60'
-          : entry.found
-            ? 'bg-cyan-400 border-cyan-300'
-            : 'bg-slate-600 border-slate-500';
+          : entry.found ? 'bg-cyan-400 border-cyan-300' : 'bg-slate-600 border-slate-500';
         const label = entry.error
           ? `Error at ${time}: ${entry.error}`
-          : entry.found
-            ? `Found at ${time} — ${entry.filings?.length ?? 1} filing(s)`
-            : `No filing at ${time}`;
-
+          : entry.found ? `Found at ${time} — ${entry.filings?.length ?? 1} filing(s)`
+          : `No filing at ${time}`;
         return (
           <span
             key={i}
@@ -125,6 +123,284 @@ function ScanHistoryTokens({ history }) {
           />
         );
       })}
+    </div>
+  );
+}
+
+// ─── Checklist Panel ──────────────────────────────────────────────────────────
+
+function ChecklistRow({ label, value, signal = false, neutral = false }) {
+  return (
+    <div className="flex items-start justify-between gap-2 py-0.5">
+      <span className="text-[11px] text-slate-500 shrink-0">{label}</span>
+      <span className={cn(
+        "text-[11px] font-medium text-right",
+        signal ? "text-red-400" : neutral ? "text-slate-400" : "text-slate-300"
+      )}>
+        {value ?? '—'}
+      </span>
+    </div>
+  );
+}
+
+function ManualToggle({ label, value, onChange }) {
+  // Cycles: null → true → false → null
+  const display = value === true ? '✓ YES' : value === false ? '✗ NO' : 'tap to set';
+  const colorClass = value === true ? 'text-red-400 border-red-500/50' :
+                     value === false ? 'text-slate-500 border-slate-600/50' :
+                     'text-slate-500 border-slate-600/50';
+  function cycle() {
+    if (value === null || value === undefined) onChange(true);
+    else if (value === true) onChange(false);
+    else onChange(null);
+  }
+  return (
+    <button
+      onClick={cycle}
+      className={cn(
+        "flex items-center justify-between w-full px-2 py-1 rounded border text-[11px] transition-colors hover:bg-slate-700/50",
+        colorClass
+      )}
+    >
+      <span className="text-slate-400">{label}</span>
+      <span className="font-semibold">{display}</span>
+    </button>
+  );
+}
+
+function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, runningChecklist }) {
+  if (!checklist) return null;
+  const { phase1, phase2, phase3, phase4, bias, short_signal_count, completion_pct, run_at } = checklist;
+
+  const runAt = run_at ? new Date(run_at).toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true
+  }) + ' ET' : null;
+
+  return (
+    <div className="mt-3 border border-slate-700/50 rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/80 border-b border-slate-700/50">
+        <BiasBadge bias={bias} size="sm" />
+        <div className="flex-1 flex items-center gap-2">
+          <div className="flex-1 bg-slate-700/50 rounded-full h-1.5">
+            <div
+              className="bg-violet-500/70 h-1.5 rounded-full transition-all"
+              style={{ width: `${completion_pct}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-slate-500 shrink-0">{completion_pct}%</span>
+        </div>
+        <span className="text-[10px] text-slate-600 shrink-0">{short_signal_count} signals</span>
+        <button
+          onClick={() => onRunChecklist?.(intent)}
+          disabled={runningChecklist}
+          className="text-slate-400 hover:text-violet-400 transition-colors ml-1"
+          title="Refresh checklist"
+        >
+          <RefreshCw className={cn("w-3 h-3", runningChecklist && "animate-spin")} />
+        </button>
+      </div>
+
+      <div className="px-3 py-2 space-y-3 bg-slate-900/50">
+        {/* Phase 1 — EDGAR + Analyst */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <FileText className="w-3 h-3" /> Phase 1 — EDGAR + Analyst
+          </p>
+          {phase1.error && (
+            <p className="text-[11px] text-red-400/80 mb-1">{phase1.error}</p>
+          )}
+          <ChecklistRow
+            label="Shelf filing"
+            value={phase1.shelf_type
+              ? `${phase1.shelf_type} · ${phase1.shelf_age_days}d ago`
+              : 'None'}
+            signal={!!phase1.shelf_type}
+          />
+          <ChecklistRow
+            label="424Bs (12m)"
+            value={`${phase1.prior_424b_count_12m} filing${phase1.prior_424b_count_12m !== 1 ? 's' : ''}${phase1.prior_424b_count_12m >= 2 ? ' ← SERIAL' : ''}`}
+            signal={phase1.prior_424b_count_12m >= 2}
+            neutral={phase1.prior_424b_count_12m === 0}
+          />
+          {phase1.same_day_424b?.length > 0 && (
+            <div className="flex flex-wrap gap-1 my-0.5">
+              {phase1.same_day_424b.map((f, i) => (
+                <a key={i} href={f.filing_url} target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] text-red-400 border border-red-500/40 rounded px-1.5 py-0.5 hover:bg-red-500/10">
+                  {f.form} TODAY ↗
+                </a>
+              ))}
+            </div>
+          )}
+          <ChecklistRow
+            label="8-K (48h)"
+            value={phase1.eightk?.found
+              ? (phase1.eightk.signals?.length > 0
+                  ? phase1.eightk.signals.join(', ')
+                  : `Found ${phase1.eightk.filing_date}`)
+              : 'No 8-K found'}
+            signal={phase1.eightk?.signals?.length > 0}
+            neutral={!phase1.eightk?.found}
+          />
+          {phase1.eightk?.found && phase1.eightk?.filing_url && (
+            <a href={phase1.eightk.filing_url} target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5">
+              View 8-K ↗
+            </a>
+          )}
+          {phase1.analyst && !phase1.analyst.error && (
+            <ChecklistRow
+              label="Analyst"
+              value={phase1.analyst.analyst_bias
+                ? `${phase1.analyst.buy + phase1.analyst.strong_buy}B / ${phase1.analyst.hold}H / ${phase1.analyst.sell + phase1.analyst.strong_sell}S → ${phase1.analyst.analyst_bias}`
+                : 'No data'}
+              signal={phase1.analyst.analyst_bias === 'BEARISH'}
+              neutral={phase1.analyst.analyst_bias !== 'BEARISH'}
+            />
+          )}
+        </div>
+
+        {/* Phase 2 — Catalyst */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> Phase 2 — Catalyst
+          </p>
+          <ChecklistRow
+            label="Catalyst tier"
+            value={phase2.catalyst_tier !== null
+              ? `Tier ${phase2.catalyst_tier}${phase2.catalyst_tier >= 3 ? ' — vague PR' : phase2.catalyst_tier === 1 ? ' — FDA/trial' : ''}`
+              : 'No 8-K'}
+            signal={phase2.catalyst_tier !== null && phase2.catalyst_tier >= 3}
+            neutral={phase2.catalyst_tier === null}
+          />
+          <ChecklistRow
+            label="Proceeds"
+            value={phase2.proceeds_type ?? 'Unknown'}
+            signal={phase2.proceeds_type === 'LOSSES'}
+            neutral={phase2.proceeds_type !== 'LOSSES'}
+          />
+          {/* News fallback — shown only when no 8-K found */}
+          {phase2.news_fallback?.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              <p className="text-[10px] text-slate-600">News (no 8-K found):</p>
+              {phase2.news_fallback.map((n, i) => (
+                <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
+                  className="block text-[10px] text-slate-400 hover:text-cyan-400 truncate">
+                  · {n.headline}
+                </a>
+              ))}
+            </div>
+          )}
+          {/* Manual: sympathy trade */}
+          <div className="mt-1.5">
+            <ManualToggle
+              label="Sympathy trade (manual)"
+              value={phase2.sympathy_trade}
+              onChange={(v) => onToggleManual?.(intent, 'phase2', 'sympathy_trade', v)}
+            />
+          </div>
+        </div>
+
+        {/* Phase 3 — Price Action */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <Activity className="w-3 h-3" /> Phase 3 — Price Action
+          </p>
+          {!phase3.market_open && (
+            <p className="text-[11px] text-slate-600 italic mb-1">Market not open yet — RTH data pending</p>
+          )}
+          {phase3.pm_high !== null && (
+            <ChecklistRow
+              label="PM High / RTH Open"
+              value={`$${phase3.pm_high?.toFixed(2)} / $${phase3.rth_open?.toFixed(2) ?? '—'} ${phase3.pm_high_reclaimed === false ? '✗ not reclaimed' : phase3.pm_high_reclaimed ? '✓ reclaimed' : ''}`}
+              signal={phase3.pm_high_reclaimed === false}
+              neutral={phase3.pm_high_reclaimed !== false}
+            />
+          )}
+          {phase3.vwap !== null && (
+            <ChecklistRow
+              label="VWAP"
+              value={`$${phase3.vwap?.toFixed(2)}${phase3.current_price ? ` · curr $${phase3.current_price?.toFixed(2)}` : ''} ${phase3.vwap_failed ? '✗ failed' : '✓ holding'}`}
+              signal={phase3.vwap_failed === true}
+              neutral={!phase3.vwap_failed}
+            />
+          )}
+          {phase3.wick_ratio !== null && (
+            <ChecklistRow
+              label="Wick ratio"
+              value={`${phase3.wick_ratio?.toFixed(2)}${phase3.wick_ratio > 0.65 ? ' — distribution' : ' — normal'}`}
+              signal={phase3.wick_ratio > 0.65}
+              neutral={phase3.wick_ratio <= 0.65}
+            />
+          )}
+          {phase3.volume_ratio !== null && (
+            <ChecklistRow
+              label="Volume"
+              value={`${phase3.volume_ratio?.toFixed(1)}x avg`}
+              signal={phase3.volume_ratio >= 5}
+              neutral={phase3.volume_ratio < 5}
+            />
+          )}
+          {phase3.day_of_run !== null && (
+            <ChecklistRow
+              label="Day of run"
+              value={`Day ${phase3.day_of_run}`}
+              signal={phase3.day_of_run >= 3}
+              neutral={phase3.day_of_run < 3}
+            />
+          )}
+          {/* Manual overrides */}
+          {phase3.market_open && (
+            <div className="mt-1.5 space-y-1">
+              <ManualToggle
+                label="PM high override"
+                value={phase3.pm_high_override}
+                onChange={(v) => onToggleManual?.(intent, 'phase3', 'pm_high_override', v)}
+              />
+              <ManualToggle
+                label="VWAP override"
+                value={phase3.vwap_override}
+                onChange={(v) => onToggleManual?.(intent, 'phase3', 'vwap_override', v)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Phase 4 — Float & Short Interest */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <BarChart2 className="w-3 h-3" /> Phase 4 — Float &amp; Short Interest
+          </p>
+          {phase4?.error === 'NO_API_KEY' ? (
+            <p className="text-[11px] text-slate-600 italic">Not configured — add FINNHUB_API_KEY</p>
+          ) : phase4?.error ? (
+            <p className="text-[11px] text-slate-600 italic">{phase4.error}</p>
+          ) : (
+            <>
+              <ChecklistRow
+                label="Shares outstanding"
+                value={phase4?.shares_outstanding
+                  ? `${phase4.shares_outstanding.toFixed(1)}M`
+                  : '—'}
+                neutral
+              />
+              <ChecklistRow
+                label="Short interest"
+                value={phase4?.short_float_pct !== null
+                  ? `${phase4.short_float_pct?.toFixed(1)}% of float${phase4.short_date ? ` · ${phase4.short_date}` : ''}`
+                  : phase4?.short_interest ? `${(phase4.short_interest / 1e6).toFixed(2)}M shares` : '—'}
+                signal={(phase4?.short_float_pct ?? 0) >= 20}
+                neutral={(phase4?.short_float_pct ?? 0) < 20}
+              />
+            </>
+          )}
+        </div>
+
+        {runAt && (
+          <p className="text-[10px] text-slate-700 text-right">Last run: {runAt}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -142,6 +418,8 @@ export default function SecWatchList({
   onReject,
   onScanSec,
   onScanAll,
+  onRunChecklist,
+  onToggleManual,
   tradingviewChartId
 }) {
   if (intents.length === 0) {
@@ -193,6 +471,8 @@ export default function SecWatchList({
               onApprove={onApprove}
               onReject={onReject}
               onScanSec={onScanSec}
+              onRunChecklist={onRunChecklist}
+              onToggleManual={onToggleManual}
               tradingviewChartId={tradingviewChartId}
             />
           ))}
@@ -215,6 +495,8 @@ export default function SecWatchList({
               onApprove={onApprove}
               onReject={onReject}
               onScanSec={onScanSec}
+              onRunChecklist={onRunChecklist}
+              onToggleManual={onToggleManual}
               tradingviewChartId={tradingviewChartId}
             />
           ))}
@@ -224,16 +506,32 @@ export default function SecWatchList({
   );
 }
 
-function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, onScanSec, tradingviewChartId }) {
+function SecWatchRow({
+  intent,
+  onSecConfirm,
+  onSecWatch,
+  onApprove,
+  onReject,
+  onScanSec,
+  onRunChecklist,
+  onToggleManual,
+  tradingviewChartId
+}) {
   const isLong = intent.dir === "Long";
   const [scanning, setScanning] = useState(false);
+  const [runningChecklist, setRunningChecklist] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(true);
 
   const scanHistory = React.useMemo(() => {
     try { return intent.sec_scan_history ? JSON.parse(intent.sec_scan_history) : []; }
     catch { return []; }
   }, [intent.sec_scan_history]);
 
-  // Parse confirmed filings for display
+  const checklist = React.useMemo(() => {
+    try { return intent.sec_checklist ? JSON.parse(intent.sec_checklist) : null; }
+    catch { return null; }
+  }, [intent.sec_checklist]);
+
   const filings = React.useMemo(() => {
     try { return intent.sec_filings ? JSON.parse(intent.sec_filings) : []; }
     catch { return []; }
@@ -243,6 +541,12 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, on
     setScanning(true);
     try { await onScanSec?.(intent); }
     finally { setScanning(false); }
+  }
+
+  async function handleRunChecklist() {
+    setRunningChecklist(true);
+    try { await onRunChecklist?.(intent); }
+    finally { setRunningChecklist(false); }
   }
 
   return (
@@ -285,6 +589,7 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, on
               WATCHING
             </span>
           )}
+          {intent.sec_bias && <BiasBadge bias={intent.sec_bias} size="sm" />}
           {intent.quality_tier && (
             <QualityBadge tier={intent.quality_tier} score={intent.quality_score} size="sm" />
           )}
@@ -348,6 +653,37 @@ function SecWatchRow({ intent, onSecConfirm, onSecWatch, onApprove, onReject, on
           <ScanHistoryTokens history={scanHistory} />
         </div>
       )}
+
+      {/* Checklist section */}
+      <div className="mb-3">
+        <button
+          onClick={() => setChecklistOpen(o => !o)}
+          className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition-colors w-full"
+        >
+          {checklistOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          {checklist ? `SEC Checklist · ${checklist.completion_pct}% complete` : 'SEC Checklist — not run yet'}
+          {!checklist && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleRunChecklist(); }}
+              disabled={runningChecklist}
+              className="ml-auto text-violet-400 hover:text-violet-300 flex items-center gap-1"
+            >
+              {runningChecklist ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Run now
+            </button>
+          )}
+        </button>
+
+        {checklistOpen && checklist && (
+          <ChecklistPanel
+            checklist={checklist}
+            intent={intent}
+            onRunChecklist={handleRunChecklist}
+            onToggleManual={onToggleManual}
+            runningChecklist={runningChecklist}
+          />
+        )}
+      </div>
 
       {/* Actions */}
       <div className="space-y-2">

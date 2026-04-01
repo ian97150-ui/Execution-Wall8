@@ -4,6 +4,7 @@ import { acquireSymbolLock, releaseSymbolLock } from '../services/symbolLock';
 import { PushoverNotifications } from '../services/pushoverService';
 import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
+import { runChecklist } from '../services/secChecklistService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -577,6 +578,15 @@ async function handleWallSignal(data: {
       console.log(`⚠️ SEC scanner unavailable for ${tickerUpper}: ${secResult.error}`);
     }
   }
+
+  // Fire-and-forget: run full SEC checklist in background (EDGAR + Finnhub + Yahoo Finance)
+  const intentIdForChecklist = tradeIntent.id;
+  runChecklist(tickerUpper)
+    .then(c => prisma.tradeIntent.update({
+      where: { id: intentIdForChecklist },
+      data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
+    }))
+    .catch(err => console.warn(`⚠️ SEC checklist failed for ${tickerUpper}: ${err.message}`));
 
   // Check if execution already exists for this ticker (ORDER arrived before WALL)
   // Auto-link and approve if found
