@@ -226,6 +226,17 @@ router.post('/:id/sec', async (req: Request, res: Response) => {
     else return res.status(400).json({ error: 'Invalid action. Must be: watch, unwatch, confirm, unconfirm' });
 
     const updated = await prisma.tradeIntent.update({ where: { id }, data: updateData });
+
+    // Fire-and-forget: auto-run checklist on confirm (bias may upgrade) or watch if no data yet
+    if (action === 'confirm' || (action === 'watch' && !intent.sec_checklist)) {
+      runChecklist(intent.ticker)
+        .then(c => prisma.tradeIntent.update({
+          where: { id },
+          data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
+        }))
+        .catch(err => console.warn(`⚠️ SEC checklist auto-run failed for ${intent.ticker}: ${err.message}`));
+    }
+
     res.json(updated);
   } catch (error: any) {
     console.error('Error processing SEC action:', error);

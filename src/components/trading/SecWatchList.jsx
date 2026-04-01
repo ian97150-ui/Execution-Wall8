@@ -176,6 +176,13 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
     timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true
   }) + ' ET' : null;
 
+  const CONFIRMATION_CORRELATION = {
+    OFFERING_LIVE: 'EDGAR independently confirmed same-day 424B \u2713',
+    ATM_LIVE:      'ATM/underwriting 8-K + external scanner confirmed',
+    PRIME_SHORT:   'Serial diluter confirmed by external scanner',
+  };
+  const correlationMsg = intent?.sec_confirmed ? CONFIRMATION_CORRELATION[bias] : null;
+
   return (
     <div className="mt-3 border border-slate-700/50 rounded-lg overflow-hidden">
       {/* Header */}
@@ -200,6 +207,14 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
           <RefreshCw className={cn("w-3 h-3", runningChecklist && "animate-spin")} />
         </button>
       </div>
+
+      {/* Correlation banner — shown when sec_confirmed + bias have a meaningful pairing */}
+      {correlationMsg && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border-b border-cyan-500/20">
+          <BadgeCheck className="w-3 h-3 text-cyan-400 shrink-0" />
+          <span className="text-[11px] text-cyan-300">{correlationMsg}</span>
+        </div>
+      )}
 
       <div className="px-3 py-2 space-y-3 bg-slate-900/50">
         {/* Phase 1 — EDGAR + Analyst */}
