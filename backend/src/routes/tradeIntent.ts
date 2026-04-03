@@ -322,16 +322,25 @@ router.post('/:id/invalidate', async (req: Request, res: Response) => {
   }
 });
 
-// Create demo WALL card (for testing)
+// Create demo WALL card (for testing) — runs full checklist synchronously so card appears pre-scored
 router.post('/demo', async (req: Request, res: Response) => {
   try {
-    // Sample tickers for demo
     const randomTicker = 'MULN';
     const randomPrice = (50 + Math.random() * 450).toFixed(2);
-    const isLong = Math.random() > 0.3; // 70% long, 30% short
+    const isLong = Math.random() > 0.3;
     const qualityTiers = ['S', 'A', 'B', 'C'];
     const randomTier = qualityTiers[Math.floor(Math.random() * qualityTiers.length)];
-    const randomScore = Math.floor(60 + Math.random() * 40); // 60-100
+    const randomScore = Math.floor(60 + Math.random() * 40);
+
+    // Run checklist first so card is pre-populated when it appears
+    let checklistData: { sec_checklist: string; sec_bias: string } = { sec_checklist: '', sec_bias: 'NO_DATA' };
+    try {
+      const checklist = await runChecklist(randomTicker);
+      checklistData = { sec_checklist: JSON.stringify(checklist), sec_bias: checklist.bias };
+      console.log(`📋 Demo checklist complete: ${randomTicker} bias=${checklist.bias} score=${checklist.score_snapshot?.score}`);
+    } catch (checkErr: any) {
+      console.warn(`⚠️ Demo checklist failed for ${randomTicker}: ${checkErr.message}`);
+    }
 
     const intent = await prisma.tradeIntent.create({
       data: {
@@ -342,7 +351,10 @@ router.post('/demo', async (req: Request, res: Response) => {
         card_state: 'ELIGIBLE',
         quality_tier: randomTier,
         quality_score: randomScore,
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+        sec_watch: true,
+        sec_checklist: checklistData.sec_checklist || null,
+        sec_bias: checklistData.sec_bias !== 'NO_DATA' ? checklistData.sec_bias : null,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
       }
     });
 
@@ -350,10 +362,7 @@ router.post('/demo', async (req: Request, res: Response) => {
       data: {
         event_type: 'demo_wall_created',
         ticker: randomTicker,
-        details: JSON.stringify({
-          intent_id: intent.id,
-          message: 'Demo WALL card created for testing'
-        })
+        details: JSON.stringify({ intent_id: intent.id, message: 'Demo WALL card created for testing' })
       }
     });
 
@@ -361,7 +370,7 @@ router.post('/demo', async (req: Request, res: Response) => {
 
     res.status(201).json({
       intent,
-      message: `Demo WALL card created: ${intent.ticker}`
+      message: `Demo WALL card created: ${intent.ticker} — checklist pre-loaded`
     });
   } catch (error: any) {
     console.error('Error creating demo WALL card:', error);
