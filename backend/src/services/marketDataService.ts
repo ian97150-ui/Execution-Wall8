@@ -74,6 +74,8 @@ export interface PriceActionResult {
   volume_ratio: number | null;        // today / 30d avg
   day_of_run: number | null;
   current_price: number | null;
+  intraday_move_pct: number | null;   // (max_high_since_rth_open - rth_open) / rth_open * 100
+  efficiency: number | null;          // intraday_move_pct / vol_ratio — demand vs supply quality
   error?: string;
 }
 
@@ -98,7 +100,9 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
     wick_ratio: null,
     volume_ratio: null,
     day_of_run: null,
-    current_price: null
+    current_price: null,
+    intraday_move_pct: null,
+    efficiency: null
   };
 
   try {
@@ -153,6 +157,7 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
         let pmHigh: number | null = null;
         let rthOpenPrice: number | null = null;
         let currentPrice: number | null = null;
+        let maxHighSinceOpen: number | null = null;
         const rthCandles: { h: number; l: number; c: number; v: number; o: number }[] = [];
 
         for (let i = 0; i < timestamps.length; i++) {
@@ -177,6 +182,7 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
             if (rthOpenPrice === null) rthOpenPrice = o || c;
             rthCandles.push({ h, l, c, v: v || 0, o: o || c });
             currentPrice = c;
+            if (maxHighSinceOpen === null || h > maxHighSinceOpen) maxHighSinceOpen = h;
           }
         }
 
@@ -184,6 +190,13 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
         base.pm_high = pmHigh;
         base.rth_open = rthOpenPrice;
         base.current_price = currentPrice;
+
+        // Intraday move % + efficiency
+        if (maxHighSinceOpen !== null && rthOpenPrice !== null && rthOpenPrice > 0) {
+          base.intraday_move_pct = parseFloat(
+            (((maxHighSinceOpen - rthOpenPrice) / rthOpenPrice) * 100).toFixed(2)
+          );
+        }
 
         // AH derived fields
         if (ahHigh !== null) {
@@ -263,6 +276,12 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
           base.current_price = price.regularMarketPrice.raw;
         }
       }
+    }
+
+    // Efficiency computed after vol_ratio is available
+    if (base.intraday_move_pct !== null && base.volume_ratio !== null) {
+      const cappedVol = Math.max(base.volume_ratio, 0.01);
+      base.efficiency = parseFloat((base.intraday_move_pct / cappedVol).toFixed(3));
     }
 
     // ── Day of run + prior_close fallback (10d daily) ─────────────────────────

@@ -6,6 +6,7 @@
 import { getShelfAndFilingHistory, getRecentEightKText, EightKResult } from './edgarService';
 import { getAnalystCoverage, getShortInterest, getRecentNews, AnalystCoverage, NewsItem } from './finnhubService';
 import { getPriceActionSignals } from './marketDataService';
+import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,8 @@ export interface SecChecklist {
     volume_ratio: number | null;
     day_of_run: number | null;
     current_price: number | null;
+    intraday_move_pct: number | null;
+    efficiency: number | null;
     error?: string;
   };
 
@@ -90,7 +93,8 @@ export interface SecChecklist {
   };
 
   bias: ChecklistBias;
-  score: number;         // -30 to +30; > +5 = strong short, < -5 = long lean
+  score: number;             // legacy -30 to +30 (backward compat)
+  score_snapshot: ScoreSnapshot; // 6-rule weighted score, probabilities, reason
   completion_pct: number;
 }
 
@@ -309,6 +313,8 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
     volume_ratio: priceAction.volume_ratio,
     day_of_run: priceAction.day_of_run,
     current_price: priceAction.current_price,
+    intraday_move_pct: priceAction.intraday_move_pct,
+    efficiency: priceAction.efficiency,
     ...(priceAction.error ? { error: priceAction.error } : {})
   };
 
@@ -325,20 +331,10 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
   const score = computeScore(phase1, phase2, phase3, phase4, overrides);
   const completion_pct = computeCompletion(phase1, phase1b, phase2, phase3, phase4);
 
-  return {
-    ticker: upper,
-    run_at: new Date().toISOString(),
-    version: 4,
-    phase1,
-    phase1b,
-    phase2,
-    phase3,
-    phase4,
-    overrides,
-    bias,
-    score,
-    completion_pct
-  };
+  const partial = { ticker: upper, run_at: new Date().toISOString(), version: 4 as const, phase1, phase1b, phase2, phase3, phase4, overrides, bias, score, completion_pct };
+  const score_snapshot = computeScoreSnapshot(partial as SecChecklist);
+
+  return { ...partial, score_snapshot };
 }
 
 // ─── applyManualOverride ──────────────────────────────────────────────────────
@@ -356,6 +352,7 @@ export function applyManualOverride(
   const bias = computeBias(existing.phase1, overrides);
   const score = computeScore(existing.phase1, phase2, existing.phase3, existing.phase4, overrides);
   const completion_pct = computeCompletion(existing.phase1, existing.phase1b, phase2, existing.phase3, existing.phase4);
-
-  return { ...existing, phase2, overrides, bias, score, completion_pct };
+  const updated = { ...existing, phase2, overrides, bias, score, completion_pct };
+  const score_snapshot = computeScoreSnapshot(updated);
+  return { ...updated, score_snapshot };
 }

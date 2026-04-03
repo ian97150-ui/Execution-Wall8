@@ -37,6 +37,12 @@ export default function CandidatesList({
         const isBlocked = tickerConfig?.alerts_blocked === true;
         const dayPeakMove = tickerConfig?.day_peak_move ?? null;
 
+        let scoreSnapshot = null;
+        try {
+          const cl = intent.sec_checklist ? JSON.parse(intent.sec_checklist) : null;
+          scoreSnapshot = cl?.score_snapshot ?? null;
+        } catch {}
+
         return (
           <div key={intent.id} className={cn(
             "relative bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-colors",
@@ -87,6 +93,44 @@ export default function CandidatesList({
               </div>
             </div>
             
+            {/* Score snapshot — compact paths + reason */}
+            {scoreSnapshot && (
+              <div className="mb-3 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-bold tracking-wide",
+                    scoreSnapshot.bias === 'STRONG_SHORT' || scoreSnapshot.bias === 'WEAK_SHORT'
+                      ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                      : scoreSnapshot.bias === 'TRUE_LONG' || scoreSnapshot.bias === 'WEAK_LONG'
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-slate-700/50 text-slate-400 border border-slate-600/50"
+                  )}>
+                    {scoreSnapshot.bias.replace('_', ' ')}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {Math.round(scoreSnapshot.confidence * 100)}%
+                  </span>
+                  <div className="flex gap-1 flex-wrap">
+                    {scoreSnapshot.probabilities?.map(p => (
+                      <span key={p.path} className={cn(
+                        "px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize",
+                        p.path === 'dump' || p.path === 'fade' || p.path === 'failure'
+                          ? "bg-red-500/15 text-red-400"
+                          : p.path === 'chop'
+                          ? "bg-yellow-500/15 text-yellow-400"
+                          : "bg-emerald-500/15 text-emerald-400"
+                      )}>
+                        {p.path} {p.pct}%
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {scoreSnapshot.reason && (
+                  <p className="text-[10px] text-slate-500 italic">{scoreSnapshot.reason}</p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <p className="text-xs text-slate-500 uppercase mb-1">Limit</p>
