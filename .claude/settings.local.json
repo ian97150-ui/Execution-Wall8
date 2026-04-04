@@ -41,7 +41,15 @@
       "Bash(npx prisma:*)",
       "Bash(node:*)",
       "Bash(gh api:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(find 'c:\\\\Users\\\\rodin\\\\Documents\\\\Automatated trading\\\\Execution-Wall8 Application Based' -name *model* -o -name *schema* -o -name *db*)",
+      "Bash(python3 -c \"import json; json.load\\(open\\(''backend/package.json''\\)\\); print\\(''valid JSON''\\)\")",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:finnhub.io)",
+      "WebFetch(domain:www.interactivebrokers.com)"
     ]
   }
 }

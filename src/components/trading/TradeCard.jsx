@@ -225,75 +225,6 @@ export default function TradeCard({
             <QualityBadge tier={intent.quality_tier || "B"} score={intent.quality_score} size="large" />
           </div>
 
-          {/* Score Snapshot — decision chip, pressure bar, probability paths, reason */}
-          {scoreSnapshot && (
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
-              {/* Decision chip + confidence */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={cn(
-                  "px-2.5 py-1 rounded-lg text-xs font-bold tracking-wide",
-                  scoreSnapshot.bias === 'STRONG_SHORT' ? "bg-red-500/20 text-red-400 border border-red-500/40" :
-                  scoreSnapshot.bias === 'WEAK_SHORT'   ? "bg-red-500/10 text-red-400/80 border border-red-500/30" :
-                  scoreSnapshot.bias === 'TRUE_LONG'    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" :
-                  scoreSnapshot.bias === 'WEAK_LONG'    ? "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/30" :
-                  "bg-slate-700/50 text-slate-400 border border-slate-600/50"
-                )}>
-                  {scoreSnapshot.bias.replace('_', ' ')}
-                </span>
-                <span className="text-xs font-mono text-slate-500">
-                  {Math.round(scoreSnapshot.confidence * 100)}% conf
-                </span>
-                <span className={cn(
-                  "text-xs font-mono font-bold ml-auto",
-                  scoreSnapshot.score > 0 ? "text-red-400" : scoreSnapshot.score < 0 ? "text-emerald-400" : "text-slate-500"
-                )}>
-                  {scoreSnapshot.score > 0 ? `+${scoreSnapshot.score}` : scoreSnapshot.score}
-                </span>
-              </div>
-
-              {/* Pressure bar */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-slate-500 w-8 text-right">LONG</span>
-                <div className="flex-1 relative h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
-                  <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600" />
-                  {scoreSnapshot.score !== 0 && (
-                    <div
-                      className={cn(
-                        "absolute inset-y-0 rounded-full",
-                        scoreSnapshot.score < 0 ? "bg-emerald-500/70 right-1/2" : "bg-red-500/70 left-1/2"
-                      )}
-                      style={{ width: `${Math.min(Math.abs(scoreSnapshot.score) / 120 * 50, 50)}%` }}
-                    />
-                  )}
-                </div>
-                <span className="text-[10px] text-slate-500 w-8">SHORT</span>
-              </div>
-
-              {/* Probability paths */}
-              {scoreSnapshot.probabilities?.length > 0 && (
-                <div className="flex gap-1 flex-wrap">
-                  {scoreSnapshot.probabilities.map(p => (
-                    <span key={p.path} className={cn(
-                      "px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize",
-                      p.path === 'dump' || p.path === 'fade' || p.path === 'failure'
-                        ? "bg-red-500/15 text-red-400"
-                        : p.path === 'chop'
-                        ? "bg-yellow-500/15 text-yellow-400"
-                        : "bg-emerald-500/15 text-emerald-400"
-                    )}>
-                      {p.path} {p.pct}%
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Reason */}
-              {scoreSnapshot.reason && (
-                <p className="text-[10px] text-slate-500 italic">{scoreSnapshot.reason}</p>
-              )}
-            </div>
-          )}
-
           {/* Quality Metrics */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -342,8 +273,77 @@ export default function TradeCard({
           {/* Expanded details */}
           {expanded && (
             <div className="space-y-3 pb-1">
-              {!hasExpandedData && (
+              {!hasExpandedData && scoreSnapshot === null && (
                 <p className="text-xs text-slate-500 text-center py-2">No additional signal data available</p>
+              )}
+
+              {/* Score Snapshot — decision chip, pressure bar, probability paths, reason */}
+              {scoreSnapshot && (
+                <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
+                  {/* Decision chip + confidence */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold tracking-wide",
+                      scoreSnapshot.bias === 'STRONG_SHORT' ? "bg-red-500/20 text-red-400 border border-red-500/40" :
+                      scoreSnapshot.bias === 'WEAK_SHORT'   ? "bg-red-500/10 text-red-400/80 border border-red-500/30" :
+                      scoreSnapshot.bias === 'TRUE_LONG'    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" :
+                      scoreSnapshot.bias === 'WEAK_LONG'    ? "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/30" :
+                      "bg-slate-700/50 text-slate-400 border border-slate-600/50"
+                    )}>
+                      {scoreSnapshot.bias.replace('_', ' ')}
+                    </span>
+                    <span className="text-xs font-mono text-slate-500">
+                      {Math.round(scoreSnapshot.confidence * 100)}% conf
+                    </span>
+                    <span className={cn(
+                      "text-xs font-mono font-bold ml-auto",
+                      scoreSnapshot.score > 0 ? "text-red-400" : scoreSnapshot.score < 0 ? "text-emerald-400" : "text-slate-500"
+                    )}>
+                      {scoreSnapshot.score > 0 ? `+${scoreSnapshot.score}` : scoreSnapshot.score}
+                    </span>
+                  </div>
+
+                  {/* Pressure bar */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-500 w-8 text-right">LONG</span>
+                    <div className="flex-1 relative h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+                      <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600" />
+                      {scoreSnapshot.score !== 0 && (
+                        <div
+                          className={cn(
+                            "absolute inset-y-0 rounded-full",
+                            scoreSnapshot.score < 0 ? "bg-emerald-500/70 right-1/2" : "bg-red-500/70 left-1/2"
+                          )}
+                          style={{ width: `${Math.min(Math.abs(scoreSnapshot.score) / 120 * 50, 50)}%` }}
+                        />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 w-8">SHORT</span>
+                  </div>
+
+                  {/* Probability paths */}
+                  {scoreSnapshot.probabilities?.length > 0 && (
+                    <div className="flex gap-1 flex-wrap">
+                      {scoreSnapshot.probabilities.map(p => (
+                        <span key={p.path} className={cn(
+                          "px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize",
+                          p.path === 'dump' || p.path === 'fade' || p.path === 'failure'
+                            ? "bg-red-500/15 text-red-400"
+                            : p.path === 'chop'
+                            ? "bg-yellow-500/15 text-yellow-400"
+                            : "bg-emerald-500/15 text-emerald-400"
+                        )}>
+                          {p.path} {p.pct}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reason */}
+                  {scoreSnapshot.reason && (
+                    <p className="text-[10px] text-slate-500 italic">{scoreSnapshot.reason}</p>
+                  )}
+                </div>
               )}
 
               {/* Gate breakdown */}
