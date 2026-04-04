@@ -29,7 +29,14 @@ import { startSecWatchScanner, stopSecWatchScanner } from './services/secWatchSc
 dotenv.config();
 
 // Initialize Prisma Client
-export const prisma = new PrismaClient();
+// connection_limit=1 prevents persistent connection pool that keeps Neon awake 24/7
+export const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL + (process.env.DATABASE_URL?.includes('?') ? '&' : '?') + 'connection_limit=1&pool_timeout=10'
+    }
+  }
+});
 
 // Initialize Express app
 const app = express();
