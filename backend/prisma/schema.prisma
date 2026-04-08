@@ -49,6 +49,9 @@ model TradeIntent {
   gates_data     String?  // JSON: gates object from webhook
   raw_payload    String?  // JSON: entire original payload
 
+  // Manual watchlist entry (no WALL card — user added ticker directly)
+  is_manual         Boolean  @default(false)
+
   // SEC filing watch/confirm
   sec_watch         Boolean  @default(false)  // Added to "Waiting for SEC" list
   sec_confirmed     Boolean  @default(false)  // SEC filing confirmed by user

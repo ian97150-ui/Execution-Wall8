@@ -451,4 +451,72 @@ router.patch('/:id/checklist-manual', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Manual watchlist — add ticker without a WALL card ───────────────────────
+
+router.post('/manual-watch', async (req: Request, res: Response) => {
+  try {
+    const { ticker } = req.body as { ticker?: string };
+    if (!ticker || typeof ticker !== 'string') {
+      return res.status(400).json({ error: 'ticker is required' });
+    }
+    const upper = ticker.trim().toUpperCase();
+    if (!upper.match(/^[A-Z]{1,6}$/)) {
+      return res.status(400).json({ error: 'Invalid ticker format' });
+    }
+
+    // Create a minimal intent — no broker direction, no expiry pressure
+    const intent = await prisma.tradeIntent.create({
+      data: {
+        ticker: upper,
+        dir: 'WATCH',
+        price: '0',
+        card_state: 'ELIGIBLE',
+        status: 'pending',
+        is_manual: true,
+        sec_watch: true,
+        gates_hit: 0,
+        gates_total: 0,
+        confidence: 0,
+        quality_tier: 'C',
+        quality_score: 0,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      }
+    });
+
+    // Run checklist immediately so scorecard is populated on first load
+    try {
+      const checklist = await runChecklist(upper);
+      const updated = await prisma.tradeIntent.update({
+        where: { id: intent.id },
+        data: {
+          sec_checklist: JSON.stringify(checklist),
+          sec_bias: checklist.bias
+        }
+      });
+      return res.json(updated);
+    } catch {
+      // Checklist failure is non-fatal — return the intent anyway
+      return res.json(intent);
+    }
+  } catch (error: any) {
+    console.error('Error creating manual watchlist entry:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a manual watchlist entry (only allowed for is_manual = true)
+router.delete('/:id/manual-watch', async (req: Request, res: Response) => {
+  try {
+    const intent = await prisma.tradeIntent.findUnique({ where: { id: req.params.id as string } });
+    if (!intent) return res.status(404).json({ error: 'Intent not found' });
+    if (!intent.is_manual) return res.status(403).json({ error: 'Only manual watchlist entries can be deleted this way' });
+
+    await prisma.tradeIntent.delete({ where: { id: intent.id } });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('Error deleting manual watchlist entry:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

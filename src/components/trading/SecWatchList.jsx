@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink,
   FlaskConical, CheckCircle2, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp,
-  AlertTriangle, BarChart2, Activity, TrendingDown as ShortIcon
+  AlertTriangle, BarChart2, Activity, TrendingDown as ShortIcon, Plus, Trash2, Eye
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
@@ -576,6 +576,47 @@ const getSecUrl = (ticker) => {
   return `https://www.sec.gov/edgar/search/#/dateRange=30d&category=custom&entityName=${ticker}&forms=${forms}`;
 };
 
+function AddTickerInput({ onAdd, isAdding }) {
+  const [ticker, setTicker] = useState('');
+
+  const handleAdd = () => {
+    const t = ticker.trim().toUpperCase();
+    if (!t || isAdding) return;
+    onAdd(t);
+    setTicker('');
+  };
+
+  return (
+    <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <Eye className="w-4 h-4 text-violet-400" />
+        <span className="text-sm font-semibold text-slate-300">Watch a ticker</span>
+        <span className="text-xs text-slate-500">— full scorecard without a WALL card</span>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={ticker}
+          onChange={e => setTicker(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          placeholder="e.g. MULN"
+          maxLength={6}
+          className="flex-1 bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono uppercase"
+        />
+        <Button
+          onClick={handleAdd}
+          disabled={!ticker.trim() || isAdding}
+          size="sm"
+          className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5 px-3"
+        >
+          {isAdding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function SecWatchList({
   intents = [],
   onSecConfirm,
@@ -586,49 +627,82 @@ export default function SecWatchList({
   onScanAll,
   onRunChecklist,
   onToggleManual,
+  onAddManualWatch,
+  onRemoveManualWatch,
+  isAddingManualWatch = false,
   tradingviewChartId
 }) {
+  const confirmed = intents.filter(i => i.sec_confirmed);
+  const waiting = intents.filter(i => !i.sec_confirmed);
+  const manualOnly = intents.filter(i => i.is_manual);
+
   if (intents.length === 0) {
     return (
       <div className="space-y-4">
+        <AddTickerInput onAdd={onAddManualWatch} isAdding={isAddingManualWatch} />
         <SecScannerTest />
-        <div className="text-center py-12 text-slate-500 space-y-2">
+        <div className="text-center py-8 text-slate-500 space-y-2">
           <BookMarked className="w-10 h-10 mx-auto opacity-30" />
           <p className="font-medium">No cards in SEC watch list</p>
-          <p className="text-xs text-slate-600">Add cards from the Swipe or Review All view using the "Add to SEC Watch" button.</p>
+          <p className="text-xs text-slate-600">Add a ticker above, or use "Add to SEC Watch" on any WALL card.</p>
         </div>
       </div>
     );
   }
 
-  const confirmed = intents.filter(i => i.sec_confirmed);
-  const waiting = intents.filter(i => !i.sec_confirmed);
-
   return (
     <div className="space-y-6">
-      {/* Test panel + Scan All always visible */}
+      {/* Add ticker + Test panel + Scan All */}
       <div className="space-y-2">
+        <AddTickerInput onAdd={onAddManualWatch} isAdding={isAddingManualWatch} />
         <SecScannerTest />
-        <Button
-          onClick={onScanAll}
-          size="sm"
-          variant="outline"
-          className="w-full border-slate-600/50 text-slate-300 hover:bg-slate-700/50 gap-2"
-          title="Run SEC scanner against all waiting tickers now"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Scan All Waiting ({waiting.length})
-        </Button>
+        {waiting.length > 0 && (
+          <Button
+            onClick={onScanAll}
+            size="sm"
+            variant="outline"
+            className="w-full border-slate-600/50 text-slate-300 hover:bg-slate-700/50 gap-2"
+            title="Run SEC scanner against all waiting tickers now"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Scan All Waiting ({waiting.length})
+          </Button>
+        )}
       </div>
 
-      {/* Waiting section */}
-      {waiting.length > 0 && (
+      {/* Manual watchlist section — tickers added without a WALL card */}
+      {manualOnly.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <Eye className="w-4 h-4 text-violet-400" />
+            <span className="text-sm font-semibold text-violet-400">Watchlist Only ({manualOnly.length})</span>
+          </div>
+          {manualOnly.map(intent => (
+            <SecWatchRow
+              key={intent.id}
+              intent={intent}
+              onSecConfirm={onSecConfirm}
+              onSecWatch={onSecWatch}
+              onApprove={onApprove}
+              onReject={onReject}
+              onScanSec={onScanSec}
+              onRunChecklist={onRunChecklist}
+              onToggleManual={onToggleManual}
+              onRemoveManualWatch={onRemoveManualWatch}
+              tradingviewChartId={tradingviewChartId}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Waiting section — WALL cards pending SEC filing */}
+      {waiting.filter(i => !i.is_manual).length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">
             <BookMarked className="w-4 h-4 text-yellow-400" />
-            <span title="55% buffer invalidated" className="text-sm font-semibold text-yellow-400 cursor-help">Waiting for SEC Filing ({waiting.length})</span>
+            <span title="55% buffer invalidated" className="text-sm font-semibold text-yellow-400 cursor-help">Waiting for SEC Filing ({waiting.filter(i => !i.is_manual).length})</span>
           </div>
-          {waiting.map(intent => (
+          {waiting.filter(i => !i.is_manual).map(intent => (
             <SecWatchRow
               key={intent.id}
               intent={intent}
@@ -681,8 +755,10 @@ function SecWatchRow({
   onScanSec,
   onRunChecklist,
   onToggleManual,
+  onRemoveManualWatch,
   tradingviewChartId
 }) {
+  const isManual = intent.is_manual === true;
   const isLong = intent.dir === "Long";
   const [scanning, setScanning] = useState(false);
   const [runningChecklist, setRunningChecklist] = useState(false);
@@ -720,6 +796,8 @@ function SecWatchRow({
       "relative border rounded-xl p-4 transition-colors",
       intent.sec_confirmed
         ? "bg-cyan-950/30 border-cyan-500/40 hover:bg-cyan-950/40"
+        : isManual
+        ? "bg-violet-950/20 border-violet-500/30 hover:bg-violet-950/30"
         : "bg-slate-800/50 border-yellow-500/30 hover:bg-slate-800/70"
     )}>
       {/* Confirmed banner */}
@@ -737,30 +815,43 @@ function SecWatchRow({
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xl font-bold text-white">{intent.ticker}</span>
-          <span className={cn(
-            "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium",
-            isLong ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
-          )}>
-            {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {intent.dir?.toUpperCase()}
-          </span>
+          {isManual ? (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-violet-500/20 text-violet-400 border border-violet-500/40">
+              <Eye className="w-3 h-3" />
+              WATCH ONLY
+            </span>
+          ) : (
+            <span className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium",
+              isLong ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+            )}>
+              {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              {intent.dir?.toUpperCase()}
+            </span>
+          )}
           {intent.sec_confirmed ? (
             <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 cursor-help">
               <BadgeCheck className="w-3 h-3" />
               SEC CONFIRMED
             </span>
-          ) : (
+          ) : !isManual && (
             <span title="55% buffer invalidated" className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 cursor-help">
               <BookMarked className="w-3 h-3" />
               WATCHING
             </span>
           )}
           {intent.sec_bias && <BiasBadge bias={intent.sec_bias} size="sm" />}
-          {intent.quality_tier && (
-            <QualityBadge tier={intent.quality_tier} score={intent.quality_score} size="sm" />
-          )}
         </div>
         <div className="flex items-center gap-2">
+          {isManual && (
+            <button
+              onClick={() => onRemoveManualWatch?.(intent)}
+              className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-400 transition-colors"
+              title="Remove from watchlist"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
           <a
             href={getSecUrl(intent.ticker)}
             target="_blank"
@@ -801,17 +892,19 @@ function SecWatchRow({
         </div>
       )}
 
-      {/* Price */}
-      <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-        <div>
-          <p className="text-slate-500 uppercase mb-0.5">Limit</p>
-          <p className="font-mono font-bold text-white">${intent.limit_price ? Number(intent.limit_price).toFixed(2) : '—'}</p>
+      {/* Price — only for WALL cards with real prices */}
+      {!isManual && (
+        <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+          <div>
+            <p className="text-slate-500 uppercase mb-0.5">Limit</p>
+            <p className="font-mono font-bold text-white">${intent.limit_price ? Number(intent.limit_price).toFixed(2) : '—'}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase mb-0.5">Market</p>
+            <p className="font-mono font-bold text-slate-400">${intent.price ? Number(intent.price).toFixed(2) : '—'}</p>
+          </div>
         </div>
-        <div>
-          <p className="text-slate-500 uppercase mb-0.5">Market</p>
-          <p className="font-mono font-bold text-slate-400">${intent.price ? Number(intent.price).toFixed(2) : '—'}</p>
-        </div>
-      </div>
+      )}
 
       {/* Scan history tokens */}
       {scanHistory.length > 0 && (
@@ -851,66 +944,81 @@ function SecWatchRow({
         )}
       </div>
 
-      {/* Actions */}
-      <div className="space-y-2">
-        {!intent.sec_confirmed && (
-          <div className="flex gap-2">
-            <Button
-              onClick={handleScanNow}
-              disabled={scanning}
-              variant="outline"
-              size="sm"
-              className="border-slate-600/50 text-slate-400 hover:bg-slate-700/50 px-2"
-              title="Run SEC scanner now for this ticker"
-            >
-              {scanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            </Button>
-            <Button
-              onClick={() => onSecWatch?.(intent, 'unwatch')}
-              variant="outline"
-              size="sm"
-              className="flex-1 border-slate-500/50 text-slate-400 hover:bg-slate-500/20"
-            >
-              Remove Watch
-            </Button>
-            <Button
-              onClick={() => onSecConfirm?.(intent, 'confirm')}
-              size="sm"
-              className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
-            >
-              <BadgeCheck className="w-3 h-3 mr-1" />
-              SEC Confirm
-            </Button>
-          </div>
-        )}
-        {intent.sec_confirmed && (
-          <div className="flex gap-2">
-            <Button
-              onClick={() => onSecConfirm?.(intent, 'unconfirm')}
-              variant="outline"
-              size="sm"
-              className="border-slate-500/50 text-slate-400 hover:bg-slate-500/20 px-3"
-            >
-              Undo
-            </Button>
-            <Button
-              onClick={() => onReject?.(intent)}
-              variant="outline"
-              size="sm"
-              className="border-red-500/50 text-red-400 hover:bg-red-500/20 px-3"
-            >
-              OFF
-            </Button>
-            <Button
-              onClick={() => onApprove?.(intent)}
-              size="sm"
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-            >
-              Approve Trade
-            </Button>
-          </div>
-        )}
-      </div>
+      {/* Actions — manual entries only get a refresh checklist button */}
+      {isManual ? (
+        <div className="flex gap-2 mt-1">
+          <Button
+            onClick={handleRunChecklist}
+            disabled={runningChecklist}
+            variant="outline"
+            size="sm"
+            className="border-violet-500/40 text-violet-400 hover:bg-violet-500/15 gap-1.5"
+          >
+            {runningChecklist ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Refresh scorecard
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {!intent.sec_confirmed && (
+            <div className="flex gap-2">
+              <Button
+                onClick={handleScanNow}
+                disabled={scanning}
+                variant="outline"
+                size="sm"
+                className="border-slate-600/50 text-slate-400 hover:bg-slate-700/50 px-2"
+                title="Run SEC scanner now for this ticker"
+              >
+                {scanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              </Button>
+              <Button
+                onClick={() => onSecWatch?.(intent, 'unwatch')}
+                variant="outline"
+                size="sm"
+                className="flex-1 border-slate-500/50 text-slate-400 hover:bg-slate-500/20"
+              >
+                Remove Watch
+              </Button>
+              <Button
+                onClick={() => onSecConfirm?.(intent, 'confirm')}
+                size="sm"
+                className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
+              >
+                <BadgeCheck className="w-3 h-3 mr-1" />
+                SEC Confirm
+              </Button>
+            </div>
+          )}
+          {intent.sec_confirmed && (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => onSecConfirm?.(intent, 'unconfirm')}
+                variant="outline"
+                size="sm"
+                className="border-slate-500/50 text-slate-400 hover:bg-slate-500/20 px-3"
+              >
+                Undo
+              </Button>
+              <Button
+                onClick={() => onReject?.(intent)}
+                variant="outline"
+                size="sm"
+                className="border-red-500/50 text-red-400 hover:bg-red-500/20 px-3"
+              >
+                OFF
+              </Button>
+              <Button
+                onClick={() => onApprove?.(intent)}
+                size="sm"
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+              >
+                Approve Trade
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

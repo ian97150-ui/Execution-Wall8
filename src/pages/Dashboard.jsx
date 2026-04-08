@@ -637,6 +637,31 @@ export default function Dashboard() {
     onError: () => toast.error('Manual override failed')
   });
 
+  // Add a ticker to the manual watchlist (no WALL card required)
+  const addManualWatchMutation = useMutation({
+    mutationFn: async (ticker) => {
+      const { data } = await api.post('/trade-intents/manual-watch', { ticker });
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      toast.success(`${data.ticker} added to watchlist`);
+    },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Failed to add ticker')
+  });
+
+  // Remove a manual watchlist entry
+  const removeManualWatchMutation = useMutation({
+    mutationFn: async (intent) => {
+      await api.delete(`/trade-intents/${intent.id}/manual-watch`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      toast.success('Removed from watchlist');
+    },
+    onError: () => toast.error('Failed to remove ticker')
+  });
+
   // Block wall alerts for a ticker (until next daily reset)
   const blockWallAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
@@ -947,6 +972,9 @@ export default function Dashboard() {
                     onScanAll={() => scanSecAllMutation.mutate()}
                     onRunChecklist={(intent) => runChecklistMutation.mutateAsync(intent)}
                     onToggleManual={(intent, phase, field, value) => toggleManualMutation.mutate({ intent, phase, field, value })}
+                    onAddManualWatch={(ticker) => addManualWatchMutation.mutate(ticker)}
+                    onRemoveManualWatch={(intent) => removeManualWatchMutation.mutate(intent)}
+                    isAddingManualWatch={addManualWatchMutation.isPending}
                     tradingviewChartId={settings?.tradingview_chart_id}
                   />
                 </div>
