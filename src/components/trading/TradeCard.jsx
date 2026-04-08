@@ -321,7 +321,49 @@ export default function TradeCard({
                     </span>
                   </div>
 
-                  {/* S1 Clean score bar */}
+                  {/* Regime chip */}
+                  {scoreSnapshot.regime && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-violet-500/20 text-violet-300 border border-violet-500/40">
+                        {scoreSnapshot.regime.regime.replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        n={scoreSnapshot.regime.n} · {scoreSnapshot.regime.dump_pct}% dump · D+5 {scoreSnapshot.regime.d5_avg}%
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Pattern stats for fired overrides */}
+                  {scoreSnapshot.pattern_stats?.length > 0 && (
+                    <div className="space-y-1">
+                      {scoreSnapshot.pattern_stats.map(p => (
+                        <div key={p.pattern} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                          <span className="text-[10px] font-bold text-amber-300 shrink-0">{p.pattern.replace(/_/g, ' ')}</span>
+                          <span className="text-[10px] text-slate-400 font-mono ml-auto">
+                            n={p.n} · {p.dump_pct}% dump · D+5 {p.d5_avg}%{p.max_dd ? ` · MaxDD ${p.max_dd}%` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* S1/S2 empirical probability */}
+                  {scoreSnapshot.section_prob && (
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className="text-slate-500 shrink-0">S1/S2 odds</span>
+                      <div className="flex-1 flex items-center gap-1">
+                        <div className="flex-1 h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                          <div className="h-full bg-red-500/60 rounded-full" style={{ width: `${scoreSnapshot.section_prob.s1_pct}%` }} />
+                        </div>
+                        <span className="font-mono text-red-400 w-8 text-right">{scoreSnapshot.section_prob.s1_pct}%</span>
+                        <span className="text-slate-600">/</span>
+                        <span className="font-mono text-blue-400 w-8">{scoreSnapshot.section_prob.s2_pct}%</span>
+                      </div>
+                      <span className="text-slate-600 italic">{scoreSnapshot.section_prob.basis}</span>
+                    </div>
+                  )}
+
+                  {/* S1 Clean score bar + D+1/D+5 expected */}
                   {scoreSnapshot.section === 'S1' && scoreSnapshot.clean_score !== null && (
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[10px]">
@@ -348,6 +390,16 @@ export default function TradeCard({
                           style={{ width: `${scoreSnapshot.clean_score * 10}%` }}
                         />
                       </div>
+                      {scoreSnapshot.outcome_profile && (
+                        <div className="flex gap-3 pt-0.5">
+                          <span className="text-[10px] font-mono text-slate-500">
+                            D+1 avg <span className="text-red-400 font-bold">{scoreSnapshot.outcome_profile.d1_avg}%</span>
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            D+5 avg <span className="text-red-400 font-bold">{scoreSnapshot.outcome_profile.d5_avg}%</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 

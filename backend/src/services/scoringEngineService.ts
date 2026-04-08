@@ -48,6 +48,40 @@ export type ProbPath =
   | 'pullback'
   | 'failure';
 
+export type RegimeId =
+  | 'OFFERING_SPIKE'
+  | 'DEAD_CAT_BOUNCE'
+  | 'DILUTION_DUMP'
+  | 'LOW_FLOAT_PARABOLIC'
+  | 'NEWS_CONTINUATION';
+
+export interface RegimeStat {
+  regime: RegimeId;
+  n: number;
+  s1_pct: number;   // % of cases that were S1 (fast dump)
+  dump_pct: number; // % that dumped at all
+  d5_avg: number;   // avg D+5 return (negative = loss for holder)
+}
+
+export interface PatternStat {
+  pattern: string;
+  n: number;
+  dump_pct: number;
+  d5_avg: number;
+  max_dd?: number;  // max drawdown %
+}
+
+export interface SectionProb {
+  s1_pct: number;
+  s2_pct: number;
+  basis: string;  // what drove the estimate, e.g. 'borrow (HARD)' or 'offerings (3)'
+}
+
+export interface OutcomeProfile {
+  d1_avg: number;
+  d5_avg: number;
+}
+
 export interface ScoreSnapshot {
   timestamp: string;
   score: number;                              // raw weighted sum
@@ -57,9 +91,13 @@ export interface ScoreSnapshot {
   reason: string;
   probabilities: { path: ProbPath; pct: number }[];  // top 3, sums to 100
   section: TradeSection | null;               // S1 (D+1) or S2 (D+5) — only when score >= 8
+  section_prob: SectionProb | null;           // empirical S1/S2 % from lookup tables
   clean_score: number | null;                 // 0–10, S1 only
   clean_outcome: CleanOutcome | null;         // DUMP/CLEAN_FADE/VOLATILE_FADE/CHOP
+  outcome_profile: OutcomeProfile | null;     // D+1/D+5 expected move from clean_outcome
   overrides_fired: string[];                  // display-only override labels
+  regime: RegimeStat | null;                  // detected market regime with stats
+  pattern_stats: PatternStat[];               // empirical stats for each fired override pattern
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -247,6 +285,116 @@ function cleanScoreToOutcome(score: number): CleanOutcome {
   return 'CHOP';
 }
 
+// ─── Regime detection ────────────────────────────────────────────────────────
+// Priority order: OFFERING_SPIKE → DEAD_CAT_BOUNCE → DILUTION_DUMP → LOW_FLOAT_PARABOLIC → NEWS_CONTINUATION
+
+const REGIME_STATS: Record<RegimeId, RegimeStat> = {
+  OFFERING_SPIKE:      { regime: 'OFFERING_SPIKE',      n: 5,  s1_pct: 100, dump_pct: 80, d5_avg: -25.1 },
+  DEAD_CAT_BOUNCE:     { regime: 'DEAD_CAT_BOUNCE',     n: 4,  s1_pct: 50,  dump_pct: 100, d5_avg: -31.9 },
+  DILUTION_DUMP:       { regime: 'DILUTION_DUMP',       n: 25, s1_pct: 64,  dump_pct: 80, d5_avg: -25.2 },
+  LOW_FLOAT_PARABOLIC: { regime: 'LOW_FLOAT_PARABOLIC', n: 16, s1_pct: 63,  dump_pct: 81, d5_avg: -24.6 },
+  NEWS_CONTINUATION:   { regime: 'NEWS_CONTINUATION',   n: 28, s1_pct: 57,  dump_pct: 68, d5_avg: -14.1 },
+};
+
+function detectRegime(
+  same_day_424b: { form: string; filing_url: string }[],
+  eightk_signals: string[],
+  day_of_run: number | null,
+  prior_424b_count: number,
+  shelf_type: string | null,
+  catalyst_tier: number | null,
+  shares_outstanding: number | null,
+  efficiency: number | null
+): RegimeStat | null {
+  // OFFERING_SPIKE: same-day 424B + 8-K filed same session
+  if (same_day_424b.length > 0 && eightk_signals.length > 0) {
+    return REGIME_STATS.OFFERING_SPIKE;
+  }
+  // DEAD_CAT_BOUNCE: day 3+ (prior day was spike)
+  if (day_of_run !== null && day_of_run >= 3) {
+    return REGIME_STATS.DEAD_CAT_BOUNCE;
+  }
+  // DILUTION_DUMP: active or serial diluter
+  if (same_day_424b.length > 0 || prior_424b_count >= 2 || shelf_type) {
+    return REGIME_STATS.DILUTION_DUMP;
+  }
+  // LOW_FLOAT_PARABOLIC: no real catalyst + micro/low float + sell pressure
+  if (
+    (catalyst_tier === null || catalyst_tier >= 3) &&
+    shares_outstanding !== null && shares_outstanding <= 5_000_000 &&
+    efficiency !== null && efficiency < 0.50
+  ) {
+    return REGIME_STATS.LOW_FLOAT_PARABOLIC;
+  }
+  // NEWS_CONTINUATION: 8-K driven, clean company
+  if (eightk_signals.length > 0 && prior_424b_count <= 1) {
+    return REGIME_STATS.NEWS_CONTINUATION;
+  }
+  return null;
+}
+
+// ─── Pattern stats lookup ─────────────────────────────────────────────────────
+
+const PATTERN_STATS: Record<string, PatternStat> = {
+  AH_REVERSAL_TRAP:  { pattern: 'AH_REVERSAL_TRAP',  n: 15, dump_pct: 93, d5_avg: -34.1, max_dd: -48 },
+  DAY3_EXHAUSTION:   { pattern: 'DAY3_EXHAUSTION',   n: 4,  dump_pct: 100, d5_avg: -42.1, max_dd: -51.4 },
+  STRONG_HOLD_TRAP:  { pattern: 'STRONG_HOLD_TRAP',  n: 4,  dump_pct: 100, d5_avg: -48.9 },
+};
+
+// ─── S1/S2 empirical probability ──────────────────────────────────────────────
+// Returns the most specific lookup available, in priority order:
+// borrow → shelf_age → prior_offerings → catalyst
+
+function empiricalSectionProb(
+  borrow: string | null | undefined,
+  shelf_age_days: number | null,
+  prior_424b_count: number,
+  same_day_424b: { form: string; filing_url: string }[],
+  catalyst_tier: number | null,
+  day_of_run: number | null
+): SectionProb | null {
+  // HTB exception: HTB + day 3 → S1 override (100%)
+  if (borrow === 'HTB' && day_of_run !== null && day_of_run >= 3) {
+    return { s1_pct: 100, s2_pct: 0, basis: 'HTB + day 3 exception' };
+  }
+  // By borrow (most specific — live IBKR data, n=20)
+  if (borrow === 'HARD')      return { s1_pct: 0,   s2_pct: 100, basis: 'borrow (HARD)' };
+  if (borrow === 'HTB')       return { s1_pct: 50,  s2_pct: 50,  basis: 'borrow (HTB)' };
+  if (borrow === 'EASY')      return { s1_pct: 75,  s2_pct: 25,  basis: 'borrow (EASY)' };
+  if (borrow === 'NO_LOCATE') return { s1_pct: 50,  s2_pct: 50,  basis: 'borrow (NO_LOCATE)' };
+
+  // By shelf age
+  if (shelf_age_days !== null) {
+    if (shelf_age_days < 30)  return { s1_pct: 100, s2_pct: 0,  basis: 'fresh shelf <30d' };
+    if (shelf_age_days <= 90) return { s1_pct: 37,  s2_pct: 63, basis: 'shelf 30–90d' };
+  }
+
+  // By prior offerings
+  if (prior_424b_count === 0) return { s1_pct: 74, s2_pct: 26, basis: '0 prior offerings' };
+  if (prior_424b_count === 1) return { s1_pct: 27, s2_pct: 73, basis: '1 prior offering' };
+  if (prior_424b_count === 2) return { s1_pct: 50, s2_pct: 50, basis: '2 prior offerings' };
+  if (prior_424b_count === 3) return { s1_pct: 20, s2_pct: 80, basis: '3 prior offerings' };
+  if (prior_424b_count === 5) return { s1_pct: 33, s2_pct: 67, basis: '5 prior offerings' };
+  if (prior_424b_count >= 6)  return { s1_pct: 77, s2_pct: 23, basis: '6+ prior offerings' };
+
+  // By catalyst
+  if (same_day_424b.length > 0)                return { s1_pct: 87, s2_pct: 13, basis: 'active 424B' };
+  if (catalyst_tier === 1)                      return { s1_pct: 30, s2_pct: 70, basis: 'tier-1 catalyst' };
+  if (catalyst_tier !== null && catalyst_tier >= 3) return { s1_pct: 63, s2_pct: 37, basis: 'company PR' };
+  if (catalyst_tier === null)                   return { s1_pct: 70, s2_pct: 30, basis: 'no news' };
+
+  return null;
+}
+
+// ─── Outcome profiles (D+1 / D+5 expected) ───────────────────────────────────
+
+const OUTCOME_PROFILES: Record<CleanOutcome, OutcomeProfile> = {
+  DUMP:          { d1_avg: -25.7, d5_avg: -54.8 },
+  CLEAN_FADE:    { d1_avg: -15.5, d5_avg: -25.4 },
+  VOLATILE_FADE: { d1_avg: -5.5,  d5_avg: -3.8  },
+  CHOP:          { d1_avg: +6.2,  d5_avg: -4.0  },
+};
+
 // ─── Bias ────────────────────────────────────────────────────────────────────
 
 function scoreToBias(score: number): TradeBias {
@@ -355,6 +503,7 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
   let section: TradeSection | null = null;
   let clean_score: number | null = null;
   let clean_outcome: CleanOutcome | null = null;
+  let outcome_profile: OutcomeProfile | null = null;
 
   if (score >= 8) {
     section = classifySection(
@@ -385,8 +534,36 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
         p3?.volume_ratio ?? null
       );
       clean_outcome = cleanScoreToOutcome(clean_score);
+      outcome_profile = OUTCOME_PROFILES[clean_outcome];
     }
   }
+
+  // Regime detection
+  const regime = detectRegime(
+    phase1?.same_day_424b ?? [],
+    phase1?.eightk?.signals ?? [],
+    p3?.day_of_run ?? null,
+    phase1?.prior_424b_count_12m ?? 0,
+    phase1?.shelf_type ?? null,
+    phase2?.catalyst_tier ?? null,
+    phase4?.shares_outstanding ?? null,
+    p3?.efficiency ?? null
+  );
+
+  // Pattern stats for fired overrides
+  const pattern_stats: PatternStat[] = overrides_fired
+    .filter(o => PATTERN_STATS[o])
+    .map(o => PATTERN_STATS[o]);
+
+  // Empirical S1/S2 probability
+  const section_prob = empiricalSectionProb(
+    p3?.borrow,
+    phase1?.shelf_age_days ?? null,
+    phase1?.prior_424b_count_12m ?? 0,
+    phase1?.same_day_424b ?? [],
+    phase2?.catalyst_tier ?? null,
+    p3?.day_of_run ?? null
+  );
 
   return {
     timestamp: new Date().toISOString(),
@@ -397,8 +574,12 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     reason,
     probabilities,
     section,
+    section_prob,
     clean_score,
     clean_outcome,
+    outcome_profile,
     overrides_fired,
+    regime,
+    pattern_stats,
   };
 }
