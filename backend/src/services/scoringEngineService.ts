@@ -1,7 +1,11 @@
 /**
- * Scoring Engine — Cat5ive v4 6-rule weighted scoring system.
+ * Scoring Engine — Cat5ive v5 (15-rule weighted model).
+ * Derived from 74-trade dataset · S1=44 · S2=29 · 64.8% accuracy.
  * Deterministic: same inputs → same output. No randomness.
- * Computes once at evaluation time; result stored in score_snapshot (non-repainting).
+ * Scores stored in score_snapshot (non-repainting).
+ *
+ * ⚠️  Override rules (AH_REVERSAL_TRAP, DAY3_EXHAUSTION, STRONG_HOLD_TRAP)
+ *     are SCORECARD LABELS ONLY — they never touch order execution.
  */
 
 import type { SecChecklist } from './secChecklistService';
@@ -9,263 +13,392 @@ import type { SecChecklist } from './secChecklistService';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type SignalTag =
-  | 'AH_BREAKDOWN'
-  | 'STRONG_AH'
-  | 'LATE_STAGE'
-  | 'EXTENDED_RUN'
-  | 'BLOWOFF_WICK'
-  | 'CLEAN_STRUCTURE'
-  | 'LIQUIDITY_TRAP'
-  | 'ABSORPTION'
-  | 'EXPANSION'
-  | 'DILUTION'
-  | 'SUPPLY_OVERHANG'
-  | 'STRATEGIC_BUYING'
-  | 'STRONG_CATALYST'
-  | 'NO_DRIVER'
-  | 'PM_STRENGTH'
-  | 'VWAP_HOLD';
+  | 'AH_REVERSAL_TRAP'
+  | 'STRONG_HOLD_TRAP'
+  | 'DAY3_EXHAUSTION'
+  | 'DAY1_RUN'
+  | 'PM_FADE'
+  | 'PM_SELL_PRESSURE'
+  | 'MOVE_200'
+  | 'MOVE_100'
+  | 'GAP_40'
+  | 'FRESH_SHELF'
+  | 'ACTIVE_424B'
+  | 'THIN_AH_SPIKE'
+  | 'LARGE_PRINT_BELOW'
+  | 'VWAP_HELD';
 
 export type TradeBias =
-  | 'STRONG_SHORT'
-  | 'WEAK_SHORT'
-  | 'NO_TRADE'
-  | 'WEAK_LONG'
-  | 'TRUE_LONG';
+  | 'MAX_CONVICTION'    // score >= 15 · 94% dump
+  | 'HIGH_CONVICTION'   // score >= 12 · 93% dump
+  | 'CONFIRMED_SHORT'   // score >= 8  · 86% dump
+  | 'NEUTRAL'           // score 2–7
+  | 'LONG_BIAS'         // score <= 1
+  | 'LONG_CANDIDATE';   // score <= -3 · EQ_CONTINUATION setup
+
+export type TradeSection = 'S1' | 'S2';  // D+1 vs D+5 exit
+
+export type CleanOutcome = 'DUMP' | 'CLEAN_FADE' | 'VOLATILE_FADE' | 'CHOP';
 
 export type ProbPath =
   | 'dump'
   | 'fade'
   | 'chop'
   | 'continuation'
-  | 'squeeze'
   | 'pullback'
   | 'failure';
 
 export interface ScoreSnapshot {
   timestamp: string;
-  score: number;
+  score: number;                              // raw weighted sum
   bias: TradeBias;
-  confidence: number;       // |score| / 120, capped 0–1
+  confidence: number;                         // 0–1
   signals: SignalTag[];
   reason: string;
-  probabilities: { path: ProbPath; pct: number }[];  // top 3, always sums to 100
+  probabilities: { path: ProbPath; pct: number }[];  // top 3, sums to 100
+  section: TradeSection | null;               // S1 (D+1) or S2 (D+5) — only when score >= 8
+  clean_score: number | null;                 // 0–10, S1 only
+  clean_outcome: CleanOutcome | null;         // DUMP/CLEAN_FADE/VOLATILE_FADE/CHOP
+  overrides_fired: string[];                  // display-only override labels
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
+// Scores positive = short conviction
 
-function scoreAH(ah_move_pct: number | null): { points: number; tags: SignalTag[] } {
-  if (ah_move_pct === null) return { points: 0, tags: [] };
-  if (ah_move_pct <= -30) return { points: -45, tags: ['AH_BREAKDOWN'] };
-  if (ah_move_pct <= -15) return { points: -25, tags: ['AH_BREAKDOWN'] };
-  if (ah_move_pct < 15)   return { points: 0, tags: [] };
-  if (ah_move_pct < 25)   return { points: 20, tags: ['STRONG_AH'] };
-  return                         { points: 40, tags: ['STRONG_AH'] };
+function ruleAH(ah_move_pct: number | null): { points: number; tag: SignalTag | null; isOverride: boolean } {
+  if (ah_move_pct === null) return { points: 0, tag: null, isOverride: false };
+  if (ah_move_pct < -80)   return { points: 5.0, tag: 'AH_REVERSAL_TRAP', isOverride: true };
+  if (ah_move_pct < -30)   return { points: 3.5, tag: 'AH_REVERSAL_TRAP', isOverride: true };
+  return { points: 0, tag: null, isOverride: false };
 }
 
-// ─── Rule 2 — Run Day ────────────────────────────────────────────────────────
+// ─── Rule 2 — STRONG_HOLD_TRAP ───────────────────────────────────────────────
 
-function scoreRunDay(day_of_run: number | null): { points: number; tags: SignalTag[] } {
-  if (day_of_run === null) return { points: 0, tags: [] };
-  if (day_of_run === 1)    return { points: 10, tags: [] };
-  if (day_of_run === 2)    return { points: 0, tags: [] };
-  if (day_of_run === 3)    return { points: -25, tags: ['LATE_STAGE'] };
-  return                          { points: -35, tags: ['LATE_STAGE'] };
-}
-
-// ─── Rule 3 — Wick Ratio ─────────────────────────────────────────────────────
-
-function scoreWick(wick_ratio: number | null): { points: number; tags: SignalTag[] } {
-  if (wick_ratio === null)  return { points: 0, tags: [] };
-  if (wick_ratio >= 0.80)   return { points: -30, tags: ['BLOWOFF_WICK'] };
-  if (wick_ratio >= 0.70)   return { points: -15, tags: ['BLOWOFF_WICK'] };
-  if (wick_ratio >= 0.50)   return { points: 0, tags: [] };
-  return                           { points: 10, tags: ['CLEAN_STRUCTURE'] };
-}
-
-// ─── Rule 4 — Dilution / Supply ──────────────────────────────────────────────
-
-function scoreDilution(
-  same_day_424b: { form: string; filing_url: string }[],
-  prior_424b_count: number,
-  shelf_type: string | null,
-  eightk_signals: string[],
+function ruleStrongHoldTrap(
+  structure: string | null | undefined,
+  borrow: string | null | undefined,
   catalyst_tier: number | null
-): { points: number; tags: SignalTag[] } {
-  const hasDistressedOffering =
-    same_day_424b.length > 0 ||
-    eightk_signals.includes('ATM_TERMINATED') ||
-    eightk_signals.includes('UNDERWRITING_DONE');
-
-  if (hasDistressedOffering) return { points: -30, tags: ['DILUTION'] };
-
-  if (prior_424b_count >= 2) return { points: -20, tags: ['SUPPLY_OVERHANG'] };
-
-  if (shelf_type) return { points: 0, tags: ['SUPPLY_OVERHANG'] };
-
-  // Clean profile + tier 1 catalyst = strategic
-  if (!shelf_type && prior_424b_count === 0 && catalyst_tier === 1) {
-    return { points: 25, tags: ['STRATEGIC_BUYING'] };
+): { points: number; tag: SignalTag | null; isOverride: boolean } {
+  if (
+    structure === 'STRONG_HOLD' &&
+    (borrow === 'HTB' || borrow === 'NO_LOCATE') &&
+    catalyst_tier === null
+  ) {
+    return { points: 4.5, tag: 'STRONG_HOLD_TRAP', isOverride: true };
   }
-
-  return { points: 0, tags: [] };
+  return { points: 0, tag: null, isOverride: false };
 }
 
-// ─── Rule 5 — Efficiency ─────────────────────────────────────────────────────
+// ─── Rule 3 — Day of Run ─────────────────────────────────────────────────────
 
-function scoreEfficiency(efficiency: number | null): { points: number; tags: SignalTag[] } {
-  if (efficiency === null) return { points: 0, tags: [] };
-  if (efficiency < 0.30)   return { points: -35, tags: ['LIQUIDITY_TRAP'] };
-  if (efficiency < 0.50)   return { points: -25, tags: ['ABSORPTION'] };
-  if (efficiency < 0.70)   return { points: 0, tags: [] };
-  return                          { points: 20, tags: ['EXPANSION'] };
+function ruleRunDay(day_of_run: number | null): { points: number; tag: SignalTag | null; isOverride: boolean } {
+  if (day_of_run === null) return { points: 0, tag: null, isOverride: false };
+  if (day_of_run >= 3)    return { points: 4.0, tag: 'DAY3_EXHAUSTION', isOverride: true };
+  if (day_of_run === 1)   return { points: -2.0, tag: 'DAY1_RUN', isOverride: false };
+  return { points: 0, tag: null, isOverride: false };
 }
 
-// ─── Rule 6 — Catalyst ───────────────────────────────────────────────────────
+// ─── Rule 4 — PM Fade ────────────────────────────────────────────────────────
 
-function scoreCatalyst(catalyst_tier: number | null): { points: number; tags: SignalTag[] } {
-  if (catalyst_tier === null) return { points: -10, tags: ['NO_DRIVER'] };
-  if (catalyst_tier === 1)    return { points: 25, tags: ['STRONG_CATALYST'] };
-  if (catalyst_tier === 2)    return { points: 0, tags: [] };
-  return                             { points: 0, tags: [] };  // tier 3/4: vague PR, score via dilution
+function rulePMFade(pm_high_reclaimed: boolean | null): { points: number; tag: SignalTag | null } {
+  if (pm_high_reclaimed === false) return { points: 3.5, tag: 'PM_FADE' };
+  return { points: 0, tag: null };
 }
 
-// ─── Bonus Signals ────────────────────────────────────────────────────────────
+// ─── Rule 5 — Move magnitude (tiered — highest tier fires) ───────────────────
 
-function scoreBonuses(
+function ruleMove(gap_pct: number | null): { points: number; tag: SignalTag | null } {
+  if (gap_pct === null) return { points: 0, tag: null };
+  if (gap_pct > 200) return { points: 3.0, tag: 'MOVE_200' };
+  if (gap_pct > 100) return { points: 2.5, tag: 'MOVE_100' };
+  if (gap_pct > 40)  return { points: 1.5, tag: 'GAP_40' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 6 — PM Sell Pressure ───────────────────────────────────────────────
+
+function rulePMSellPressure(efficiency: number | null): { points: number; tag: SignalTag | null } {
+  if (efficiency !== null && efficiency < 0.50) return { points: 3.0, tag: 'PM_SELL_PRESSURE' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 7 — VWAP Held (paradox) ────────────────────────────────────────────
+// Big move + VWAP hold → distribution pressure building
+
+function ruleVWAPHeld(vwap_failed: boolean | null, gap_pct: number | null): { points: number; tag: SignalTag | null } {
+  if (vwap_failed === false && gap_pct !== null && gap_pct > 40) return { points: 2.5, tag: 'VWAP_HELD' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 8 — Large Print Zone ───────────────────────────────────────────────
+
+function ruleLargePrint(large_print_zone: string | null | undefined): { points: number; tag: SignalTag | null } {
+  if (large_print_zone === 'BELOW_VWAP') return { points: 2.0, tag: 'LARGE_PRINT_BELOW' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 9 — Fresh Shelf ────────────────────────────────────────────────────
+
+function ruleFreshShelf(shelf_age_days: number | null): { points: number; tag: SignalTag | null } {
+  if (shelf_age_days !== null && shelf_age_days < 30) return { points: 2.0, tag: 'FRESH_SHELF' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 10 — Active 424B ───────────────────────────────────────────────────
+
+function ruleActive424B(same_day_424b: { form: string; filing_url: string }[]): { points: number; tag: SignalTag | null } {
+  if (same_day_424b.length > 0) return { points: 1.5, tag: 'ACTIVE_424B' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 11 — Thin AH Spike (negative — manufactured move) ─────────────────
+
+function ruleThinAH(ah_classification: string | null): { points: number; tag: SignalTag | null } {
+  if (ah_classification === 'THIN_AH_SPIKE') return { points: -4.0, tag: 'THIN_AH_SPIKE' };
+  return { points: 0, tag: null };
+}
+
+// ─── S1/S2 Classifier ────────────────────────────────────────────────────────
+// Only run when short score >= 8. Tie → S1 (lower risk).
+
+function classifySection(
+  vwap_failed: boolean | null,
+  day_of_run: number | null,
   gap_pct: number | null,
-  vwap_failed: boolean | null
-): { points: number; tags: SignalTag[] } {
-  let points = 0;
-  const tags: SignalTag[] = [];
-  if (gap_pct !== null && gap_pct > 20) { points += 20; tags.push('PM_STRENGTH'); }
-  if (vwap_failed === false)             { points += 15; tags.push('VWAP_HOLD'); }
-  return { points, tags };
+  borrow: string | null | undefined,
+  prior_424b_count: number,
+  volume_ratio: number | null,
+  w1_imbalance: number | null | undefined,
+  ah_move_pct: number | null,
+  shares_outstanding: number | null,
+  structure: string | null | undefined,
+  wick_ratio: number | null,
+  efficiency: number | null
+): TradeSection {
+  let s1 = 0;
+  let s2 = 0;
+
+  // S1 signals
+  if (vwap_failed === true)                                               s1 += 3;
+  if (day_of_run !== null && day_of_run >= 3)                            s1 += 4;
+  if (structure === 'BLOW_OFF_TOP')                                       s1 += 2;
+  if (efficiency !== null && efficiency < 0.50)                          s1 += 1;
+  if (wick_ratio !== null && wick_ratio >= 0.65)                         s1 += 2;
+  if (gap_pct !== null && gap_pct >= 50 && gap_pct < 200)                s1 += 2;
+  if (prior_424b_count > 0)                                              s1 += 1;
+  if (volume_ratio !== null && volume_ratio < 200)                       s1 += 1;
+  if (borrow === 'EASY')                                                  s1 += 2;
+  if (ah_move_pct !== null && ah_move_pct < -30 && ah_move_pct >= -80)  s1 += 3.5;
+  if (ah_move_pct !== null && ah_move_pct < -80)                        s1 += 5;
+
+  // S2 signals
+  if (vwap_failed === false)                                              s2 += 5;
+  if (volume_ratio !== null && volume_ratio >= 200)                      s2 += 3;
+  if (gap_pct !== null && gap_pct >= 200 && structure === 'BLOW_OFF_TOP') s2 += 2;
+  else if (gap_pct !== null && gap_pct >= 200)                           s2 += 2;
+  if (structure === 'WEAK_HOLD' || structure === 'STRONG_HOLD')          s2 += 2;
+  if (wick_ratio !== null && wick_ratio < 0.40)                          s2 += 1;
+  if (gap_pct !== null && gap_pct >= 100)                                s2 += 1;
+  if (borrow === 'NO_LOCATE')                                             s2 += 4;
+  if (borrow === 'HTB')                                                   s2 += 3;
+  if (borrow === 'HARD')                                                  s2 += 1;
+  if (w1_imbalance !== null && w1_imbalance !== undefined && w1_imbalance >= 0.65) s2 += 3;
+  if (shares_outstanding !== null && shares_outstanding >= 1_000_000 && shares_outstanding <= 5_000_000) s2 += 1;
+
+  // HTB exception: HTB + day 3+ → override to S1
+  if (borrow === 'HTB' && day_of_run !== null && day_of_run >= 3) {
+    return 'S1';
+  }
+
+  return s1 >= s2 ? 'S1' : 'S2';
 }
 
-// ─── Correlated cap ──────────────────────────────────────────────────────────
-// AH_BREAKDOWN + LATE_STAGE together: cap combined penalty at -55 to avoid double-counting
-function applyCorrelatedCap(
-  rawScore: number,
-  tags: SignalTag[]
+// ─── S1 Clean Score (0–10) ───────────────────────────────────────────────────
+// Higher = more volatile/choppy path.
+
+function computeCleanScore(
+  borrow: string | null | undefined,
+  shares_outstanding: number | null,
+  w1_imbalance: number | null | undefined,
+  gap_pct: number | null,
+  wick_ratio: number | null,
+  same_day_424b: { form: string; filing_url: string }[],
+  day_of_run: number | null,
+  efficiency: number | null,
+  volume_ratio: number | null
 ): number {
-  const hasAHBreakdown = tags.includes('AH_BREAKDOWN');
-  const hasLateStage   = tags.includes('LATE_STAGE');
-  if (hasAHBreakdown && hasLateStage) {
-    // Find their individual contributions and cap
-    const ahContrib   = rawScore <= -70 ? rawScore + 35 : 0; // rough cap adjustment
-    const cappedScore = Math.max(rawScore, rawScore + Math.max(0, (-rawScore) - 55 - Math.abs(ahContrib)));
-    return Math.max(rawScore, -120); // just enforce floor
-  }
-  return rawScore;
+  let score = 0;
+  if (borrow === 'HTB' || borrow === 'NO_LOCATE')                                    score += 3;
+  if (shares_outstanding !== null && shares_outstanding < 1_000_000)                  score += 3;
+  if (w1_imbalance !== null && w1_imbalance !== undefined && w1_imbalance >= 0.65)    score += 3;
+  if (gap_pct !== null && gap_pct > 120)                                              score += 2;
+  if (wick_ratio !== null && wick_ratio >= 0.85)                                      score += 2;
+  if ((borrow === 'HTB' || borrow === 'NO_LOCATE') && same_day_424b.length === 0)    score += 1;
+  if (day_of_run !== null && day_of_run >= 3)                                         score -= 3;
+  if (efficiency !== null && efficiency < 0.50)                                       score -= 2;
+  if (borrow === 'EASY' && volume_ratio !== null && volume_ratio < 200)               score -= 2;
+  return Math.max(0, Math.min(10, score));
+}
+
+function cleanScoreToOutcome(score: number): CleanOutcome {
+  if (score <= 2) return 'DUMP';
+  if (score <= 5) return 'CLEAN_FADE';
+  if (score <= 7) return 'VOLATILE_FADE';
+  return 'CHOP';
 }
 
 // ─── Bias ────────────────────────────────────────────────────────────────────
 
 function scoreToBias(score: number): TradeBias {
-  if (score <= -40) return 'STRONG_SHORT';
-  if (score <= -20) return 'WEAK_SHORT';
-  if (score >= 40)  return 'TRUE_LONG';
-  if (score >= 20)  return 'WEAK_LONG';
-  return 'NO_TRADE';
+  if (score >= 15) return 'MAX_CONVICTION';
+  if (score >= 12) return 'HIGH_CONVICTION';
+  if (score >= 8)  return 'CONFIRMED_SHORT';
+  if (score >= 2)  return 'NEUTRAL';
+  if (score > -3)  return 'LONG_BIAS';
+  return 'LONG_CANDIDATE';
 }
 
 // ─── Probability lookup ───────────────────────────────────────────────────────
 
-function computeProbabilities(
-  score: number,
-  tags: SignalTag[]
-): ScoreSnapshot['probabilities'] {
+function computeProbabilities(score: number): ScoreSnapshot['probabilities'] {
   let base: { path: ProbPath; pct: number }[];
-
-  if (score <= -60)      base = [{ path: 'dump', pct: 75 }, { path: 'chop', pct: 15 }, { path: 'squeeze', pct: 10 }];
-  else if (score <= -40) base = [{ path: 'dump', pct: 60 }, { path: 'fade', pct: 25 }, { path: 'squeeze', pct: 15 }];
-  else if (score <= -20) base = [{ path: 'fade', pct: 55 }, { path: 'chop', pct: 30 }, { path: 'continuation', pct: 15 }];
-  else if (score < 20)   base = [{ path: 'chop', pct: 45 }, { path: 'fade', pct: 30 }, { path: 'continuation', pct: 25 }];
-  else if (score < 40)   base = [{ path: 'continuation', pct: 55 }, { path: 'pullback', pct: 30 }, { path: 'failure', pct: 15 }];
-  else                   base = [{ path: 'continuation', pct: 65 }, { path: 'pullback', pct: 25 }, { path: 'failure', pct: 10 }];
-
-  // Signal-based adjustments (always re-normalize to 100)
-  if (tags.includes('AH_BREAKDOWN') && base[0].path !== 'continuation') {
-    base[0].pct = Math.min(base[0].pct + 10, 85);
-    base[1].pct = Math.max(base[1].pct - 10, 5);
-  }
-  if (tags.includes('STRONG_AH') && tags.includes('EXPANSION')) {
-    const contIdx = base.findIndex(p => p.path === 'continuation');
-    if (contIdx >= 0) {
-      base[contIdx].pct = Math.min(base[contIdx].pct + 10, 85);
-      base[base.length - 1].pct = Math.max(base[base.length - 1].pct - 10, 5);
-    }
-  }
-
-  // Normalize to exactly 100
+  if (score >= 15)      base = [{ path: 'dump', pct: 75 }, { path: 'fade', pct: 15 }, { path: 'chop', pct: 10 }];
+  else if (score >= 12) base = [{ path: 'dump', pct: 60 }, { path: 'fade', pct: 25 }, { path: 'chop', pct: 15 }];
+  else if (score >= 8)  base = [{ path: 'fade', pct: 55 }, { path: 'dump', pct: 30 }, { path: 'chop', pct: 15 }];
+  else if (score >= 2)  base = [{ path: 'chop', pct: 45 }, { path: 'fade', pct: 35 }, { path: 'continuation', pct: 20 }];
+  else if (score > -3)  base = [{ path: 'continuation', pct: 50 }, { path: 'chop', pct: 30 }, { path: 'fade', pct: 20 }];
+  else                  base = [{ path: 'continuation', pct: 65 }, { path: 'pullback', pct: 25 }, { path: 'failure', pct: 10 }];
   const total = base.reduce((s, p) => s + p.pct, 0);
   return base.map(p => ({ path: p.path, pct: Math.round((p.pct / total) * 100) }));
 }
 
+// ─── Confidence ──────────────────────────────────────────────────────────────
+
+function computeConfidence(score: number): number {
+  if (score >= 0) return parseFloat(Math.min(score / 20, 1).toFixed(2));
+  return parseFloat(Math.min(Math.abs(score) / 6, 1).toFixed(2));
+}
+
 // ─── Reason line ─────────────────────────────────────────────────────────────
 
-const TAG_LABELS: Partial<Record<SignalTag, string>> = {
-  AH_BREAKDOWN:    'AH breakdown',
-  STRONG_AH:       'strong AH build',
-  LATE_STAGE:      'late-stage run',
-  BLOWOFF_WICK:    'blowoff wick',
-  CLEAN_STRUCTURE: 'clean structure',
-  LIQUIDITY_TRAP:  'liquidity trap',
-  ABSORPTION:      'volume absorption',
-  EXPANSION:       'volume expansion',
-  DILUTION:        'live dilution',
-  SUPPLY_OVERHANG: 'supply overhang',
-  STRATEGIC_BUYING:'strategic buying',
-  STRONG_CATALYST: 'tier-1 catalyst',
-  NO_DRIVER:       'no catalyst',
-  PM_STRENGTH:     'PM strength',
-  VWAP_HOLD:       'VWAP holding',
+const TAG_LABELS: Record<SignalTag, string> = {
+  AH_REVERSAL_TRAP:  'AH reversal trap',
+  STRONG_HOLD_TRAP:  'strong hold trap',
+  DAY3_EXHAUSTION:   'day 3 exhaustion',
+  DAY1_RUN:          'day 1 of run',
+  PM_FADE:           'PM fade',
+  PM_SELL_PRESSURE:  'PM sell pressure',
+  MOVE_200:          '200%+ move',
+  MOVE_100:          '100%+ move',
+  GAP_40:            '40%+ gap',
+  FRESH_SHELF:       'fresh shelf <30d',
+  ACTIVE_424B:       'active 424B',
+  THIN_AH_SPIKE:     'thin AH spike',
+  LARGE_PRINT_BELOW: 'large print below VWAP',
+  VWAP_HELD:         'VWAP holding',
 };
 
 function buildReason(tags: SignalTag[], bias: TradeBias): string {
-  const top = tags.slice(0, 2).map(t => TAG_LABELS[t] ?? t.toLowerCase().replace(/_/g, ' '));
-  if (top.length === 0) return bias === 'NO_TRADE' ? 'Mixed signals — no edge' : 'Insufficient data';
-  return top.join(' + ');
+  const overrideOrder: SignalTag[] = ['AH_REVERSAL_TRAP', 'DAY3_EXHAUSTION', 'STRONG_HOLD_TRAP'];
+  const overrideTags = overrideOrder.filter(t => tags.includes(t));
+  const otherTags = tags.filter(t => !overrideOrder.includes(t));
+  const ordered = [...overrideTags, ...otherTags].slice(0, 2);
+  if (ordered.length === 0) return bias === 'NEUTRAL' ? 'Mixed signals — no edge' : 'Insufficient data';
+  return ordered.map(t => TAG_LABELS[t]).join(' + ');
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
-  const { phase1, phase1b, phase2, phase3 } = checklist;
+  const { phase1, phase1b, phase2, phase3, phase4 } = checklist;
 
-  const r1 = scoreAH(phase1b?.ah_move_pct ?? null);
-  const r2 = scoreRunDay(phase3?.day_of_run ?? null);
-  const r3 = scoreWick(phase3?.wick_ratio ?? null);
-  const r4 = scoreDilution(
-    phase1?.same_day_424b ?? [],
-    phase1?.prior_424b_count_12m ?? 0,
-    phase1?.shelf_type ?? null,
-    phase1?.eightk?.signals ?? [],
-    phase2?.catalyst_tier ?? null
-  );
-  const r5 = scoreEfficiency((phase3 as any)?.efficiency ?? null);
-  const r6 = scoreCatalyst(phase2?.catalyst_tier ?? null);
-  const rb = scoreBonuses(phase1b?.gap_pct ?? null, phase3?.vwap_failed ?? null);
+  // phase3 extended with manual fields (may be absent on older records)
+  const p3 = phase3 as typeof phase3 & {
+    structure?: string | null;
+    large_print_zone?: string | null;
+    borrow?: string | null;
+    w1_imbalance?: number | null;
+  };
 
-  const rawScore = r1.points + r2.points + r3.points + r4.points + r5.points + r6.points + rb.points;
-  const allTags: SignalTag[] = [
-    ...r1.tags, ...r2.tags, ...r3.tags, ...r4.tags, ...r5.tags, ...r6.tags, ...rb.tags
-  ];
+  const r1  = ruleAH(phase1b?.ah_move_pct ?? null);
+  const r2  = ruleStrongHoldTrap(p3?.structure, p3?.borrow, phase2?.catalyst_tier ?? null);
+  const r3  = ruleRunDay(p3?.day_of_run ?? null);
+  const r4  = rulePMFade(p3?.pm_high_reclaimed ?? null);
+  const r5  = ruleMove(phase1b?.gap_pct ?? null);
+  const r6  = rulePMSellPressure(p3?.efficiency ?? null);
+  const r7  = ruleVWAPHeld(p3?.vwap_failed ?? null, phase1b?.gap_pct ?? null);
+  const r8  = ruleLargePrint(p3?.large_print_zone);
+  const r9  = ruleFreshShelf(phase1?.shelf_age_days ?? null);
+  const r10 = ruleActive424B(phase1?.same_day_424b ?? []);
+  const r11 = ruleThinAH(phase1b?.ah_classification ?? null);
 
-  const score = Math.max(-120, Math.min(120, applyCorrelatedCap(rawScore, allTags)));
+  const rawScore =
+    r1.points + r2.points + r3.points + r4.points + r5.points +
+    r6.points + r7.points + r8.points + r9.points + r10.points + r11.points;
+
+  const score = parseFloat(rawScore.toFixed(1));
+
+  const signals: SignalTag[] = [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11]
+    .filter(r => r.tag !== null)
+    .map(r => r.tag as SignalTag);
+
+  // Override labels are display-only — no execution effect
+  const overrides_fired: string[] = [r1, r2, r3]
+    .filter(r => (r as { isOverride?: boolean }).isOverride && r.tag !== null)
+    .map(r => r.tag as string);
+
   const bias = scoreToBias(score);
-  const confidence = parseFloat((Math.min(Math.abs(score) / 120, 1)).toFixed(2));
-  const probabilities = computeProbabilities(score, allTags);
-  const reason = buildReason(allTags, bias);
+  const confidence = computeConfidence(score);
+  const probabilities = computeProbabilities(score);
+  const reason = buildReason(signals, bias);
+
+  let section: TradeSection | null = null;
+  let clean_score: number | null = null;
+  let clean_outcome: CleanOutcome | null = null;
+
+  if (score >= 8) {
+    section = classifySection(
+      p3?.vwap_failed ?? null,
+      p3?.day_of_run ?? null,
+      phase1b?.gap_pct ?? null,
+      p3?.borrow,
+      phase1?.prior_424b_count_12m ?? 0,
+      p3?.volume_ratio ?? null,
+      p3?.w1_imbalance,
+      phase1b?.ah_move_pct ?? null,
+      phase4?.shares_outstanding ?? null,
+      p3?.structure,
+      p3?.wick_ratio ?? null,
+      p3?.efficiency ?? null
+    );
+
+    if (section === 'S1') {
+      clean_score = computeCleanScore(
+        p3?.borrow,
+        phase4?.shares_outstanding ?? null,
+        p3?.w1_imbalance,
+        phase1b?.gap_pct ?? null,
+        p3?.wick_ratio ?? null,
+        phase1?.same_day_424b ?? [],
+        p3?.day_of_run ?? null,
+        p3?.efficiency ?? null,
+        p3?.volume_ratio ?? null
+      );
+      clean_outcome = cleanScoreToOutcome(clean_score);
+    }
+  }
 
   return {
     timestamp: new Date().toISOString(),
     score,
     bias,
     confidence,
-    signals: allTags,
+    signals,
     reason,
-    probabilities
+    probabilities,
+    section,
+    clean_score,
+    clean_outcome,
+    overrides_fired,
   };
 }

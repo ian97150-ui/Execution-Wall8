@@ -73,6 +73,11 @@ export interface SecChecklist {
     intraday_move_pct: number | null;
     efficiency: number | null;
     error?: string;
+    // Manual fields — set via checklist-manual PATCH
+    structure?: 'BLOW_OFF_TOP' | 'WEAK_HOLD' | 'STRONG_HOLD' | 'RANGE' | null;
+    large_print_zone?: 'BELOW_VWAP' | 'ABOVE_VWAP' | null;
+    borrow?: 'EASY' | 'HARD' | 'HTB' | 'NO_LOCATE' | null;
+    w1_imbalance?: number | null;  // -1.0 to +1.0, W1 open order imbalance
   };
 
   phase4: {
@@ -341,18 +346,31 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
 
 export function applyManualOverride(
   existing: SecChecklist,
-  updates: { phase2?: { sympathy_trade?: boolean | null } }
+  updates: {
+    phase2?: { sympathy_trade?: boolean | null };
+    phase3?: {
+      structure?: 'BLOW_OFF_TOP' | 'WEAK_HOLD' | 'STRONG_HOLD' | 'RANGE' | null;
+      large_print_zone?: 'BELOW_VWAP' | 'ABOVE_VWAP' | null;
+      borrow?: 'EASY' | 'HARD' | 'HTB' | 'NO_LOCATE' | null;
+      w1_imbalance?: number | null;
+    };
+  }
 ): SecChecklist {
   const phase2: SecChecklist['phase2'] = {
     ...existing.phase2,
     ...(updates.phase2 ?? {})
   };
 
-  const overrides = computeOverrides(existing.phase1, existing.phase1b, phase2, existing.phase3, existing.phase4);
+  const phase3: SecChecklist['phase3'] = {
+    ...existing.phase3,
+    ...(updates.phase3 ?? {})
+  };
+
+  const overrides = computeOverrides(existing.phase1, existing.phase1b, phase2, phase3, existing.phase4);
   const bias = computeBias(existing.phase1, overrides);
-  const score = computeScore(existing.phase1, phase2, existing.phase3, existing.phase4, overrides);
-  const completion_pct = computeCompletion(existing.phase1, existing.phase1b, phase2, existing.phase3, existing.phase4);
-  const updated = { ...existing, phase2, overrides, bias, score, completion_pct };
+  const score = computeScore(existing.phase1, phase2, phase3, existing.phase4, overrides);
+  const completion_pct = computeCompletion(existing.phase1, existing.phase1b, phase2, phase3, existing.phase4);
+  const updated = { ...existing, phase2, phase3, overrides, bias, score, completion_pct };
   const score_snapshot = computeScoreSnapshot(updated);
   return { ...updated, score_snapshot };
 }

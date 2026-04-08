@@ -426,6 +426,12 @@ router.patch('/:id/checklist-manual', async (req: Request, res: Response) => {
 
     const updates = req.body as {
       phase2?: { sympathy_trade?: boolean | null };
+      phase3?: {
+        structure?: 'BLOW_OFF_TOP' | 'WEAK_HOLD' | 'STRONG_HOLD' | 'RANGE' | null;
+        large_print_zone?: 'BELOW_VWAP' | 'ABOVE_VWAP' | null;
+        borrow?: 'EASY' | 'HARD' | 'HTB' | 'NO_LOCATE' | null;
+        w1_imbalance?: number | null;
+      };
     };
 
     const updated = applyManualOverride(existing, updates);

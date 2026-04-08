@@ -445,6 +445,75 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               neutral={phase3.day_of_run < 3}
             />
           )}
+
+          {/* Manual phase3 inputs — scored by Cat5ive engine */}
+          <div className="mt-1.5 space-y-1.5">
+            <p className="text-[10px] text-slate-600 uppercase tracking-wide">Manual inputs</p>
+
+            {/* Structure */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 shrink-0">Structure</span>
+              <select
+                value={phase3?.structure ?? ''}
+                onChange={e => onToggleManual?.(intent, 'phase3', 'structure', e.target.value || null)}
+                className="flex-1 max-w-[160px] bg-slate-800/60 border border-slate-600/50 rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-violet-500"
+              >
+                <option value="">— not set —</option>
+                <option value="BLOW_OFF_TOP">BLOW OFF TOP</option>
+                <option value="WEAK_HOLD">WEAK HOLD</option>
+                <option value="STRONG_HOLD">STRONG HOLD</option>
+                <option value="RANGE">RANGE</option>
+              </select>
+            </div>
+
+            {/* Large print zone */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 shrink-0">Large print zone</span>
+              <select
+                value={phase3?.large_print_zone ?? ''}
+                onChange={e => onToggleManual?.(intent, 'phase3', 'large_print_zone', e.target.value || null)}
+                className="flex-1 max-w-[160px] bg-slate-800/60 border border-slate-600/50 rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-violet-500"
+              >
+                <option value="">— not set —</option>
+                <option value="BELOW_VWAP">BELOW VWAP (+2)</option>
+                <option value="ABOVE_VWAP">ABOVE VWAP</option>
+              </select>
+            </div>
+
+            {/* Borrow */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 shrink-0">Borrow (IBKR)</span>
+              <select
+                value={phase3?.borrow ?? ''}
+                onChange={e => onToggleManual?.(intent, 'phase3', 'borrow', e.target.value || null)}
+                className="flex-1 max-w-[160px] bg-slate-800/60 border border-slate-600/50 rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-violet-500"
+              >
+                <option value="">— not set —</option>
+                <option value="EASY">EASY</option>
+                <option value="HARD">HARD</option>
+                <option value="HTB">HTB</option>
+                <option value="NO_LOCATE">NO LOCATE</option>
+              </select>
+            </div>
+
+            {/* W1 open imbalance */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 shrink-0">W1 imbalance</span>
+              <input
+                type="number"
+                min="-1"
+                max="1"
+                step="0.01"
+                value={phase3?.w1_imbalance ?? ''}
+                onChange={e => {
+                  const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                  onToggleManual?.(intent, 'phase3', 'w1_imbalance', val);
+                }}
+                placeholder="e.g. 0.65"
+                className="w-24 bg-slate-800/60 border border-slate-600/50 rounded px-2 py-1 text-[11px] text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Phase 4 — Float & Short Interest */}

@@ -277,33 +277,81 @@ export default function TradeCard({
                 <p className="text-xs text-slate-500 text-center py-2">No additional signal data available</p>
               )}
 
-              {/* Score Snapshot — decision chip, pressure bar, probability paths, reason */}
+              {/* Score Snapshot — Cat5ive v5 */}
               {scoreSnapshot && (
                 <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
-                  {/* Decision chip + confidence */}
+
+                  {/* Override chips (display only — no execution effect) */}
+                  {scoreSnapshot.overrides_fired?.length > 0 && (
+                    <div className="flex gap-1 flex-wrap">
+                      {scoreSnapshot.overrides_fired.map(o => (
+                        <span key={o} className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          ⚡ {o.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Section badge + bias chip + score */}
                   <div className="flex items-center gap-2 flex-wrap">
+                    {scoreSnapshot.section && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600/50">
+                        {scoreSnapshot.section} {scoreSnapshot.section === 'S1' ? 'D+1' : 'D+5'}
+                      </span>
+                    )}
                     <span className={cn(
                       "px-2.5 py-1 rounded-lg text-xs font-bold tracking-wide",
-                      scoreSnapshot.bias === 'STRONG_SHORT' ? "bg-red-500/20 text-red-400 border border-red-500/40" :
-                      scoreSnapshot.bias === 'WEAK_SHORT'   ? "bg-red-500/10 text-red-400/80 border border-red-500/30" :
-                      scoreSnapshot.bias === 'TRUE_LONG'    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" :
-                      scoreSnapshot.bias === 'WEAK_LONG'    ? "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/30" :
+                      scoreSnapshot.bias === 'MAX_CONVICTION'  ? "bg-red-600/30 text-red-300 border border-red-600/50" :
+                      scoreSnapshot.bias === 'HIGH_CONVICTION' ? "bg-red-500/20 text-red-400 border border-red-500/40" :
+                      scoreSnapshot.bias === 'CONFIRMED_SHORT' ? "bg-red-400/15 text-red-400 border border-red-400/30" :
+                      scoreSnapshot.bias === 'LONG_CANDIDATE'  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" :
+                      scoreSnapshot.bias === 'LONG_BIAS'       ? "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/30" :
                       "bg-slate-700/50 text-slate-400 border border-slate-600/50"
                     )}>
-                      {scoreSnapshot.bias.replace('_', ' ')}
+                      {scoreSnapshot.bias.replace(/_/g, ' ')}
                     </span>
                     <span className="text-xs font-mono text-slate-500">
                       {Math.round(scoreSnapshot.confidence * 100)}% conf
                     </span>
                     <span className={cn(
                       "text-xs font-mono font-bold ml-auto",
-                      scoreSnapshot.score > 0 ? "text-red-400" : scoreSnapshot.score < 0 ? "text-emerald-400" : "text-slate-500"
+                      scoreSnapshot.score >= 8 ? "text-red-400" : scoreSnapshot.score <= -3 ? "text-emerald-400" : "text-slate-400"
                     )}>
                       {scoreSnapshot.score > 0 ? `+${scoreSnapshot.score}` : scoreSnapshot.score}
                     </span>
                   </div>
 
-                  {/* Pressure bar */}
+                  {/* S1 Clean score bar */}
+                  {scoreSnapshot.section === 'S1' && scoreSnapshot.clean_score !== null && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500">Clean score</span>
+                        <span className={cn(
+                          "font-bold",
+                          scoreSnapshot.clean_outcome === 'DUMP'          ? "text-emerald-400" :
+                          scoreSnapshot.clean_outcome === 'CLEAN_FADE'    ? "text-blue-400" :
+                          scoreSnapshot.clean_outcome === 'VOLATILE_FADE' ? "text-yellow-400" :
+                          "text-red-400"
+                        )}>
+                          {scoreSnapshot.clean_score}/10 — {scoreSnapshot.clean_outcome?.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <div className="h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full",
+                            scoreSnapshot.clean_outcome === 'DUMP'          ? "bg-emerald-500" :
+                            scoreSnapshot.clean_outcome === 'CLEAN_FADE'    ? "bg-blue-500" :
+                            scoreSnapshot.clean_outcome === 'VOLATILE_FADE' ? "bg-yellow-500" :
+                            "bg-red-500"
+                          )}
+                          style={{ width: `${scoreSnapshot.clean_score * 10}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pressure bar (scale: |score| / 20) */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] text-slate-500 w-8 text-right">LONG</span>
                     <div className="flex-1 relative h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
@@ -314,7 +362,7 @@ export default function TradeCard({
                             "absolute inset-y-0 rounded-full",
                             scoreSnapshot.score < 0 ? "bg-emerald-500/70 right-1/2" : "bg-red-500/70 left-1/2"
                           )}
-                          style={{ width: `${Math.min(Math.abs(scoreSnapshot.score) / 120 * 50, 50)}%` }}
+                          style={{ width: `${Math.min(Math.abs(scoreSnapshot.score) / 20 * 50, 50)}%` }}
                         />
                       )}
                     </div>
