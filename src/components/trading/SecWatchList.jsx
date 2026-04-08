@@ -37,8 +37,14 @@ function SecScannerTest() {
   }
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-2">
+    <details className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden group">
+      <summary className="flex items-center gap-2 px-4 py-2.5 cursor-pointer list-none select-none text-slate-500 hover:text-slate-300 transition-colors">
+        <FlaskConical className="w-3.5 h-3.5" />
+        <span className="text-xs font-medium">Test SEC Scanner</span>
+        <ChevronDown className="w-3 h-3 ml-auto group-open:rotate-180 transition-transform" />
+      </summary>
+    <div className="px-4 pb-4 space-y-3">
+      <div className="flex items-center gap-2 pt-2">
         <FlaskConical className="w-4 h-4 text-violet-400" />
         <span className="text-sm font-semibold text-slate-300">Test SEC Scanner</span>
       </div>
@@ -94,6 +100,7 @@ function SecScannerTest() {
         </div>
       )}
     </div>
+    </details>
   );
 }
 
@@ -587,11 +594,11 @@ function AddTickerInput({ onAdd, isAdding }) {
   };
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-3 space-y-2">
+    <div className="bg-violet-950/40 border-2 border-violet-500/50 rounded-xl p-3 space-y-2">
       <div className="flex items-center gap-2">
         <Eye className="w-4 h-4 text-violet-400" />
-        <span className="text-sm font-semibold text-slate-300">Watch a ticker</span>
-        <span className="text-xs text-slate-500">— full scorecard without a WALL card</span>
+        <span className="text-sm font-bold text-violet-300">Watch a ticker</span>
+        <span className="text-xs text-violet-500">run full scorecard without a WALL card</span>
       </div>
       <div className="flex gap-2">
         <input
@@ -599,18 +606,18 @@ function AddTickerInput({ onAdd, isAdding }) {
           value={ticker}
           onChange={e => setTicker(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          placeholder="e.g. MULN"
+          placeholder="Ticker symbol e.g. MULN"
           maxLength={6}
-          className="flex-1 bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono uppercase"
+          className="flex-1 bg-slate-900/80 border border-violet-500/40 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 font-mono tracking-widest"
         />
         <Button
           onClick={handleAdd}
           disabled={!ticker.trim() || isAdding}
           size="sm"
-          className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5 px-3"
+          className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5 px-4 font-bold"
         >
           {isAdding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-          Add
+          {isAdding ? 'Adding…' : 'Add'}
         </Button>
       </div>
     </div>
