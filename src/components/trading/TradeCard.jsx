@@ -261,6 +261,152 @@ export default function TradeCard({
             <p className="text-lg font-bold text-white font-mono">${formatPrice(intent.price)}</p>
           </div>
 
+          {/* Cat5ive Score — always visible */}
+          {scoreSnapshot && (
+            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
+
+              {/* Override chips */}
+              {scoreSnapshot.overrides_fired?.length > 0 && (
+                <div className="flex gap-1 flex-wrap">
+                  {scoreSnapshot.overrides_fired.map(o => (
+                    <span key={o} className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      ⚡ {o.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Section badge + bias chip + confidence + score */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {scoreSnapshot.section && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600/50">
+                    {scoreSnapshot.section} {scoreSnapshot.section === 'S1' ? 'D+1' : 'D+5'}
+                  </span>
+                )}
+                <span className={cn(
+                  "px-2.5 py-1 rounded-lg text-xs font-bold tracking-wide",
+                  scoreSnapshot.bias === 'MAX_CONVICTION'  ? "bg-red-600/30 text-red-300 border border-red-600/50" :
+                  scoreSnapshot.bias === 'HIGH_CONVICTION' ? "bg-red-500/20 text-red-400 border border-red-500/40" :
+                  scoreSnapshot.bias === 'CONFIRMED_SHORT' ? "bg-red-400/15 text-red-400 border border-red-400/30" :
+                  scoreSnapshot.bias === 'LONG_CANDIDATE'  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" :
+                  scoreSnapshot.bias === 'LONG_BIAS'       ? "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/30" :
+                  "bg-slate-700/50 text-slate-400 border border-slate-600/50"
+                )}>
+                  {scoreSnapshot.bias.replace(/_/g, ' ')}
+                </span>
+                <span className="text-xs font-mono text-slate-500">
+                  {Math.round(scoreSnapshot.confidence * 100)}% conf
+                </span>
+                <span className={cn(
+                  "text-xs font-mono font-bold ml-auto",
+                  scoreSnapshot.score >= 8 ? "text-red-400" : scoreSnapshot.score <= -3 ? "text-emerald-400" : "text-slate-400"
+                )}>
+                  {scoreSnapshot.score > 0 ? `+${scoreSnapshot.score}` : scoreSnapshot.score}
+                </span>
+              </div>
+
+              {/* Regime chip */}
+              {scoreSnapshot.regime && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-violet-500/20 text-violet-300 border border-violet-500/40">
+                    {scoreSnapshot.regime.regime.replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    n={scoreSnapshot.regime.n} · {scoreSnapshot.regime.dump_pct}% dump · D+5 {scoreSnapshot.regime.d5_avg}%
+                  </span>
+                </div>
+              )}
+
+              {/* Pattern stats */}
+              {scoreSnapshot.pattern_stats?.length > 0 && (
+                <div className="space-y-1">
+                  {scoreSnapshot.pattern_stats.map(p => (
+                    <div key={p.pattern} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <span className="text-[10px] font-bold text-amber-300 shrink-0">{p.pattern.replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-slate-400 font-mono ml-auto">
+                        n={p.n} · {p.dump_pct}% dump · D+5 {p.d5_avg}%{p.max_dd ? ` · MaxDD ${p.max_dd}%` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* S1/S2 empirical probability */}
+              {scoreSnapshot.section_prob && (
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="text-slate-500 shrink-0">S1/S2 odds</span>
+                  <div className="flex-1 flex items-center gap-1">
+                    <div className="flex-1 h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-500/60 rounded-full" style={{ width: `${scoreSnapshot.section_prob.s1_pct}%` }} />
+                    </div>
+                    <span className="font-mono text-red-400 w-8 text-right">{scoreSnapshot.section_prob.s1_pct}%</span>
+                    <span className="text-slate-600">/</span>
+                    <span className="font-mono text-blue-400 w-8">{scoreSnapshot.section_prob.s2_pct}%</span>
+                  </div>
+                  <span className="text-slate-600 italic">{scoreSnapshot.section_prob.basis}</span>
+                </div>
+              )}
+
+              {/* S1 Clean score bar + D+1/D+5 expected */}
+              {scoreSnapshot.section === 'S1' && scoreSnapshot.clean_score !== null && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-500">Clean score</span>
+                    <span className={cn(
+                      "font-bold",
+                      scoreSnapshot.clean_outcome === 'DUMP'          ? "text-emerald-400" :
+                      scoreSnapshot.clean_outcome === 'CLEAN_FADE'    ? "text-blue-400" :
+                      scoreSnapshot.clean_outcome === 'VOLATILE_FADE' ? "text-yellow-400" :
+                      "text-red-400"
+                    )}>
+                      {scoreSnapshot.clean_score}/10 — {scoreSnapshot.clean_outcome?.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <div className="h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full",
+                        scoreSnapshot.clean_outcome === 'DUMP'          ? "bg-emerald-500" :
+                        scoreSnapshot.clean_outcome === 'CLEAN_FADE'    ? "bg-blue-500" :
+                        scoreSnapshot.clean_outcome === 'VOLATILE_FADE' ? "bg-yellow-500" :
+                        "bg-red-500"
+                      )}
+                      style={{ width: `${scoreSnapshot.clean_score * 10}%` }}
+                    />
+                  </div>
+                  {scoreSnapshot.outcome_profile && (
+                    <div className="flex gap-3 pt-0.5">
+                      <span className="text-[10px] font-mono text-slate-500">
+                        D+1 avg <span className="text-red-400 font-bold">{scoreSnapshot.outcome_profile.d1_avg}%</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        D+5 avg <span className="text-red-400 font-bold">{scoreSnapshot.outcome_profile.d5_avg}%</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Probability paths */}
+              {scoreSnapshot.probabilities?.length > 0 && (
+                <div className="flex gap-1 flex-wrap">
+                  {scoreSnapshot.probabilities.map(p => (
+                    <span key={p.path} className={cn(
+                      "px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize",
+                      p.path === 'dump' || p.path === 'fade' || p.path === 'failure'
+                        ? "bg-red-500/15 text-red-400"
+                        : p.path === 'chop'
+                        ? "bg-yellow-500/15 text-yellow-400"
+                        : "bg-emerald-500/15 text-emerald-400"
+                    )}>
+                      {p.path} {p.pct}%
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Expand toggle */}
           <button
             onClick={() => setExpanded(!expanded)}
