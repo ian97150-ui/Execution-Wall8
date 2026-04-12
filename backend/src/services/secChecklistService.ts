@@ -323,6 +323,8 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
     current_price: priceAction.current_price,
     intraday_move_pct: priceAction.intraday_move_pct,
     efficiency: priceAction.efficiency,
+    // Auto-classify structure — manual override takes precedence if already set
+    structure: existing?.phase3?.structure ?? priceAction.structure,
     ...(priceAction.error ? { error: priceAction.error } : {})
   };
 

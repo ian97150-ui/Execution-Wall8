@@ -76,6 +76,7 @@ export interface PriceActionResult {
   current_price: number | null;
   intraday_move_pct: number | null;   // (max_high_since_rth_open - rth_open) / rth_open * 100
   efficiency: number | null;          // intraday_move_pct / vol_ratio — demand vs supply quality
+  structure: 'BLOW_OFF_TOP' | 'WEAK_HOLD' | 'STRONG_HOLD' | 'RANGE' | null;
   error?: string;
 }
 
@@ -102,7 +103,8 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
     day_of_run: null,
     current_price: null,
     intraday_move_pct: null,
-    efficiency: null
+    efficiency: null,
+    structure: null
   };
 
   try {
@@ -312,6 +314,17 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
           base.day_of_run = runDays;
         }
       }
+    }
+
+    // Auto-classify structure from computed price action fields
+    if (base.wick_ratio !== null && base.vwap_failed === true && base.wick_ratio > 0.70) {
+      base.structure = 'BLOW_OFF_TOP';
+    } else if (base.pm_high_reclaimed === true && base.vwap_failed === false) {
+      base.structure = 'STRONG_HOLD';
+    } else if (base.pm_high_reclaimed === false && base.efficiency !== null && base.efficiency < 0.50) {
+      base.structure = 'WEAK_HOLD';
+    } else if (base.wick_ratio !== null || base.pm_high_reclaimed !== null) {
+      base.structure = 'RANGE';
     }
 
     return base;
