@@ -213,21 +213,45 @@ async function runSpikeScan(): Promise<void> {
   }
 }
 
-// ─── Start / stop ─────────────────────────────────────────────────────────────
+/**
+ * Run a single on-demand spike scan pass.
+ * Returns the list of tickers that were detected and seeded.
+ * Called from the API route (manual "Scan for Spikes" button).
+ */
+export async function runSpikeScanOnDemand(): Promise<{ ticker: string; move: number; vol_ratio: number; seeded: boolean }[]> {
+  let candidates = await fetchPolygonGainers();
+  if (candidates.length === 0) {
+    candidates = await fetchYahooGainers();
+  }
+
+  const results: { ticker: string; move: number; vol_ratio: number; seeded: boolean }[] = [];
+
+  for (const c of candidates) {
+    const wasSeeded = !seededToday.has(c.ticker);
+    await seedWatchlist(c).catch(err =>
+      console.error(`❌ Spike monitor seed error (${c.ticker}):`, err.message)
+    );
+    results.push({ ticker: c.ticker, move: c.intraday_move_pct, vol_ratio: c.vol_ratio, seeded: wasSeeded });
+  }
+
+  return results;
+}
+
+// ─── Auto-scan (disabled by default — use on-demand button instead) ──────────
 
 export function startSpikeMonitor(): void {
+  // Auto-scanning disabled — use the "Scan for Spikes" button in the UI instead.
+  // Uncomment the block below to re-enable autonomous scanning.
+  /*
   if (monitorInterval) return;
   resetDailySet();
-
   monitorInterval = setInterval(async () => {
     if (!isMarketHoursET()) return;
-    await runSpikeScan().catch(err =>
-      console.error('❌ Spike scan error:', err.message)
-    );
+    await runSpikeScan().catch(err => console.error('❌ Spike scan error:', err.message));
   }, 60_000);
-
   console.log('📡 Spike monitor started — scanning every 60s from 08:30–16:30 ET');
-  console.log(`   Data source: ${process.env.POLYGON_API_KEY ? 'Polygon.io' : 'Yahoo Finance (free)'}`);
+  */
+  resetDailySet();  // still reset the dedup set daily
 }
 
 export function stopSpikeMonitor(): void {

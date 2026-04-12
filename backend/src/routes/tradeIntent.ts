@@ -4,6 +4,7 @@ import { PushoverNotifications } from '../services/pushoverService';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runSecWatchScan } from '../services/secWatchScanner';
 import { runChecklist, applyManualOverride, SecChecklist } from '../services/secChecklistService';
+import { runSpikeScanOnDemand } from '../services/spikeMonitorService';
 
 const router = express.Router();
 
@@ -253,6 +254,18 @@ router.post('/scan-sec-all', async (req: Request, res: Response) => {
     res.json({ success: true, total, confirmed, results });
   } catch (error: any) {
     console.error('Error running bulk SEC scan:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Scan market for spike-day tickers (40%+ move, vol >50x) and seed watchlist
+router.post('/scan-spikes', async (req: Request, res: Response) => {
+  try {
+    const results = await runSpikeScanOnDemand();
+    const seeded = results.filter(r => r.seeded).length;
+    res.json({ success: true, found: results.length, seeded, results });
+  } catch (error: any) {
+    console.error('Error running spike scan:', error);
     res.status(500).json({ error: error.message });
   }
 });

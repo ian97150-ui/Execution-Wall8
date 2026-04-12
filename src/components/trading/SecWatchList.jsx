@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   TrendingUp, TrendingDown, BookMarked, BadgeCheck, FileText, ExternalLink,
   FlaskConical, CheckCircle2, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp,
-  AlertTriangle, BarChart2, Activity, TrendingDown as ShortIcon, Plus, Trash2, Eye
+  AlertTriangle, BarChart2, Activity, TrendingDown as ShortIcon, Plus, Trash2, Eye, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
@@ -810,6 +810,8 @@ export default function SecWatchList({
   onAddManualWatch,
   onRemoveManualWatch,
   isAddingManualWatch = false,
+  onScanSpikes,
+  isScanningSpikes = false,
   tradingviewChartId
 }) {
   const confirmed = intents.filter(i => i.sec_confirmed);
@@ -821,6 +823,19 @@ export default function SecWatchList({
       <div className="space-y-4">
         <AddTickerInput onAdd={onAddManualWatch} isAdding={isAddingManualWatch} />
         <SecScannerTest />
+        <Button
+          onClick={onScanSpikes}
+          disabled={isScanningSpikes}
+          size="sm"
+          variant="outline"
+          className="w-full border-amber-600/40 text-amber-400 hover:bg-amber-600/10 gap-2"
+          title="Scan market for 40%+ movers with vol >50× and auto-add to watch panel"
+        >
+          {isScanningSpikes
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Zap className="w-3.5 h-3.5" />}
+          Scan for Spikes
+        </Button>
         <div className="text-center py-8 text-slate-500 space-y-2">
           <BookMarked className="w-10 h-10 mx-auto opacity-30" />
           <p className="font-medium">No cards in SEC watch list</p>
@@ -836,6 +851,19 @@ export default function SecWatchList({
       <div className="space-y-2">
         <AddTickerInput onAdd={onAddManualWatch} isAdding={isAddingManualWatch} />
         <SecScannerTest />
+        <Button
+          onClick={onScanSpikes}
+          disabled={isScanningSpikes}
+          size="sm"
+          variant="outline"
+          className="w-full border-amber-600/40 text-amber-400 hover:bg-amber-600/10 gap-2"
+          title="Scan market for 40%+ movers with vol >50× and auto-add to watch panel"
+        >
+          {isScanningSpikes
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Zap className="w-3.5 h-3.5" />}
+          Scan for Spikes
+        </Button>
         {waiting.length > 0 && (
           <Button
             onClick={onScanAll}

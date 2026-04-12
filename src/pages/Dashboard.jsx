@@ -610,6 +610,25 @@ export default function Dashboard() {
     onError: () => toast.error('SEC scan all failed')
   });
 
+  // Scan market for spike-day tickers and auto-add to watch panel
+  const spikeScanMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/trade-intents/scan-spikes');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
+      if (data.found === 0) {
+        toast.info('No spikes found (40%+ move, vol >50×)');
+      } else if (data.seeded > 0) {
+        toast.success(`Spike scan: ${data.seeded} new ticker${data.seeded > 1 ? 's' : ''} added to watch panel`);
+      } else {
+        toast.info(`Spike scan: ${data.found} spike${data.found > 1 ? 's' : ''} found — already watching`);
+      }
+    },
+    onError: () => toast.error('Spike scan failed')
+  });
+
   // Run full SEC checklist (phases 1-4)
   const runChecklistMutation = useMutation({
     mutationFn: async (intent) => {
@@ -970,6 +989,8 @@ export default function Dashboard() {
                     onReject={(intent) => swipeOffMutation.mutate(intent)}
                     onScanSec={(intent) => scanSecMutation.mutate(intent)}
                     onScanAll={() => scanSecAllMutation.mutate()}
+                    onScanSpikes={() => spikeScanMutation.mutate()}
+                    isScanningSpikes={spikeScanMutation.isPending}
                     onRunChecklist={(intent) => runChecklistMutation.mutateAsync(intent)}
                     onToggleManual={(intent, phase, field, value) => toggleManualMutation.mutate({ intent, phase, field, value })}
                     onAddManualWatch={(ticker) => addManualWatchMutation.mutate(ticker)}
