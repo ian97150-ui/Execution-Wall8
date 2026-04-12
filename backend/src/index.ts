@@ -24,6 +24,7 @@ import { startExecutionScheduler, stopExecutionScheduler } from './services/exec
 import { startDailyResetScheduler, stopDailyResetScheduler } from './services/dailyReset';
 import { startModeScheduler, stopModeScheduler } from './services/modeScheduler';
 import { startSecWatchScanner, stopSecWatchScanner } from './services/secWatchScanner';
+import { startSpikeMonitor, stopSpikeMonitor } from './services/spikeMonitorService';
 
 // Load environment variables
 dotenv.config();
@@ -131,6 +132,9 @@ app.listen(PORT, () => {
 
   // Start SEC watch scanner (polls watched tickers at fixed ET times)
   startSecWatchScanner();
+
+  // Start spike monitor (auto-detects 40%+ movers, seeds SEC Watch panel)
+  startSpikeMonitor();
 });
 
 // Graceful shutdown
@@ -140,6 +144,7 @@ process.on('SIGINT', async () => {
   stopDailyResetScheduler();
   stopModeScheduler();
   stopSecWatchScanner();
+  stopSpikeMonitor();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -150,6 +155,7 @@ process.on('SIGTERM', async () => {
   stopDailyResetScheduler();
   stopModeScheduler();
   stopSecWatchScanner();
+  stopSpikeMonitor();
   await prisma.$disconnect();
   process.exit(0);
 });
