@@ -65,6 +65,13 @@ export type RegimeId =
   | 'LOW_FLOAT_PARABOLIC'
   | 'NEWS_CONTINUATION';
 
+export type TimingBucket =
+  | 'D0_INTRADAY'
+  | 'D0_AH'
+  | 'D1_GAP_OPEN'
+  | 'D1_INTRADAY'
+  | 'DELAYED';
+
 export interface RegimeStat {
   regime: RegimeId;
   n: number;
@@ -108,6 +115,7 @@ export interface ScoreSnapshot {
   overrides_fired: string[];                  // display-only override labels
   regime: RegimeStat | null;                  // detected market regime with stats
   pattern_stats: PatternStat[];               // empirical stats for each fired override pattern
+  predicted_bucket?: TimingBucket;            // New: predictive timing bucket from framework
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -284,59 +292,73 @@ function ruleInsiderSignals(
   return { points, tags };
 }
 
-// ─── S1/S2 Classifier ────────────────────────────────────────────────────────
-// Only run when short score >= 8. Tie → S1 (lower risk).
+// ─── Timing Bucket Prediction ───────────────────────────────────────────────
+// Maps Wall card data to one of 5 predetermined timing states.
 
-function classifySection(
-  vwap_failed: boolean | null,
+function predictTimingBucket(
+  structure: string | null | undefined,
+  borrow: string | null | undefined,
   day_of_run: number | null,
   gap_pct: number | null,
-  borrow: string | null | undefined,
-  prior_424b_count: number,
-  volume_ratio: number | null,
-  w1_imbalance: number | null | undefined,
   ah_move_pct: number | null,
-  shares_outstanding: number | null,
-  structure: string | null | undefined,
+  vwap_failed: boolean | null,
   wick_ratio: number | null,
-  efficiency: number | null
-): TradeSection {
-  let s1 = 0;
-  let s2 = 0;
-
-  // S1 signals
-  if (vwap_failed === true)                                               s1 += 3;
-  if (day_of_run !== null && day_of_run >= 3)                            s1 += 4;
-  if (structure === 'BLOW_OFF_TOP')                                       s1 += 2;
-  if (efficiency !== null && efficiency < 0.50)                          s1 += 1;
-  if (wick_ratio !== null && wick_ratio >= 0.65)                         s1 += 2;
-  if (gap_pct !== null && gap_pct >= 50 && gap_pct < 200)                s1 += 2;
-  if (prior_424b_count > 0)                                              s1 += 1;
-  if (volume_ratio !== null && volume_ratio < 200)                       s1 += 1;
-  if (borrow === 'EASY')                                                  s1 += 2;
-  if (ah_move_pct !== null && ah_move_pct < -30 && ah_move_pct >= -80)  s1 += 3.5;
-  if (ah_move_pct !== null && ah_move_pct < -80)                        s1 += 5;
-
-  // S2 signals
-  if (vwap_failed === false)                                              s2 += 5;
-  if (volume_ratio !== null && volume_ratio >= 200)                      s2 += 3;
-  if (gap_pct !== null && gap_pct >= 200 && structure === 'BLOW_OFF_TOP') s2 += 2;
-  else if (gap_pct !== null && gap_pct >= 200)                           s2 += 2;
-  if (structure === 'WEAK_HOLD' || structure === 'STRONG_HOLD')          s2 += 2;
-  if (wick_ratio !== null && wick_ratio < 0.40)                          s2 += 1;
-  if (gap_pct !== null && gap_pct >= 100)                                s2 += 1;
-  if (borrow === 'NO_LOCATE')                                             s2 += 4;
-  if (borrow === 'HTB')                                                   s2 += 3;
-  if (borrow === 'HARD')                                                  s2 += 1;
-  if (w1_imbalance !== null && w1_imbalance !== undefined && w1_imbalance >= 0.65) s2 += 3;
-  if (shares_outstanding !== null && shares_outstanding >= 1_000_000 && shares_outstanding <= 5_000_000) s2 += 1;
-
-  // HTB exception: HTB + day 3+ → override to S1
-  if (borrow === 'HTB' && day_of_run !== null && day_of_run >= 3) {
-    return 'S1';
+  signals: SignalTag[]
+): TimingBucket {
+  // 1. D0_INTRADAY: Spike + Intraday Reversal/VWAP fail
+  if (
+    (wick_ratio !== null && wick_ratio >= 0.65 && vwap_failed === true) ||
+    signals.includes('LF_BLOWOFF_FADE') ||
+    signals.includes('DAY3_EXHAUSTION')
+  ) {
+    return 'D0_INTRADAY';
   }
 
-  return s1 >= s2 ? 'S1' : 'S2';
+  // 2. D0_AH: AH price drop precedes filing
+  if (
+    (ah_move_pct !== null && ah_move_pct < -10) ||
+    signals.includes('AH_FILING_GAP_T1') ||
+    signals.includes('AH_FILING_GAP_T2') ||
+    signals.includes('AH_REVERSAL_TRAP')
+  ) {
+    return 'D0_AH';
+  }
+
+  // 3. D1_INTRADAY: Strong hold D0, breaks D+1 morning
+  if (
+    structure === 'STRONG_HOLD' &&
+    (borrow === 'HTB' || borrow === 'NO_LOCATE') &&
+    signals.includes('STRONG_HOLD_TRAP')
+  ) {
+    return 'D1_INTRADAY';
+  }
+
+  // 4. D1_GAP_OPEN: Huge runner + Hard borrow -> Overnight price in
+  if (
+    gap_pct !== null && gap_pct > 100 &&
+    (borrow === 'HARD' || borrow === 'HTB') &&
+    structure === 'STRONG_HOLD'
+  ) {
+    return 'D1_GAP_OPEN';
+  }
+
+  // 5. DELAYED: Default / No clear intraday or AH trigger
+  return 'DELAYED';
+}
+
+// ─── S1/S2 Classifier ────────────────────────────────────────────────────────
+// Maps predicted bucket to final trade section.
+
+function classifySection(bucket: TimingBucket): TradeSection {
+  switch (bucket) {
+    case 'D0_INTRADAY':
+    case 'D0_AH':
+    case 'D1_INTRADAY':
+      return 'S1';
+    case 'D1_GAP_OPEN':
+    case 'DELAYED':
+      return 'S2';
+  }
 }
 
 // ─── S1 Clean Score (0–10) ───────────────────────────────────────────────────
@@ -436,9 +458,10 @@ const PATTERN_STATS: Record<string, PatternStat> = {
 
 // ─── S1/S2 empirical probability ──────────────────────────────────────────────
 // Returns the most specific lookup available, in priority order:
-// borrow → shelf_age → prior_offerings → catalyst
+// predicted_bucket (timing framework) → borrow → shelf_age → catalyst
 
 function empiricalSectionProb(
+  bucket: TimingBucket,
   borrow: string | null | undefined,
   shelf_age_days: number | null,
   prior_424b_count: number,
@@ -446,6 +469,15 @@ function empiricalSectionProb(
   catalyst_tier: number | null,
   day_of_run: number | null
 ): SectionProb | null {
+  // Priority 1 — Timing Framework Bucket (Predetermined State)
+  switch (bucket) {
+    case 'D0_INTRADAY': return { s1_pct: 68, s2_pct: 32, basis: 'bucket (D0_INTRADAY)' };
+    case 'D0_AH':       return { s1_pct: 38, s2_pct: 62, basis: 'bucket (D0_AH)' };
+    case 'D1_GAP_OPEN': return { s1_pct: 40, s2_pct: 60, basis: 'bucket (D1_GAP_OPEN)' };
+    case 'D1_INTRADAY': return { s1_pct: 88, s2_pct: 12, basis: 'bucket (D1_INTRADAY)' };
+    case 'DELAYED':     return { s1_pct: 58, s2_pct: 42, basis: 'bucket (DELAYED)' };
+  }
+
   // HTB exception: HTB + day 3 → S1 override (100%)
   if (borrow === 'HTB' && day_of_run !== null && day_of_run >= 3) {
     return { s1_pct: 100, s2_pct: 0, basis: 'HTB + day 3 exception' };
@@ -486,6 +518,14 @@ const OUTCOME_PROFILES: Record<CleanOutcome, OutcomeProfile> = {
   CLEAN_FADE:    { d1_avg: -15.5, d5_avg: -25.4 },
   VOLATILE_FADE: { d1_avg: -5.5,  d5_avg: -3.8  },
   CHOP:          { d1_avg: +6.2,  d5_avg: -4.0  },
+};
+
+const BUCKET_PROFILES: Record<TimingBucket, OutcomeProfile> = {
+  D0_INTRADAY: { d1_avg: -18.6, d5_avg: -22.5 },
+  D0_AH:       { d1_avg: -7.7,  d5_avg: -27.3 },
+  D1_GAP_OPEN: { d1_avg: -19.5, d5_avg: -42.5 },
+  D1_INTRADAY: { d1_avg: -19.9, d5_avg: -33.5 },
+  DELAYED:     { d1_avg: +11.5, d5_avg: -1.9  },
 };
 
 // ─── Bias ────────────────────────────────────────────────────────────────────
@@ -622,26 +662,25 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
   const probabilities = computeProbabilities(score);
   const reason = buildReason(signals, bias);
 
+  // Predictive Timing Bucket (Framework Bucket)
+  const predicted_bucket = predictTimingBucket(
+    p3?.structure,
+    p3?.borrow,
+    p3?.day_of_run ?? null,
+    phase1b?.gap_pct ?? null,
+    phase1b?.ah_move_pct ?? null,
+    p3?.vwap_failed ?? null,
+    p3?.wick_ratio ?? null,
+    signals
+  );
+
   let section: TradeSection | null = null;
   let clean_score: number | null = null;
   let clean_outcome: CleanOutcome | null = null;
   let outcome_profile: OutcomeProfile | null = null;
 
   if (score >= 8) {
-    section = classifySection(
-      p3?.vwap_failed ?? null,
-      p3?.day_of_run ?? null,
-      phase1b?.gap_pct ?? null,
-      p3?.borrow,
-      phase1?.prior_424b_count_12m ?? 0,
-      p3?.volume_ratio ?? null,
-      p3?.w1_imbalance,
-      phase1b?.ah_move_pct ?? null,
-      phase4?.shares_outstanding ?? null,
-      p3?.structure,
-      p3?.wick_ratio ?? null,
-      p3?.efficiency ?? null
-    );
+    section = classifySection(predicted_bucket);
 
     if (section === 'S1') {
       clean_score = computeCleanScore(
@@ -657,6 +696,9 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
       );
       clean_outcome = cleanScoreToOutcome(clean_score);
       outcome_profile = OUTCOME_PROFILES[clean_outcome];
+    } else {
+      // S2/Delayed — use bucket profile for expected return
+      outcome_profile = BUCKET_PROFILES[predicted_bucket];
     }
   }
 
@@ -668,8 +710,9 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     .filter(o => PATTERN_STATS[o])
     .map(o => PATTERN_STATS[o]);
 
-  // Empirical S1/S2 probability
+  // Empirical S1/S2 probability — uses bucket-first priority
   const section_prob = empiricalSectionProb(
+    predicted_bucket,
     p3?.borrow,
     phase1?.shelf_age_days ?? null,
     phase1?.prior_424b_count_12m ?? 0,
@@ -694,5 +737,6 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     overrides_fired,
     regime,
     pattern_stats,
+    predicted_bucket,
   };
 }
