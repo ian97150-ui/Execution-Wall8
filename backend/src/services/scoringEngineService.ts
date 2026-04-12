@@ -316,7 +316,7 @@ function predictTimingBucket(
 
   // 2. D0_AH: AH price drop precedes filing
   if (
-    (ah_move_pct !== null && ah_move_pct < -10) ||
+    (ah_move_pct !== null && ah_move_pct < -20) ||
     signals.includes('AH_FILING_GAP_T1') ||
     signals.includes('AH_FILING_GAP_T2') ||
     signals.includes('AH_REVERSAL_TRAP')
@@ -446,9 +446,10 @@ function detectRegime(
 // ─── Pattern stats lookup ─────────────────────────────────────────────────────
 
 const PATTERN_STATS: Record<string, PatternStat> = {
-  AH_REVERSAL_TRAP:  { pattern: 'AH_REVERSAL_TRAP',  n: 15, dump_pct: 93,  d5_avg: -34.1, max_dd: -48   },
-  DAY3_EXHAUSTION:   { pattern: 'DAY3_EXHAUSTION',   n: 4,  dump_pct: 100, d5_avg: -42.1, max_dd: -51.4 },
-  STRONG_HOLD_TRAP:  { pattern: 'STRONG_HOLD_TRAP',  n: 4,  dump_pct: 100, d5_avg: -48.9               },
+  // v3.0 — updated from 73-row dataset
+  AH_REVERSAL_TRAP:  { pattern: 'AH_REVERSAL_TRAP',  n: 12, dump_pct: 92,  d5_avg: -35.7, max_dd: -48   },
+  DAY3_EXHAUSTION:   { pattern: 'DAY3_EXHAUSTION',   n: 12, dump_pct: 83,  d5_avg: -33.8               },
+  STRONG_HOLD_TRAP:  { pattern: 'STRONG_HOLD_TRAP',  n: 4,  dump_pct: 100, d5_avg: -45.8               },
   OFFERING_FADE:     { pattern: 'OFFERING_FADE',     n: 5,  dump_pct: 80,  d5_avg: -25.1               },
   LF_BLOWOFF_FADE:   { pattern: 'LF_BLOWOFF_FADE',   n: 7,  dump_pct: 86,  d5_avg: -25.4               },
   AH_FILING_GAP_T1:  { pattern: 'AH_FILING_GAP_T1',  n: 12, dump_pct: 92,  d5_avg: -35.7, max_dd: -48   },
@@ -472,7 +473,7 @@ function empiricalSectionProb(
   // Priority 1 — Timing Framework Bucket (Predetermined State)
   switch (bucket) {
     case 'D0_INTRADAY': return { s1_pct: 68, s2_pct: 32, basis: 'bucket (D0_INTRADAY)' };
-    case 'D0_AH':       return { s1_pct: 38, s2_pct: 62, basis: 'bucket (D0_AH)' };
+    case 'D0_AH':       return { s1_pct: 88, s2_pct: 12, basis: 'bucket (D0_AH)' };
     case 'D1_GAP_OPEN': return { s1_pct: 40, s2_pct: 60, basis: 'bucket (D1_GAP_OPEN)' };
     case 'D1_INTRADAY': return { s1_pct: 88, s2_pct: 12, basis: 'bucket (D1_INTRADAY)' };
     case 'DELAYED':     return { s1_pct: 58, s2_pct: 42, basis: 'bucket (DELAYED)' };
@@ -484,23 +485,23 @@ function empiricalSectionProb(
   }
   // By borrow (most specific — live IBKR data, n=20)
   if (borrow === 'HARD')      return { s1_pct: 0,   s2_pct: 100, basis: 'borrow (HARD)' };
-  if (borrow === 'HTB')       return { s1_pct: 50,  s2_pct: 50,  basis: 'borrow (HTB)' };
-  if (borrow === 'EASY')      return { s1_pct: 75,  s2_pct: 25,  basis: 'borrow (EASY)' };
+  if (borrow === 'HTB')       return { s1_pct: 60,  s2_pct: 40,  basis: 'borrow (HTB)' };
+  if (borrow === 'EASY')      return { s1_pct: 100, s2_pct: 0,   basis: 'borrow (EASY)' };
   if (borrow === 'NO_LOCATE') return { s1_pct: 50,  s2_pct: 50,  basis: 'borrow (NO_LOCATE)' };
 
   // By shelf age
   if (shelf_age_days !== null) {
-    if (shelf_age_days < 30)  return { s1_pct: 100, s2_pct: 0,  basis: 'fresh shelf <30d' };
-    if (shelf_age_days <= 90) return { s1_pct: 37,  s2_pct: 63, basis: 'shelf 30–90d' };
+    if (shelf_age_days < 30)  return { s1_pct: 100, s2_pct: 0,   basis: 'fresh shelf <30d' };
+    if (shelf_age_days <= 90) return { s1_pct: 100, s2_pct: 0,   basis: 'shelf 30–90d' };
   }
 
   // By prior offerings
-  if (prior_424b_count === 0) return { s1_pct: 74, s2_pct: 26, basis: '0 prior offerings' };
-  if (prior_424b_count === 1) return { s1_pct: 27, s2_pct: 73, basis: '1 prior offering' };
-  if (prior_424b_count === 2) return { s1_pct: 50, s2_pct: 50, basis: '2 prior offerings' };
-  if (prior_424b_count === 3) return { s1_pct: 20, s2_pct: 80, basis: '3 prior offerings' };
-  if (prior_424b_count === 5) return { s1_pct: 33, s2_pct: 67, basis: '5 prior offerings' };
-  if (prior_424b_count >= 6)  return { s1_pct: 77, s2_pct: 23, basis: '6+ prior offerings' };
+  if (prior_424b_count === 0) return { s1_pct: 74,  s2_pct: 26, basis: '0 prior offerings' };
+  if (prior_424b_count === 1) return { s1_pct: 27,  s2_pct: 73, basis: '1 prior offering' };
+  if (prior_424b_count === 2) return { s1_pct: 88,  s2_pct: 12, basis: '2 prior offerings' };
+  if (prior_424b_count === 3) return { s1_pct: 100, s2_pct: 0,  basis: '3 prior offerings' };
+  if (prior_424b_count === 5) return { s1_pct: 100, s2_pct: 0,  basis: '5 prior offerings' };
+  if (prior_424b_count >= 6)  return { s1_pct: 93,  s2_pct: 7,  basis: '6+ prior offerings' };
 
   // By catalyst
   if (same_day_424b.length > 0)                return { s1_pct: 87, s2_pct: 13, basis: 'active 424B' };
@@ -521,9 +522,9 @@ const OUTCOME_PROFILES: Record<CleanOutcome, OutcomeProfile> = {
 };
 
 const BUCKET_PROFILES: Record<TimingBucket, OutcomeProfile> = {
-  D0_INTRADAY: { d1_avg: -18.6, d5_avg: -22.5 },
+  D0_INTRADAY: { d1_avg: -19.5, d5_avg: -23.3 },
   D0_AH:       { d1_avg: -7.7,  d5_avg: -27.3 },
-  D1_GAP_OPEN: { d1_avg: -19.5, d5_avg: -42.5 },
+  D1_GAP_OPEN: { d1_avg: -19.5, d5_avg: -42.6 },
   D1_INTRADAY: { d1_avg: -19.9, d5_avg: -33.5 },
   DELAYED:     { d1_avg: +11.5, d5_avg: -1.9  },
 };
