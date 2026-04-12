@@ -3,7 +3,7 @@
  * into a single structured checklist with short-bias label. Cat5ive v4.
  */
 
-import { getShelfAndFilingHistory, getRecentEightKText, EightKResult } from './edgarService';
+import { getShelfAndFilingHistory, getRecentEightKText, getInsiderSignals, EightKResult, InsiderSignals } from './edgarService';
 import { getAnalystCoverage, getShortInterest, getRecentNews, AnalystCoverage, NewsItem } from './finnhubService';
 import { getPriceActionSignals } from './marketDataService';
 import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
@@ -38,6 +38,7 @@ export interface SecChecklist {
     same_day_424b: { form: string; filing_url: string }[];
     eightk: EightKResult;
     analyst: AnalystCoverage;
+    insider_signals?: InsiderSignals | null;
     error?: string;
   };
 
@@ -268,13 +269,14 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
   // Preserve only the manual field
   const manualSympathy = existing?.phase2?.sympathy_trade ?? null;
 
-  const [shelf, eightk, priceAction, analyst, shortInterest, news] = await Promise.all([
+  const [shelf, eightk, priceAction, analyst, shortInterest, news, insiderSignals] = await Promise.all([
     getShelfAndFilingHistory(upper),
     getRecentEightKText(upper),
     getPriceActionSignals(upper),
     getAnalystCoverage(upper),
     getShortInterest(upper),
-    getRecentNews(upper, 2)
+    getRecentNews(upper, 2),
+    getInsiderSignals(upper)
   ]);
 
   const phase1: SecChecklist['phase1'] = {
@@ -286,6 +288,7 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
     same_day_424b: shelf.same_day_424b,
     eightk,
     analyst,
+    insider_signals: insiderSignals,
     ...(shelf.error ? { error: shelf.error } : {})
   };
 

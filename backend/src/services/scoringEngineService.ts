@@ -26,7 +26,17 @@ export type SignalTag =
   | 'ACTIVE_424B'
   | 'THIN_AH_SPIKE'
   | 'LARGE_PRINT_BELOW'
-  | 'VWAP_HELD';
+  | 'VWAP_HELD'
+  // Composite patterns
+  | 'OFFERING_FADE'
+  | 'LF_BLOWOFF_FADE'
+  // AH filing gap tiers
+  | 'AH_FILING_GAP_T1'
+  | 'AH_FILING_GAP_T2'
+  // Insider signals
+  | 'FORM144_PRESALE'
+  | 'FORM4_SELL'
+  | 'ATM_TERMINATED';
 
 export type TradeBias =
   | 'MAX_CONVICTION'    // score >= 15 · 94% dump
@@ -196,6 +206,84 @@ function ruleThinAH(ah_classification: string | null): { points: number; tag: Si
   return { points: 0, tag: null };
 }
 
+// ─── Rule 12 — OFFERING_FADE (composite) ─────────────────────────────────────
+// BLOW_OFF + PM_FADE + same-session 8-K + 424B → 80% dump, D+5=-25.1% (n=5)
+
+function ruleOfferingFade(
+  structure: string | null | undefined,
+  pm_high_reclaimed: boolean | null,
+  same_day_424b: { form: string; filing_url: string }[],
+  eightk_found: boolean
+): { points: number; tag: SignalTag | null } {
+  if (
+    structure === 'BLOW_OFF_TOP' &&
+    pm_high_reclaimed === false &&
+    same_day_424b.length > 0 &&
+    eightk_found
+  ) {
+    return { points: 5.0, tag: 'OFFERING_FADE' };
+  }
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 13 — LF_BLOWOFF_FADE (composite) ───────────────────────────────────
+// BLOW_OFF + PM_FADE + LOW_FLOAT_PARABOLIC regime → 86% dump, D+5=-25.4% (n=7)
+
+function ruleLFBlowoffFade(
+  structure: string | null | undefined,
+  pm_high_reclaimed: boolean | null,
+  regime: RegimeStat | null
+): { points: number; tag: SignalTag | null } {
+  if (
+    structure === 'BLOW_OFF_TOP' &&
+    pm_high_reclaimed === false &&
+    regime?.regime === 'LOW_FLOAT_PARABOLIC'
+  ) {
+    return { points: 4.0, tag: 'LF_BLOWOFF_FADE' };
+  }
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 14 — AH Filing Gap ─────────────────────────────────────────────────
+// AH price drop leads EDGAR filing by 10–20 min — filing is confirmation.
+// Tier 1 (<-30% AH, vol>50×): n=12, 92% dump, D+5=-35.7%
+// Tier 2 (-10% to -30%): n=1, 100% dump, D+5=-36.7%
+// False positive filter: skip if vol_ratio <= 50× (BJDX case)
+
+function ruleAHFilingGap(
+  ah_move_pct: number | null,
+  ah_vol_ratio: number | null,
+  gap_pct: number | null,
+  same_day_424b: { form: string; filing_url: string }[],
+  eightk_found: boolean,
+  eightk_signals: string[]
+): { points: number; tag: SignalTag | null } {
+  // Eligibility checks
+  if (ah_move_pct === null || ah_move_pct >= -5) return { points: 0, tag: null };
+  if (ah_vol_ratio === null || ah_vol_ratio <= 50) return { points: 0, tag: null };
+  if (gap_pct === null || gap_pct <= 40) return { points: 0, tag: null };
+  if (!same_day_424b.length && !eightk_found) return { points: 0, tag: null };
+  if (eightk_signals.includes('ATM_TERMINATED')) return { points: 0, tag: null };
+
+  if (ah_move_pct < -30) return { points: 4.0, tag: 'AH_FILING_GAP_T1' };
+  if (ah_move_pct < -10) return { points: 2.0, tag: 'AH_FILING_GAP_T2' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 15 — Insider signals ────────────────────────────────────────────────
+
+function ruleInsiderSignals(
+  insider_signals: { form144_presale: boolean; form4_sell: boolean } | null | undefined,
+  eightk_signals: string[]
+): { points: number; tags: SignalTag[] } {
+  let points = 0;
+  const tags: SignalTag[] = [];
+  if (insider_signals?.form144_presale) { points += 2.5; tags.push('FORM144_PRESALE'); }
+  if (insider_signals?.form4_sell)      { points += 2.0; tags.push('FORM4_SELL'); }
+  if (eightk_signals.includes('ATM_TERMINATED')) { points -= 2.0; tags.push('ATM_TERMINATED'); }
+  return { points, tags };
+}
+
 // ─── S1/S2 Classifier ────────────────────────────────────────────────────────
 // Only run when short score >= 8. Tie → S1 (lower risk).
 
@@ -336,9 +424,14 @@ function detectRegime(
 // ─── Pattern stats lookup ─────────────────────────────────────────────────────
 
 const PATTERN_STATS: Record<string, PatternStat> = {
-  AH_REVERSAL_TRAP:  { pattern: 'AH_REVERSAL_TRAP',  n: 15, dump_pct: 93, d5_avg: -34.1, max_dd: -48 },
+  AH_REVERSAL_TRAP:  { pattern: 'AH_REVERSAL_TRAP',  n: 15, dump_pct: 93,  d5_avg: -34.1, max_dd: -48   },
   DAY3_EXHAUSTION:   { pattern: 'DAY3_EXHAUSTION',   n: 4,  dump_pct: 100, d5_avg: -42.1, max_dd: -51.4 },
-  STRONG_HOLD_TRAP:  { pattern: 'STRONG_HOLD_TRAP',  n: 4,  dump_pct: 100, d5_avg: -48.9 },
+  STRONG_HOLD_TRAP:  { pattern: 'STRONG_HOLD_TRAP',  n: 4,  dump_pct: 100, d5_avg: -48.9               },
+  OFFERING_FADE:     { pattern: 'OFFERING_FADE',     n: 5,  dump_pct: 80,  d5_avg: -25.1               },
+  LF_BLOWOFF_FADE:   { pattern: 'LF_BLOWOFF_FADE',   n: 7,  dump_pct: 86,  d5_avg: -25.4               },
+  AH_FILING_GAP_T1:  { pattern: 'AH_FILING_GAP_T1',  n: 12, dump_pct: 92,  d5_avg: -35.7, max_dd: -48   },
+  AH_FILING_GAP_T2:  { pattern: 'AH_FILING_GAP_T2',  n: 1,  dump_pct: 100, d5_avg: -36.7               },
+  FORM144_PRESALE:   { pattern: 'FORM144_PRESALE',   n: 4,  dump_pct: 100, d5_avg: -30.0               },
 };
 
 // ─── S1/S2 empirical probability ──────────────────────────────────────────────
@@ -444,6 +537,13 @@ const TAG_LABELS: Record<SignalTag, string> = {
   THIN_AH_SPIKE:     'thin AH spike',
   LARGE_PRINT_BELOW: 'large print below VWAP',
   VWAP_HELD:         'VWAP holding',
+  OFFERING_FADE:     'offering fade pattern',
+  LF_BLOWOFF_FADE:   'LF blowoff fade',
+  AH_FILING_GAP_T1:  'AH filing gap Tier 1',
+  AH_FILING_GAP_T2:  'AH filing gap Tier 2',
+  FORM144_PRESALE:   'Form 144 pre-sale',
+  FORM4_SELL:        'Form 4 insider sell',
+  ATM_TERMINATED:    'ATM terminated',
 };
 
 function buildReason(tags: SignalTag[], bias: TradeBias): string {
@@ -480,15 +580,37 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
   const r10 = ruleActive424B(phase1?.same_day_424b ?? []);
   const r11 = ruleThinAH(phase1b?.ah_classification ?? null);
 
+  // Detect regime first so composite rules can reference it
+  const regime = detectRegime(
+    phase1?.same_day_424b ?? [],
+    phase1?.eightk?.signals ?? [],
+    p3?.day_of_run ?? null,
+    phase1?.prior_424b_count_12m ?? 0,
+    phase1?.shelf_type ?? null,
+    phase2?.catalyst_tier ?? null,
+    phase4?.shares_outstanding ?? null,
+    p3?.efficiency ?? null
+  );
+
+  const eightk_signals: string[] = phase1?.eightk?.signals ?? [];
+
+  const r12 = ruleOfferingFade(p3?.structure, p3?.pm_high_reclaimed ?? null, phase1?.same_day_424b ?? [], phase1?.eightk?.found ?? false);
+  const r13 = ruleLFBlowoffFade(p3?.structure, p3?.pm_high_reclaimed ?? null, regime);
+  const r14 = ruleAHFilingGap(phase1b?.ah_move_pct ?? null, phase1b?.ah_vol_ratio ?? null, phase1b?.gap_pct ?? null, phase1?.same_day_424b ?? [], phase1?.eightk?.found ?? false, eightk_signals);
+  const r15 = ruleInsiderSignals((phase1 as any)?.insider_signals, eightk_signals);
+
   const rawScore =
     r1.points + r2.points + r3.points + r4.points + r5.points +
-    r6.points + r7.points + r8.points + r9.points + r10.points + r11.points;
+    r6.points + r7.points + r8.points + r9.points + r10.points + r11.points +
+    r12.points + r13.points + r14.points + r15.points;
 
   const score = parseFloat(rawScore.toFixed(1));
 
-  const signals: SignalTag[] = [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11]
-    .filter(r => r.tag !== null)
-    .map(r => r.tag as SignalTag);
+  const singleTagRules = [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14];
+  const signals: SignalTag[] = [
+    ...singleTagRules.filter(r => r.tag !== null).map(r => r.tag as SignalTag),
+    ...r15.tags,
+  ];
 
   // Override labels are display-only — no execution effect
   const overrides_fired: string[] = [r1, r2, r3]
@@ -538,20 +660,11 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     }
   }
 
-  // Regime detection
-  const regime = detectRegime(
-    phase1?.same_day_424b ?? [],
-    phase1?.eightk?.signals ?? [],
-    p3?.day_of_run ?? null,
-    phase1?.prior_424b_count_12m ?? 0,
-    phase1?.shelf_type ?? null,
-    phase2?.catalyst_tier ?? null,
-    phase4?.shares_outstanding ?? null,
-    p3?.efficiency ?? null
-  );
-
-  // Pattern stats for fired overrides
-  const pattern_stats: PatternStat[] = overrides_fired
+  // Pattern stats — overrides + composite patterns + AH gap + insider form 144
+  const allFiredTags = [...overrides_fired, ...signals.filter(s =>
+    ['OFFERING_FADE', 'LF_BLOWOFF_FADE', 'AH_FILING_GAP_T1', 'AH_FILING_GAP_T2', 'FORM144_PRESALE'].includes(s)
+  )];
+  const pattern_stats: PatternStat[] = allFiredTags
     .filter(o => PATTERN_STATS[o])
     .map(o => PATTERN_STATS[o]);
 

@@ -56,6 +56,11 @@ function daysBetween(dateStr: string): number {
   return Math.floor((today.getTime() - then.getTime()) / 86400000);
 }
 
+export interface InsiderSignals {
+  form144_presale: boolean;  // Form 144 filed within 30d (insider pre-sale notice)
+  form4_sell: boolean;       // Form 4 filed within 14d (insider disposition)
+}
+
 // ─── lookupCIK ───────────────────────────────────────────────────────────────
 
 export async function lookupCIK(ticker: string): Promise<string | null> {
@@ -137,6 +142,46 @@ export async function getShelfAndFilingHistory(ticker: string): Promise<ShelfHis
   } catch (err: any) {
     return { ...base, error: err.message };
   }
+}
+
+// ─── getInsiderSignals ────────────────────────────────────────────────────────
+// Checks EDGAR submissions for Form 144 (pre-sale notice) and Form 4 (insider
+// disposition) filed recently. Non-blocking — returns false/false on any error.
+
+export async function getInsiderSignals(ticker: string): Promise<InsiderSignals> {
+  const result: InsiderSignals = { form144_presale: false, form4_sell: false };
+  try {
+    const cik = await lookupCIK(ticker);
+    if (!cik) return result;
+
+    const paddedCik = cik.padStart(10, '0');
+    const url = `https://data.sec.gov/submissions/CIK${paddedCik}.json`;
+    const res = await edgarFetch(url);
+    if (!res.ok) return result;
+
+    const data = await res.json() as any;
+    const recent = data.filings?.recent;
+    if (!recent) return result;
+
+    const forms: string[] = recent.form || [];
+    const dates: string[] = recent.filingDate || [];
+
+    const cutoff144 = daysAgo(30);
+    const cutoff4   = daysAgo(14);
+
+    for (let i = 0; i < forms.length; i++) {
+      if (!result.form144_presale && forms[i] === '144' && dates[i] >= cutoff144) {
+        result.form144_presale = true;
+      }
+      if (!result.form4_sell && forms[i] === '4' && dates[i] >= cutoff4) {
+        result.form4_sell = true;
+      }
+      if (result.form144_presale && result.form4_sell) break;
+    }
+  } catch {
+    // non-blocking
+  }
+  return result;
 }
 
 // ─── getRecentEightKText ──────────────────────────────────────────────────────

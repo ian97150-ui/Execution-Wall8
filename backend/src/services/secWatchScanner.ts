@@ -14,6 +14,7 @@ import { prisma } from '../index';
 import { checkSecFilings } from './secCallbackService';
 import { PushoverNotifications } from './pushoverService';
 import { runChecklist } from './secChecklistService';
+import type { ScoreSnapshot } from './scoringEngineService';
 
 // Fixed ET scan times (HH:MM 24h)
 const SCAN_TIMES_ET = ['06:00', '07:30', '09:00', '11:00', '13:00', '15:30', '17:00'];
@@ -122,6 +123,52 @@ export async function runSecWatchScan(): Promise<{ ticker: string; found: boolea
   return results;
 }
 
+/**
+ * AH Filing Gap scan — runs at 17:00 ET.
+ * For each SEC-watched ticker with AH_FILING_GAP_T1 in score_snapshot.signals,
+ * places a limit short order at prior_close × 0.82 (18% below close) via broker webhook.
+ * Only fires when broker webhook is enabled. Non-blocking per ticker.
+ */
+async function runAHFilingGapScan(): Promise<void> {
+  const settings = await prisma.executionSettings.findFirst().catch(() => null);
+  if (!settings?.broker_webhook_enabled || !settings?.broker_webhook_url) return;
+
+  const watched = await prisma.tradeIntent.findMany({
+    where: { sec_watch: true },
+    select: { id: true, ticker: true, sec_checklist: true }
+  });
+
+  for (const intent of watched) {
+    try {
+      if (!intent.sec_checklist) continue;
+      const checklist = JSON.parse(intent.sec_checklist);
+      const snap: ScoreSnapshot | null = checklist.score_snapshot ?? null;
+      if (!snap?.signals?.includes('AH_FILING_GAP_T1')) continue;
+
+      const prior_close: number | null = checklist.phase1b?.prior_close ?? null;
+      if (!prior_close || prior_close <= 0) continue;
+
+      const limit_price = parseFloat((prior_close * 0.82).toFixed(2));
+
+      console.log(`📉 AH_FILING_GAP_T1 — placing D+1 limit short for ${intent.ticker} at $${limit_price} (prior_close $${prior_close})`);
+
+      await fetch(settings.broker_webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: intent.ticker,
+          action: 'sell',
+          quantity: 1,
+          limit_price,
+          source: 'AH_FILING_GAP_T1'
+        })
+      });
+    } catch (e: any) {
+      console.warn(`⚠️ AH gap order failed for ${intent.ticker}: ${e.message}`);
+    }
+  }
+}
+
 export function startSecWatchScanner(): void {
   if (scannerInterval) return;
 
@@ -135,6 +182,12 @@ export function startSecWatchScanner(): void {
       await runSecWatchScan().catch(err =>
         console.error('❌ SEC watch scan failed:', err.message)
       );
+      // At 17:00 ET — after-hours filing window — check for AH_FILING_GAP_T1 orders
+      if (etMinute === '17:00') {
+        runAHFilingGapScan().catch(err =>
+          console.error('❌ AH filing gap scan failed:', err.message)
+        );
+      }
     }
   }, 60_000);
 
