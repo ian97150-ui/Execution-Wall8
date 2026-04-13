@@ -5,6 +5,7 @@ import { checkSecFilings } from '../services/secCallbackService';
 import { runSecWatchScan } from '../services/secWatchScanner';
 import { runChecklist, applyManualOverride, SecChecklist } from '../services/secChecklistService';
 import { runSpikeScanOnDemand } from '../services/spikeMonitorService';
+import { getW1Imbalance, getLargePrintZone, inferBorrowRegime } from '../services/alpacaFlowService';
 
 const router = express.Router();
 
@@ -268,6 +269,18 @@ router.post('/scan-spikes', async (req: Request, res: Response) => {
     console.error('Error running spike scan:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Debug: test Alpaca data fetch for a ticker
+router.get('/debug-alpaca/:ticker', async (req: Request, res: Response) => {
+  const ticker = (req.params.ticker as string).toUpperCase();
+  const hasKeys = !!(process.env.ALPACA_KEY && process.env.ALPACA_SECRET);
+  const [w1, lpz, borrow] = await Promise.all([
+    getW1Imbalance(ticker).catch((e: any) => ({ error: e.message })),
+    getLargePrintZone(ticker).catch((e: any) => ({ error: e.message })),
+    inferBorrowRegime(ticker).catch((e: any) => ({ error: e.message }))
+  ]);
+  res.json({ ticker, hasKeys, w1_imbalance: w1, large_print_zone: lpz, borrow });
 });
 
 // Manual SEC scan for a single watched ticker
