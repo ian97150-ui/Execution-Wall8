@@ -32,6 +32,19 @@ function etToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
+// Returns '-04:00' (EDT/summer) or '-05:00' (EST/winter)
+function etOffset(): string {
+  const now = new Date();
+  const utcHour = now.getUTCHours();
+  const etHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }));
+  const offset = utcHour - etHour;
+  return offset === 4 ? '-04:00' : '-05:00';
+}
+
+function etTs(date: string, hhmm: string): string {
+  return `${date}T${hhmm}:00${etOffset()}`;
+}
+
 
 async function alpacaFetch(url: string, headers: Record<string, string>): Promise<any | null> {
   try {
@@ -55,8 +68,8 @@ export async function getW1Imbalance(ticker: string): Promise<number | null> {
   const today = etToday();
 
   // Fetch 1-min bars 9:30–9:35 ET
-  const start = `${today}T09:30:00`;
-  const end   = `${today}T09:35:00`;
+  const start = etTs(today, '09:30');
+  const end   = etTs(today, '09:35');
   const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 
   const data = await alpacaFetch(url, headers);
@@ -95,8 +108,8 @@ export async function getLargePrintZone(ticker: string): Promise<'BELOW_VWAP' | 
   if (!headers) return null;
 
   const today = etToday();
-  const start = `${today}T09:30:00`;
-  const end   = `${today}T09:45:00`;
+  const start = etTs(today, '09:30');
+  const end   = etTs(today, '09:45');
   const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 
   const data = await alpacaFetch(url, headers);
@@ -131,8 +144,8 @@ export async function inferBorrowRegime(ticker: string): Promise<'EASY' | 'HARD'
   if (!headers) return null;
 
   const today = etToday();
-  const start = `${today}T04:00:00`;
-  const end   = `${today}T09:00:00`;
+  const start = etTs(today, '04:00');
+  const end   = etTs(today, '09:00');
   const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Hour&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 
   const data = await alpacaFetch(url, headers);
