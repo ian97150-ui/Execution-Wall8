@@ -28,33 +28,10 @@ function getAlpacaHeaders(): Record<string, string> | null {
   };
 }
 
-function getETHHMM(): string {
-  return new Date().toLocaleTimeString('en-US', {
-    timeZone: 'America/New_York',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
 function etToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
-// Build RFC3339 timestamp in ET for a given date + HH:MM
-function etDateTime(date: string, hhmm: string): string {
-  // date = 'YYYY-MM-DD', hhmm = 'HH:MM'
-  // Return as UTC ISO string (Alpaca accepts RFC3339)
-  const [h, m] = hhmm.split(':').map(Number);
-  // ET offset: -4 in EDT (summer), -5 in EST (winter)
-  // Simple approximation: use the browser's current ET offset
-  const refDate = new Date(`${date}T${hhmm.padStart(5, '0')}:00`);
-  const etOffsetMin = parseInt(
-    new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
-  ) - new Date().getHours();
-  refDate.setMinutes(refDate.getMinutes() - etOffsetMin * 60);
-  return refDate.toISOString();
-}
 
 async function alpacaFetch(url: string, headers: Record<string, string>): Promise<any | null> {
   try {
@@ -78,9 +55,9 @@ export async function getW1Imbalance(ticker: string): Promise<number | null> {
   const today = etToday();
 
   // Fetch 1-min bars 9:30–9:35 ET
-  const start = `${today}T09:30:00-04:00`;
-  const end   = `${today}T09:35:00-04:00`;
-  const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&feed=iex`;
+  const start = `${today}T09:30:00`;
+  const end   = `${today}T09:35:00`;
+  const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 
   const data = await alpacaFetch(url, headers);
   const bars: any[] = data?.bars ?? [];
@@ -118,9 +95,9 @@ export async function getLargePrintZone(ticker: string): Promise<'BELOW_VWAP' | 
   if (!headers) return null;
 
   const today = etToday();
-  const start = `${today}T09:30:00-04:00`;
-  const end   = `${today}T09:45:00-04:00`;
-  const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&feed=iex`;
+  const start = `${today}T09:30:00`;
+  const end   = `${today}T09:45:00`;
+  const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 
   const data = await alpacaFetch(url, headers);
   const bars: any[] = data?.bars ?? [];
@@ -154,9 +131,9 @@ export async function inferBorrowRegime(ticker: string): Promise<'EASY' | 'HARD'
   if (!headers) return null;
 
   const today = etToday();
-  const start = `${today}T04:00:00-04:00`;
-  const end   = `${today}T09:00:00-04:00`;
-  const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Hour&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&feed=iex`;
+  const start = `${today}T04:00:00`;
+  const end   = `${today}T09:00:00`;
+  const url = `${ALPACA_DATA_BASE}/${ticker}/bars?timeframe=1Hour&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 
   const data = await alpacaFetch(url, headers);
   const bars: any[] = data?.bars ?? [];
