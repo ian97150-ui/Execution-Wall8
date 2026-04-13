@@ -7,6 +7,7 @@ import { getShelfAndFilingHistory, getRecentEightKText, getInsiderSignals, Eight
 import { getAnalystCoverage, getShortInterest, getRecentNews, AnalystCoverage, NewsItem } from './finnhubService';
 import { getPriceActionSignals } from './marketDataService';
 import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
+import { fetchAlpacaPhase3Fields } from './alpacaFlowService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -269,14 +270,15 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
   // Preserve only the manual field
   const manualSympathy = existing?.phase2?.sympathy_trade ?? null;
 
-  const [shelf, eightk, priceAction, analyst, shortInterest, news, insiderSignals] = await Promise.all([
+  const [shelf, eightk, priceAction, analyst, shortInterest, news, insiderSignals, alpacaPatch] = await Promise.all([
     getShelfAndFilingHistory(upper),
     getRecentEightKText(upper),
     getPriceActionSignals(upper),
     getAnalystCoverage(upper),
     getShortInterest(upper),
     getRecentNews(upper, 2),
-    getInsiderSignals(upper)
+    getInsiderSignals(upper),
+    fetchAlpacaPhase3Fields(upper).catch(() => ({} as Awaited<ReturnType<typeof fetchAlpacaPhase3Fields>>))
   ]);
 
   const phase1: SecChecklist['phase1'] = {
@@ -325,6 +327,10 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
     efficiency: priceAction.efficiency,
     // Auto-classify structure — manual override takes precedence if already set
     structure: existing?.phase3?.structure ?? priceAction.structure,
+    // Alpaca auto-populate — manual override takes precedence
+    large_print_zone: existing?.phase3?.large_print_zone ?? alpacaPatch.large_print_zone ?? null,
+    borrow: existing?.phase3?.borrow ?? alpacaPatch.borrow ?? null,
+    w1_imbalance: existing?.phase3?.w1_imbalance ?? alpacaPatch.w1_imbalance ?? null,
     ...(priceAction.error ? { error: priceAction.error } : {})
   };
 

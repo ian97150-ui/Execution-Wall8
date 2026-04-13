@@ -79,9 +79,18 @@ export default function TradeCard({
 
   // Parse score snapshot from sec_checklist
   let scoreSnapshot = null;
+  let filingConfirmedRecently = false;
   try {
     const cl = intent.sec_checklist ? JSON.parse(intent.sec_checklist) : null;
     scoreSnapshot = cl?.score_snapshot ?? null;
+    // 55% buffer only valid when a filing was confirmed same-day or prior day
+    if (cl && intent.sec_confirmed) {
+      const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      const yday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      const runDate = cl.run_at ? cl.run_at.slice(0, 10) : null;
+      const hasFiling = (cl.phase1?.same_day_424b?.length > 0) || cl.phase1?.eightk?.found;
+      filingConfirmedRecently = hasFiling && (runDate === todayET || runDate === yday);
+    }
   } catch {}
 
   const getSecUrl = (ticker) => {
@@ -195,7 +204,7 @@ export default function TradeCard({
                   </span>
                 )}
               </div>
-              {(intent.sec_confirmed || intent.sec_watch) && (
+              {filingConfirmedRecently && (
                 <p className="text-xs font-semibold text-amber-400/80 tracking-wide">
                   ⚠️ 55% buffer invalidated
                 </p>
