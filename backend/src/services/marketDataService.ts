@@ -107,6 +107,8 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
     structure: null
   };
 
+  let todayRthVol = 0;
+
   try {
     // Parallel fetch: 2d intraday 1m (captures prior AH) + quoteSummary + 10d daily
     const [intradayRes, quoteRes, dailyRes] = await Promise.all([
@@ -193,12 +195,15 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
         base.rth_open = rthOpenPrice;
         base.current_price = currentPrice;
 
-        // Intraday move % + efficiency
+        // Intraday move %
         if (maxHighSinceOpen !== null && rthOpenPrice !== null && rthOpenPrice > 0) {
           base.intraday_move_pct = parseFloat(
             (((maxHighSinceOpen - rthOpenPrice) / rthOpenPrice) * 100).toFixed(2)
           );
         }
+
+        // Today's RTH volume (sum of intraday candles)
+        todayRthVol = rthCandles.reduce((s, cd) => s + cd.v, 0);
 
         // AH derived fields
         if (ahHigh !== null) {
@@ -264,35 +269,32 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
       }
     }
 
-    // ── Volume ratio ─────────────────────────────────────────────────────────
-    if (quoteRes.ok) {
+    // ── Current price fallback from quoteSummary ─────────────────────────────
+    if (!base.current_price && quoteRes.ok) {
       const quoteData = await quoteRes.json() as any;
       const price = quoteData?.quoteSummary?.result?.[0]?.price;
-      if (price) {
-        const todayVol = price.regularMarketVolume?.raw;
-        const avgVol = price.averageDailyVolume3Month?.raw;
-        if (todayVol && avgVol && avgVol > 0) {
-          base.volume_ratio = parseFloat((todayVol / avgVol).toFixed(2));
-        }
-        if (!base.current_price && price.regularMarketPrice?.raw) {
-          base.current_price = price.regularMarketPrice.raw;
-        }
+      if (price?.regularMarketPrice?.raw) {
+        base.current_price = price.regularMarketPrice.raw;
       }
     }
 
-    // Efficiency computed after vol_ratio is available
-    if (base.intraday_move_pct !== null && base.volume_ratio !== null) {
-      const cappedVol = Math.max(base.volume_ratio, 0.01);
-      base.efficiency = parseFloat((base.intraday_move_pct / cappedVol).toFixed(3));
-    }
-
-    // ── Day of run + prior_close fallback (10d daily) ─────────────────────────
+    // ── Day of run + prior_close fallback + avg volume (10d daily) ──────────
     if (dailyRes.ok) {
       const dailyData = await dailyRes.json() as any;
       const result = dailyData?.chart?.result?.[0];
       if (result) {
         const closes: number[] = result.indicators?.quote?.[0]?.close || [];
+        const dailyVols: number[] = result.indicators?.quote?.[0]?.volume || [];
         const validCloses = closes.filter((c: any) => c != null);
+
+        // Avg daily volume from prior bars (exclude today's partial bar)
+        const priorVols = dailyVols.slice(0, -1).filter((v: any) => v != null && v > 0);
+        if (priorVols.length > 0 && todayRthVol > 0) {
+          const avgVol = priorVols.reduce((s: number, v: number) => s + v, 0) / priorVols.length;
+          if (avgVol > 0) {
+            base.volume_ratio = parseFloat((todayRthVol / avgVol).toFixed(2));
+          }
+        }
         if (validCloses.length >= 2) {
           // Fallback prior_close from daily if intraday didn't capture prior RTH
           if (base.prior_close === null) {
@@ -314,6 +316,12 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
           base.day_of_run = runDays;
         }
       }
+    }
+
+    // Efficiency = intraday_move_pct / volume_ratio (price gain per unit of volume)
+    // < 0.50 means huge vol needed to move price → distribution / PM_SELL_PRESSURE
+    if (base.intraday_move_pct !== null && base.volume_ratio !== null && base.volume_ratio > 0) {
+      base.efficiency = parseFloat((base.intraday_move_pct / Math.max(base.volume_ratio, 0.01)).toFixed(3));
     }
 
     // Auto-classify structure from computed price action fields
