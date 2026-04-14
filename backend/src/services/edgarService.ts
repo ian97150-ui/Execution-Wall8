@@ -9,6 +9,32 @@ const TIMEOUT_MS = 8000;
 // Module-level CIK cache
 const cikCache = new Map<string, string>();
 
+// Bulk ticker→CIK map loaded once from SEC company_tickers.json
+let bulkTickerMap: Map<string, string> | null = null;
+let bulkLoadPromise: Promise<void> | null = null;
+
+async function loadBulkTickerMap(): Promise<void> {
+  if (bulkTickerMap) return;
+  if (bulkLoadPromise) return bulkLoadPromise;
+  bulkLoadPromise = (async () => {
+    try {
+      const res = await fetch('https://www.sec.gov/files/company_tickers.json', {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!res.ok) return;
+      const data = await res.json() as Record<string, { cik_str: number; ticker: string; title: string }>;
+      bulkTickerMap = new Map();
+      for (const entry of Object.values(data)) {
+        bulkTickerMap.set(entry.ticker.toUpperCase(), String(entry.cik_str));
+      }
+    } catch {
+      bulkTickerMap = new Map(); // empty map on failure — fall through to CGI
+    }
+  })();
+  return bulkLoadPromise;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface ShelfHistory {
@@ -67,12 +93,20 @@ export async function lookupCIK(ticker: string): Promise<string | null> {
   const upper = ticker.toUpperCase();
   if (cikCache.has(upper)) return cikCache.get(upper)!;
 
+  // Try bulk map first (company_tickers.json — covers ~12k SEC registrants)
+  await loadBulkTickerMap();
+  if (bulkTickerMap?.has(upper)) {
+    const cik = bulkTickerMap.get(upper)!.padStart(10, '0');
+    cikCache.set(upper, cik);
+    return cik;
+  }
+
+  // Fall back to CGI search for very new or OTC tickers not in bulk file
   try {
     const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${upper}&output=atom`;
     const res = await edgarFetch(url);
     if (!res.ok) return null;
     const text = await res.text();
-    // EDGAR atom returns CIK as <cik>1864581</cik> (variable length, not zero-padded)
     const match = text.match(/<cik>(\d+)<\/cik>/i);
     if (!match) return null;
     const cik = match[1].padStart(10, '0');
