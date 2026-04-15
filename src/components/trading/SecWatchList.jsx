@@ -252,6 +252,63 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               <TrendingDown className="w-3 h-3" /> Cat5ive Score
             </p>
 
+            {/* Pre-fall score headline (v4) */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "text-2xl font-bold tabular-nums",
+                  scoreSnapshot.pre_fall_tier === 'HIGH'   ? "text-emerald-400" :
+                  scoreSnapshot.pre_fall_tier === 'MEDIUM' ? "text-amber-400" :
+                  scoreSnapshot.pre_fall_tier === 'LOW'    ? "text-yellow-500" :
+                  "text-slate-500"
+                )}>
+                  {scoreSnapshot.pre_fall_score ?? 0}
+                </span>
+                <span className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border",
+                  scoreSnapshot.pre_fall_tier === 'HIGH'   ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" :
+                  scoreSnapshot.pre_fall_tier === 'MEDIUM' ? "bg-amber-500/20 text-amber-400 border-amber-500/40" :
+                  scoreSnapshot.pre_fall_tier === 'LOW'    ? "bg-yellow-500/15 text-yellow-500 border-yellow-500/30" :
+                  "bg-slate-700/50 text-slate-500 border-slate-600/40"
+                )}>
+                  {scoreSnapshot.pre_fall_tier ?? 'SKIP'}
+                </span>
+                {scoreSnapshot.bucket_dump_pct != null && (
+                  <span className="text-[10px] text-slate-400">
+                    {scoreSnapshot.bucket_dump_pct}% dump · {scoreSnapshot.predicted_bucket?.replace(/_/g, ' ')}
+                  </span>
+                )}
+              </div>
+              <span className={cn(
+                "text-xs font-mono font-bold",
+                scoreSnapshot.score >= 8 ? "text-red-400" : scoreSnapshot.score <= -3 ? "text-emerald-400" : "text-slate-500"
+              )}>
+                {scoreSnapshot.score > 0 ? `+${scoreSnapshot.score}` : scoreSnapshot.score}
+              </span>
+            </div>
+
+            {/* Disqualifier chips */}
+            {scoreSnapshot.disqualifiers?.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {scoreSnapshot.disqualifiers.map(dq => (
+                  <span key={dq} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-400 border border-slate-600/40">
+                    ✗ {dq.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Pre-fall flags */}
+            {scoreSnapshot.pre_fall_flags?.length > 0 && scoreSnapshot.pre_fall_tier !== 'SKIP' && (
+              <div className="flex flex-wrap gap-1">
+                {scoreSnapshot.pre_fall_flags.map(f => (
+                  <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                    {f.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            )}
+
             {/* Override chips */}
             {scoreSnapshot.overrides_fired?.length > 0 && (
               <div className="flex gap-1 flex-wrap">
@@ -263,7 +320,7 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               </div>
             )}
 
-            {/* Section badge + bias chip + confidence + score */}
+            {/* Section badge + bias chip + confidence */}
             <div className="flex items-center gap-2 flex-wrap">
               {scoreSnapshot.section && (
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-slate-700/60 text-slate-300 border border-slate-600/50">
@@ -283,12 +340,6 @@ function ChecklistPanel({ checklist, onRunChecklist, onToggleManual, intent, run
               </span>
               <span className="text-xs font-mono text-slate-500">
                 {Math.round(scoreSnapshot.confidence * 100)}% conf
-              </span>
-              <span className={cn(
-                "text-xs font-mono font-bold ml-auto",
-                scoreSnapshot.score >= 8 ? "text-red-400" : scoreSnapshot.score <= -3 ? "text-emerald-400" : "text-slate-400"
-              )}>
-                {scoreSnapshot.score > 0 ? `+${scoreSnapshot.score}` : scoreSnapshot.score}
               </span>
             </div>
 

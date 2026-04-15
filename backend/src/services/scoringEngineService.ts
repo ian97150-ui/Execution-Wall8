@@ -72,6 +72,16 @@ export type TimingBucket =
   | 'D1_INTRADAY'
   | 'DELAYED';
 
+export type PreFallTier = 'HIGH' | 'MEDIUM' | 'LOW' | 'SKIP';
+
+export type DisqualifierReason =
+  | 'LARGE_FLOAT_LOW_VOL'   // float > 50M AND vol_ratio < 50×
+  | 'VERY_LARGE_FLOAT'      // float > 200M
+  | 'NOT_A_SPIKE_DAY'       // gap_pct < 40%
+  | 'AH_POSITIVE'           // ah_move_pct >= 0
+  | 'PRIOR1_SQUEEZE'        // prior_424b_count === 0 AND borrow in [EASY, null]
+  | 'CLEAN_FRESH_AH_POS';   // THIN_AH_SPIKE fired AND ah_move_pct >= -5
+
 export interface RegimeStat {
   regime: RegimeId;
   n: number;
@@ -115,7 +125,13 @@ export interface ScoreSnapshot {
   overrides_fired: string[];                  // display-only override labels
   regime: RegimeStat | null;                  // detected market regime with stats
   pattern_stats: PatternStat[];               // empirical stats for each fired override pattern
-  predicted_bucket?: TimingBucket;            // New: predictive timing bucket from framework
+  predicted_bucket?: TimingBucket;            // predictive timing bucket from framework
+  // v4 pre-fall score
+  pre_fall_score: number;                     // 0–150 integer — headline conviction number
+  pre_fall_tier: PreFallTier;                 // HIGH/MEDIUM/LOW/SKIP display tier
+  pre_fall_flags: string[];                   // which weights fired in pre-fall formula
+  disqualifiers: DisqualifierReason[];        // gate failures (empty = eligible)
+  bucket_dump_pct: number | null;             // empirical dump% for predicted bucket
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -596,6 +612,85 @@ function buildReason(tags: SignalTag[], bias: TradeBias): string {
   return ordered.map(t => TAG_LABELS[t]).join(' + ');
 }
 
+// ─── Pre-fall score (v4) ─────────────────────────────────────────────────────
+
+const BUCKET_DUMP_PCT: Record<TimingBucket, number> = {
+  D0_INTRADAY: 73,
+  D0_AH:       75,
+  D1_GAP_OPEN: 100,
+  D1_INTRADAY: 68,
+  DELAYED:     23,
+};
+
+function checkDisqualifiers(
+  shares_outstanding: number | null,
+  volume_ratio: number | null,
+  gap_pct: number | null,
+  ah_move_pct: number | null,
+  prior_424b_count: number,
+  borrow: string | null | undefined,
+  ah_classification: string | null
+): DisqualifierReason[] {
+  const dq: DisqualifierReason[] = [];
+  const floatM = shares_outstanding !== null ? shares_outstanding / 1_000_000 : null;
+  if (floatM !== null && floatM > 200) dq.push('VERY_LARGE_FLOAT');
+  if (floatM !== null && floatM > 50 && (volume_ratio === null || volume_ratio < 50))
+    dq.push('LARGE_FLOAT_LOW_VOL');
+  if (gap_pct === null || gap_pct < 40) dq.push('NOT_A_SPIKE_DAY');
+  if (ah_move_pct !== null && ah_move_pct >= 0) dq.push('AH_POSITIVE');
+  if (prior_424b_count === 0 && (borrow === 'EASY' || borrow === null || borrow === undefined))
+    dq.push('PRIOR1_SQUEEZE');
+  if (ah_classification === 'THIN_AH_SPIKE' && (ah_move_pct === null || ah_move_pct >= -5))
+    dq.push('CLEAN_FRESH_AH_POS');
+  return dq;
+}
+
+function computePreFallScore(
+  signals: SignalTag[],
+  day_of_run: number | null,
+  ah_move_pct: number | null,
+  prior_424b_count: number,
+  efficiency: number | null,
+  gap_pct: number | null,
+  same_day_424b: { form: string; filing_url: string }[]
+): { score: number; flags: string[] } {
+  let raw = 0;
+  const flags: string[] = [];
+
+  // Override signals — 10× weight
+  if (signals.includes('DAY3_EXHAUSTION'))   { raw += 40; flags.push('DAY3_EXHAUSTION'); }
+  if (signals.includes('AH_REVERSAL_TRAP'))  { raw += 35; flags.push('AH_REVERSAL_TRAP'); }
+  if (prior_424b_count >= 5)                 { raw += 30; flags.push('SERIAL_HEAVY'); }
+  if (prior_424b_count >= 3 && same_day_424b.length > 0)
+                                             { raw += 25; flags.push('PRIOR3+DILUTION'); }
+
+  // Strong signals — 1× weight
+  if (same_day_424b.length > 0)             { raw += 15; flags.push('424B5_ACTIVE'); }
+  if (prior_424b_count >= 2)                { raw += 12; flags.push('SERIAL+PRIOR'); }
+  if (signals.includes('OFFERING_FADE') || signals.includes('LF_BLOWOFF_FADE'))
+                                            { raw += 10; flags.push('DILUTION_DUMP'); }
+  if (efficiency !== null && efficiency < 0.50)
+                                            { raw += 10; flags.push('PM_SELL_PRESSURE'); }
+  if (signals.includes('PM_FADE'))          { raw += 8;  flags.push('PM_FADE'); }
+  if (ah_move_pct !== null && ah_move_pct < -30)
+                                            { raw += 8;  flags.push('AH_DROP_30'); }
+  if (gap_pct !== null && gap_pct > 100)    { raw += 6;  flags.push('BIG_MOVE'); }
+  if (signals.includes('LARGE_PRINT_BELOW')){ raw += 5;  flags.push('LARGE_PRINT_BELOW'); }
+  if (signals.includes('FORM144_PRESALE'))  { raw += 5;  flags.push('FORM144'); }
+  // Deductions
+  if (day_of_run === 1)                     { raw -= 8;  flags.push('DAY1_RUN'); }
+  if (signals.includes('THIN_AH_SPIKE'))    { raw -= 5;  flags.push('THIN_AH_SPIKE'); }
+
+  return { score: Math.max(0, Math.min(150, Math.round(raw))), flags };
+}
+
+function scoreToPreFallTier(score: number): PreFallTier {
+  if (score >= 50) return 'HIGH';
+  if (score >= 25) return 'MEDIUM';
+  if (score >= 10) return 'LOW';
+  return 'SKIP';
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
@@ -722,6 +817,32 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     p3?.day_of_run ?? null
   );
 
+  // v4 — pre-fall score
+  const disqualifiers = checkDisqualifiers(
+    phase4?.shares_outstanding ?? null,
+    p3?.volume_ratio ?? null,
+    phase1b?.gap_pct ?? null,
+    phase1b?.ah_move_pct ?? null,
+    phase1?.prior_424b_count_12m ?? 0,
+    p3?.borrow,
+    phase1b?.ah_classification ?? null
+  );
+
+  const { score: preFallRaw, flags: preFallFlags } = disqualifiers.length === 0
+    ? computePreFallScore(
+        signals,
+        p3?.day_of_run ?? null,
+        phase1b?.ah_move_pct ?? null,
+        phase1?.prior_424b_count_12m ?? 0,
+        p3?.efficiency ?? null,
+        phase1b?.gap_pct ?? null,
+        phase1?.same_day_424b ?? []
+      )
+    : { score: 0, flags: [] };
+
+  const preFallTier = scoreToPreFallTier(preFallRaw);
+  const bucketDumpPct = predicted_bucket ? BUCKET_DUMP_PCT[predicted_bucket] : null;
+
   return {
     timestamp: new Date().toISOString(),
     score,
@@ -739,5 +860,10 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     regime,
     pattern_stats,
     predicted_bucket,
+    pre_fall_score: preFallRaw,
+    pre_fall_tier: preFallTier,
+    pre_fall_flags: preFallFlags,
+    disqualifiers,
+    bucket_dump_pct: bucketDumpPct,
   };
 }
