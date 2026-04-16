@@ -32,6 +32,11 @@ import api from "@/api/apiClient";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("candidates");
+  const mainRef = React.useRef(null);
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    mainRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  };
   const [editingIntent, setEditingIntent] = useState(null);
   const [limitEditorOpen, setLimitEditorOpen] = useState(false);
   const [executionEditorOpen, setExecutionEditorOpen] = useState(false);
@@ -820,9 +825,9 @@ export default function Dashboard() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
         {/* Header */}
-        <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+        <header className="shrink-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
           <div className="flex items-center justify-between px-4 h-16">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -900,18 +905,18 @@ export default function Dashboard() {
           )} />
         </header>
 
-        {/* Main content */}
-        <main className="pb-24">
+        {/* Main content — fills remaining height and scrolls independently */}
+        <main ref={mainRef} className="flex-1 overflow-y-auto pb-16 sm:pb-20">
           {/* Execution Mode Selector - Always Visible */}
-          <div className="px-4 pt-3 md:pb-2 pb-8">
+          <div className="px-4 pt-3 pb-2">
             <ExecutionModeToggle
               mode={settings?.execution_mode || 'safe'}
               onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
             />
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100vh - 240px)', overflow: 'hidden' } : {}}>
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+            <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100svh - 240px)', overflow: 'hidden' } : {}}>
               {/* View mode toggle — fixed row, never scrolls */}
               <div className="shrink-0 flex gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4 overflow-x-auto">
                 <button
