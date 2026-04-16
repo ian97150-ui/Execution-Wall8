@@ -1534,63 +1534,10 @@ async function handleConfirmedSignal(data: {
     console.log(`✅ CONFIRMED: ${tickerUpper} filled ${filledQty} (total ${totalFilled}/${execution.quantity}) @ ${fillPrice} — ${newStatus}`);
   }
 
-  // Guard: if the execution is linked to a denied/cancelled intent, do not create
-  // a position — this prevents EXIT signals from firing on entries the user rejected.
-  if (!isOrphan && execution.intent_id) {
-    const linkedIntent = await prisma.tradeIntent.findUnique({
-      where: { id: execution.intent_id }
-    });
-    if (linkedIntent && ['swiped_deny', 'swiped_off', 'cancelled'].includes(linkedIntent.status)) {
-      console.warn(`⚠️ CONFIRMED for ${tickerUpper}: linked intent was ${linkedIntent.status} — skipping position update (entry denied)`);
-      await prisma.auditLog.create({
-        data: {
-          event_type: 'confirmed_blocked_denied_intent',
-          ticker: tickerUpper,
-          details: JSON.stringify({
-            execution_id: execution.id,
-            intent_id: execution.intent_id,
-            intent_status: linkedIntent.status,
-            fill_price: fillPrice,
-            reason: 'Entry was denied — position not created'
-          })
-        }
-      });
-      return {
-        execution_id: execution.id,
-        fill_price: fillPrice,
-        filled_quantity: filledQty,
-        status: 'blocked_denied_intent',
-        message: `CONFIRMED blocked — entry was ${linkedIntent.status} by user`
-      };
-    }
-  }
-
-  // Update open position entry_price and quantity, or create if missing
-  const openPosition = await prisma.position.findFirst({
-    where: { ticker: tickerUpper, closed_at: null }
-  });
-
-  const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short'
-    : execution.order_action === 'buy' ? 'Long' : 'Short';
-
-  if (openPosition) {
-    await prisma.position.update({
-      where: { id: openPosition.id },
-      data: {
-        entry_price: fillPrice.toString(),
-        quantity: filledQty  // update to reflect actual filled quantity
-      }
-    });
-  } else {
-    await prisma.position.create({
-      data: {
-        ticker: tickerUpper,
-        side,
-        quantity: filledQty,
-        entry_price: fillPrice.toString()
-      }
-    });
-  }
+  // CONFIRMED is a pure fill receipt — it records the fill on the execution
+  // record but does NOT create or modify position records. Position lifecycle
+  // is owned exclusively by the ORDER and EXIT handlers to avoid PnL drift
+  // caused by TradingView re-sending fill quantities after positions are already set.
 
   // Determine final status for audit/notifications
   const execStatus = isOrphan ? 'unmatched_confirm'
@@ -1612,12 +1559,14 @@ async function handleConfirmedSignal(data: {
         dir: dir || execution.dir,
         status: execStatus,
         is_orphan: isOrphan,
-        position_updated: !!openPosition
+        position_updated: false
       })
     }
   });
 
   // Notifications
+  const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short'
+    : execution.order_action === 'buy' ? 'Long' : 'Short';
   const confirmedData = {
     action: execution.order_action,
     side,
