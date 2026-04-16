@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, ShieldOff, BookMarked, BadgeCheck } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldOff, BookMarked, BadgeCheck, ExternalLink, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QualityBadge from "./QualityBadge";
 import BiasBadge from "./BiasBadge";
@@ -19,6 +19,11 @@ export default function CandidatesList({
   tickers = [],
   tradingviewChartId
 }) {
+  const getSecUrl = (ticker) => {
+    const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2CF-3%2CF-3ASR%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-1MEF%2CS-3%2CS-3ASR%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3%2C6-K";
+    return `https://www.sec.gov/edgar/search/#/dateRange=30d&category=custom&entityName=${ticker}&forms=${forms}`;
+  };
+
   if (candidates.length === 0) {
     return (
       <div className="text-center py-12 text-slate-500">
@@ -92,7 +97,28 @@ export default function CandidatesList({
                 )}
               </div>
             </div>
-            
+
+            {/* View Chart + SEC quick links */}
+            <div className="flex items-center gap-3 mb-3">
+              <button
+                className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors"
+                onClick={() => {
+                  const chartPath = tradingviewChartId ? `chart/${tradingviewChartId}/` : 'chart/';
+                  window.open(`https://www.tradingview.com/${chartPath}?symbol=${intent.ticker}`, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                View Chart <ExternalLink className="w-3 h-3" />
+              </button>
+              <a
+                href={getSecUrl(intent.ticker)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 transition-colors"
+              >
+                SEC <FileText className="w-3 h-3" />
+              </a>
+            </div>
+
             {/* Score snapshot — compact paths + reason */}
             {scoreSnapshot && (
               <div className="mb-3 space-y-1.5">
