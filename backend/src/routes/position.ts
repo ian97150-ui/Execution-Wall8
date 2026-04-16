@@ -45,7 +45,9 @@ function normalizePosition(position: any) {
     created_date: position.opened_at || position.created_date,
     avg_entry_price: position.entry_price || position.avg_entry_price,
     // Normalize side to lowercase for frontend
-    side: position.side?.toLowerCase() || position.side
+    side: position.side?.toLowerCase() || position.side,
+    // TTP Exit SL threshold
+    ttp_exit_price: position.ttp_exit_price != null ? Number(position.ttp_exit_price) : null,
   };
 }
 
@@ -163,6 +165,46 @@ router.post('/:id/mark-flat', async (req: Request, res: Response) => {
     res.json(normalizePosition(updatedPosition));
   } catch (error: any) {
     console.error('Error marking position flat:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Set or clear TTP Exit SL price threshold
+// When set, EXIT webhooks with limit_price >= ttp_exit_price are blocked
+// (broker stop loss already handles the close at that level)
+router.post('/:id/ttp', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { price } = req.body; // number | null
+
+    const position = await getPositionByIdSafe(id);
+
+    if (!position) {
+      return res.status(404).json({ error: 'Position not found' });
+    }
+
+    if (position.closed_at) {
+      return res.status(400).json({ error: 'Position already closed' });
+    }
+
+    const updatedPosition = await prisma.position.update({
+      where: { id },
+      data: { ttp_exit_price: price != null ? price : null },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        event_type: price != null ? 'ttp_set' : 'ttp_cleared',
+        ticker: position.ticker,
+        details: JSON.stringify({ ttp_exit_price: price ?? null }),
+      },
+    });
+
+    console.log(`${price != null ? '🎯 TTP set' : '❌ TTP cleared'}: ${position.ticker} @ ${price ?? 'N/A'}`);
+
+    res.json(normalizePosition(updatedPosition));
+  } catch (error: any) {
+    console.error('Error setting TTP exit price:', error);
     res.status(500).json({ error: error.message });
   }
 });

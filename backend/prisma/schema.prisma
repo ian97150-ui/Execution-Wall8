@@ -196,14 +196,15 @@ model AuditLog {
 }
 
 model Position {
-  id          String    @id @default(uuid())
-  ticker      String
-  side        String    // Long, Short
-  quantity    Int
-  entry_price Decimal
-  opened_at   DateTime  @default(now())
-  closed_at   DateTime?
-  updated_at  DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  ticker          String
+  side            String    // Long, Short
+  quantity        Int
+  entry_price     Decimal
+  ttp_exit_price  Decimal?  // TTP Exit SL threshold — EXIT webhooks at or above this price are blocked
+  opened_at       DateTime  @default(now())
+  closed_at       DateTime?
+  updated_at      DateTime  @updatedAt
 
   @@index([ticker])
   @@index([closed_at])

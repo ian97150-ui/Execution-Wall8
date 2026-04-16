@@ -523,6 +523,30 @@ export default function Dashboard() {
     }
   });
 
+  const setTTPMutation = useMutation({
+    mutationFn: async ({ position, price }) => {
+      const response = await api.post(`/positions/${position.id}/ttp`, { price });
+      return response.data;
+    },
+    onSuccess: (_, { position }) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      toast.success(`TTP Exit SL set for ${position.ticker}`);
+    },
+    onError: () => toast.error('Failed to set TTP Exit SL')
+  });
+
+  const clearTTPMutation = useMutation({
+    mutationFn: async (position) => {
+      const response = await api.post(`/positions/${position.id}/ttp`, { price: null });
+      return response.data;
+    },
+    onSuccess: (_, position) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      toast.success(`TTP Exit SL cleared for ${position.ticker}`);
+    },
+    onError: () => toast.error('Failed to clear TTP Exit SL')
+  });
+
   // Revive a blocked ticker (move back to candidates)
   const reviveTickerMutation = useMutation({
     mutationFn: async (intent) => {
@@ -1038,6 +1062,8 @@ export default function Dashboard() {
                 onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
                 onUnblockSignals={(position) => unblockSignalsMutation.mutate(position)}
                 onMarkFlat={(position) => markFlatMutation.mutate(position)}
+                onSetTTP={(position, price) => setTTPMutation.mutate({ position, price })}
+                onClearTTP={(position) => clearTTPMutation.mutate(position)}
                 tickers={tickers}
               />
             </TabsContent>

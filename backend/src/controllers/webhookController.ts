@@ -1074,6 +1074,35 @@ async function handleExitSignal(data: {
     };
   }
 
+  // TTP Exit SL gate — if a TTP threshold is set on the position and the EXIT
+  // limit_price is at or above it, block the exit. The broker SL already handles
+  // the close at that level; forwarding would double-execute the close.
+  const incomingPrice = limit_price || price || 0;
+  if (openPosition.ttp_exit_price !== null && openPosition.ttp_exit_price !== undefined) {
+    const ttpThreshold = Number(openPosition.ttp_exit_price);
+    if (incomingPrice >= ttpThreshold) {
+      console.log(`🛑 TTP EXIT BLOCKED: ${tickerUpper} — exit price $${incomingPrice} >= TTP $${ttpThreshold} (broker SL handles close)`);
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'ttp_exit_blocked',
+          ticker: tickerUpper,
+          details: JSON.stringify({
+            ttp_exit_price: ttpThreshold,
+            exit_price: incomingPrice,
+            reason: 'Broker SL already placed at TTP level',
+          }),
+        },
+      });
+      releaseSymbolLock(tickerUpper, 'position_close');
+      return {
+        execution_id: null,
+        message: `TTP Exit SL active — EXIT blocked for ${tickerUpper} (price $${incomingPrice} >= TTP $${ttpThreshold})`,
+        ttp_blocked: true,
+        ttp_exit_price: ttpThreshold,
+      };
+    }
+  }
+
   // Check for existing pending exit and REPLACE it with the new one
   // This ensures the latest exit signal takes precedence
   let replacedExitInfo = null;
