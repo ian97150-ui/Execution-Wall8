@@ -905,20 +905,19 @@ export default function Dashboard() {
           )} />
         </header>
 
-        {/* Main content — sandwiched between header (68px) and bottom nav (64px/80px) */}
+        {/* Main content */}
         <main ref={mainRef} className="flex-1 overflow-y-auto pb-16 sm:pb-20">
-          {/* Execution Mode Selector - Always Visible */}
-          <div className="px-4 pt-3 pb-2">
-            <ExecutionModeToggle
-              mode={settings?.execution_mode || 'safe'}
-              onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
-            />
-          </div>
-
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100vh - 240px)', overflow: 'hidden' } : {}}>
+              {/* Execution Mode inside candidates tab */}
+              <div className="px-4 pt-3 pb-1">
+                <ExecutionModeToggle
+                  mode={settings?.execution_mode || 'safe'}
+                  onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
+                />
+              </div>
               {/* View mode toggle — fixed row, never scrolls */}
-              <div className="shrink-0 flex gap-2 px-4 md:pt-4 pt-8 md:pb-2 pb-4 overflow-x-auto">
+              <div className="shrink-0 flex gap-2 px-4 pt-2 pb-3 overflow-x-auto">
                 <button
                   onClick={() => setViewMode("deck")}
                   className={cn(
