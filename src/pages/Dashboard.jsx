@@ -840,44 +840,46 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Compact execution mode toggle in header */}
+              <div className="flex items-center bg-slate-800/80 rounded-lg p-0.5 gap-0.5">
+                {[
+                  { value: 'off', label: 'OFF', color: 'bg-red-500 text-white' },
+                  { value: 'safe', label: 'SAFE', color: 'bg-amber-500 text-amber-950' },
+                  { value: 'full', label: 'FULL', color: 'bg-emerald-500 text-emerald-950' },
+                ].map(m => (
+                  <button
+                    key={m.value}
+                    onClick={() => updateSettingsMutation.mutate({ execution_mode: m.value })}
+                    className={cn(
+                      "px-2 py-1 rounded text-[10px] font-bold transition-all",
+                      settings?.execution_mode === m.value ? m.color : "text-slate-500 hover:text-slate-300"
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
               <Link to={createPageUrl("AuditLog")}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-slate-400"
-                  title="Audit Log"
-                >
+                <Button variant="ghost" size="icon" className="text-slate-400" title="Audit Log">
                   <ScrollText className="w-5 h-5" />
                 </Button>
               </Link>
 
               <Link to={createPageUrl("WebhookLogs")}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-slate-400"
-                  title="Webhook Logs"
-                >
+                <Button variant="ghost" size="icon" className="text-slate-400" title="Webhook Logs">
                   <Webhook className="w-5 h-5" />
                 </Button>
               </Link>
 
               <Link to={createPageUrl("ExecutionHistory")}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-slate-400"
-                >
+                <Button variant="ghost" size="icon" className="text-slate-400">
                   <History className="w-5 h-5" />
                 </Button>
               </Link>
 
               <Link to={createPageUrl("Settings")}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-slate-400"
-                >
+                <Button variant="ghost" size="icon" className="text-slate-400">
                   <Settings className="w-5 h-5" />
                 </Button>
               </Link>
@@ -885,10 +887,7 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  refetchCandidates();
-                  refetchExecutions();
-                }}
+                onClick={() => { refetchCandidates(); refetchExecutions(); }}
                 className="text-slate-400"
               >
                 <RefreshCw className={cn("w-5 h-5", candidatesLoading && "animate-spin")} />
@@ -896,7 +895,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Execution mode indicator */}
+          {/* Execution mode color bar */}
           <div className={cn(
             "h-1",
             settings?.execution_mode === 'off' ? "bg-red-500" :
@@ -909,15 +908,8 @@ export default function Dashboard() {
         <main ref={mainRef} className="flex-1 overflow-y-auto pb-16 sm:pb-20">
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100vh - 240px)', overflow: 'hidden' } : {}}>
-              {/* Execution Mode inside candidates tab */}
-              <div className="px-4 pt-3 pb-1">
-                <ExecutionModeToggle
-                  mode={settings?.execution_mode || 'safe'}
-                  onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
-                />
-              </div>
-              {/* View mode toggle — fixed row, never scrolls */}
-              <div className="shrink-0 flex gap-2 px-4 pt-2 pb-3 overflow-x-auto">
+              {/* View mode toggle */}
+              <div className="shrink-0 flex gap-2 px-4 pt-3 pb-3 overflow-x-auto">
                 <button
                   onClick={() => setViewMode("deck")}
                   className={cn(
