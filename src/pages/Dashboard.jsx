@@ -825,9 +825,9 @@ export default function Dashboard() {
 
   return (
     <ErrorBoundary>
-      <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="fixed inset-0 flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
         {/* Header */}
-        <header className="absolute top-0 left-0 right-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+        <header className="shrink-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
           <div className="flex items-center justify-between px-4 h-16">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -906,7 +906,7 @@ export default function Dashboard() {
         </header>
 
         {/* Main content — sandwiched between header (68px) and bottom nav (64px/80px) */}
-        <main ref={mainRef} className="absolute top-[68px] left-0 right-0 bottom-[64px] sm:bottom-[80px] overflow-y-auto">
+        <main ref={mainRef} className="flex-1 overflow-y-auto pb-16 sm:pb-20">
           {/* Execution Mode Selector - Always Visible */}
           <div className="px-4 pt-3 pb-2">
             <ExecutionModeToggle
