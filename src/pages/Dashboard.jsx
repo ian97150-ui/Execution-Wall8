@@ -1046,7 +1046,7 @@ export default function Dashboard() {
               )}
             </TabsContent>
 
-            <TabsContent value="executions" className="mt-0 px-4 py-6">
+            <TabsContent value="executions" className="mt-0 px-4 pt-4 pb-6">
               <ExecutionQueue
                 executions={executions}
                 executionMode={settings?.execution_mode || 'safe'}
@@ -1060,7 +1060,7 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="positions" className="mt-0 px-4 py-6">
+            <TabsContent value="positions" className="mt-0 px-4 pt-4 pb-6">
               <PositionsList
                 positions={positions}
                 onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
@@ -1072,7 +1072,7 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0 px-4 py-6">
+            <TabsContent value="history" className="mt-0 px-4 pt-4 pb-6">
               <AuditTimeline logs={auditLogs} />
             </TabsContent>
 
