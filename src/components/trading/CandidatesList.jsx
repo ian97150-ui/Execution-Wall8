@@ -83,6 +83,16 @@ export default function CandidatesList({
                   </span>
                 )}
                 {intent.sec_bias && <BiasBadge bias={intent.sec_bias} size="sm" />}
+                {scoreSnapshot?.section && (
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-xs font-bold border",
+                    scoreSnapshot.section === 'S1'
+                      ? "bg-violet-500/20 text-violet-300 border-violet-500/40"
+                      : "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
+                  )}>
+                    {scoreSnapshot.section} {scoreSnapshot.section === 'S1' ? 'D+1' : 'D+5'}
+                  </span>
+                )}
                 {intent.sec_confirmed && (
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
                     <BadgeCheck className="w-3 h-3" />
