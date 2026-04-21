@@ -1499,22 +1499,32 @@ async function handleConfirmedSignal(data: {
   const windowSeconds = (settings as any)?.confirm_window_seconds ?? 60;
   const windowStart = new Date(Date.now() - windowSeconds * 1000);
 
-  // Find matching execution: pending/executing/executed (initial fill) or
-  // partially_filled (subsequent fill for the same order)
+  // Find matching execution: check pending (no time limit — safe-mode approvals can take minutes)
+  // then fall back to window-based match for executing/executed/partially_filled
   let execution = await prisma.execution.findFirst({
     where: {
       ticker: tickerUpper,
-      status: { in: ['pending', 'executing', 'executed', 'partially_filled'] },
-      created_at: { gte: windowStart }
+      status: 'pending'
     },
     orderBy: { created_at: 'desc' }
   });
+
+  if (!execution) {
+    execution = await prisma.execution.findFirst({
+      where: {
+        ticker: tickerUpper,
+        status: { in: ['executing', 'executed', 'partially_filled'] },
+        created_at: { gte: windowStart }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+  }
 
   const now = new Date();
   let isOrphan = false;
 
   if (!execution) {
-    // No match within window — create an orphan execution rather than discarding the fill
+    // No match — create an orphan execution rather than discarding the fill
     console.warn(`⚠️ CONFIRMED for ${tickerUpper}: no match within ${windowSeconds}s window — creating orphan`);
     const side = dir === 'Long' ? 'Long' : dir === 'Short' ? 'Short' : 'Long';
     execution = await prisma.execution.create({

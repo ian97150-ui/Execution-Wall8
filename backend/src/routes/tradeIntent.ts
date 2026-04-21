@@ -3,6 +3,7 @@ import { prisma } from '../index';
 import { PushoverNotifications } from '../services/pushoverService';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runSecWatchScan } from '../services/secWatchScanner';
+import { forwardToBroker } from '../services/brokerWebhook';
 import { runChecklist, applyManualOverride, SecChecklist } from '../services/secChecklistService';
 import { runSpikeScanOnDemand } from '../services/spikeMonitorService';
 import { getW1Imbalance, getLargePrintZone, inferBorrowRegime } from '../services/alpacaFlowService';
@@ -202,6 +203,28 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
         quality_score: intent.quality_score
       };
       PushoverNotifications.signalApproved(intent.ticker, approvalNotificationData).catch(err => console.error('Pushover notification error:', err));
+
+      // Forward the linked pending execution to broker immediately
+      const pendingExecution = await prisma.execution.findFirst({
+        where: {
+          intent_id: id,
+          status: 'pending'
+        },
+        orderBy: { created_at: 'desc' }
+      });
+
+      if (pendingExecution) {
+        const brokerResult = await forwardToBroker(pendingExecution);
+        await prisma.execution.update({
+          where: { id: pendingExecution.id },
+          data: {
+            status: brokerResult.success ? 'executed' : 'pending',
+            executed_at: brokerResult.success ? new Date() : null,
+            error_message: brokerResult.success ? null : brokerResult.error
+          }
+        });
+        console.log(`🚀 Forwarded execution ${pendingExecution.id} to broker for ${intent.ticker}: ${brokerResult.success ? 'OK' : brokerResult.error}`);
+      }
     }
 
     res.json(updatedIntent);
