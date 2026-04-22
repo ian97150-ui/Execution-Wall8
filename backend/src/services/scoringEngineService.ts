@@ -26,7 +26,10 @@ export type SignalTag =
   | 'ACTIVE_424B'
   | 'THIN_AH_SPIKE'
   | 'LARGE_PRINT_BELOW'
-  | 'VWAP_HELD'
+  | 'VWAP_FAILED'
+  // Serial diluter rules
+  | 'SERIAL_HEAVY'
+  | 'PRIOR3_DILUTION'
   // Composite patterns
   | 'OFFERING_FADE'
   | 'LF_BLOWOFF_FADE'
@@ -198,7 +201,7 @@ function rulePMSellPressure(efficiency: number | null): { points: number; tag: S
 // Big move + VWAP hold → distribution pressure building
 
 function ruleVWAPHeld(vwap_failed: boolean | null, gap_pct: number | null): { points: number; tag: SignalTag | null } {
-  if (vwap_failed === false && gap_pct !== null && gap_pct > 40) return { points: 2.5, tag: 'VWAP_HELD' };
+  if (vwap_failed === true && gap_pct !== null && gap_pct > 40) return { points: 2.5, tag: 'VWAP_FAILED' };
   return { points: 0, tag: null };
 }
 
@@ -306,6 +309,25 @@ function ruleInsiderSignals(
   if (insider_signals?.form4_sell)      { points += 2.0; tags.push('FORM4_SELL'); }
   if (eightk_signals.includes('ATM_TERMINATED')) { points -= 2.0; tags.push('ATM_TERMINATED'); }
   return { points, tags };
+}
+
+// ─── Rule 16 — Serial Heavy Diluter ──────────────────────────────────────────
+// prior_424b_count ≥ 6: 100% S1 across all 10 sessions in dataset
+
+function ruleSerialHeavy(prior_424b_count_12m: number): { points: number; tag: SignalTag | null } {
+  if (prior_424b_count_12m >= 6) return { points: 5.0, tag: 'SERIAL_HEAVY' };
+  return { points: 0, tag: null };
+}
+
+// ─── Rule 17 — Prior 3+ with Active Dilution ─────────────────────────────────
+// prior ≥ 3 + same-day 424B: 100% S1, 71% dump in dataset
+
+function rulePrior3Dilution(
+  prior_424b_count_12m: number,
+  same_day_424b: { form: string; filing_url: string }[]
+): { points: number; tag: SignalTag | null } {
+  if (prior_424b_count_12m >= 3 && same_day_424b.length > 0) return { points: 4.0, tag: 'PRIOR3_DILUTION' };
+  return { points: 0, tag: null };
 }
 
 // ─── Timing Bucket Prediction ───────────────────────────────────────────────
@@ -593,7 +615,9 @@ const TAG_LABELS: Record<SignalTag, string> = {
   ACTIVE_424B:       'active 424B',
   THIN_AH_SPIKE:     'thin AH spike',
   LARGE_PRINT_BELOW: 'large print below VWAP',
-  VWAP_HELD:         'VWAP holding',
+  VWAP_FAILED:       'VWAP failed intraday',
+  SERIAL_HEAVY:      '6+ prior offerings (serial heavy)',
+  PRIOR3_DILUTION:   '3+ prior offerings + active 424B',
   OFFERING_FADE:     'offering fade pattern',
   LF_BLOWOFF_FADE:   'LF blowoff fade',
   AH_FILING_GAP_T1:  'AH filing gap Tier 1',
@@ -704,6 +728,45 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     w1_imbalance?: number | null;
   };
 
+  // ── Gate 1: Hard disqualifier pre-check ──────────────────────────────────────
+  // Any disqualifier fires → section is null. No rules run, no badge shows.
+  const disqualifiers = checkDisqualifiers(
+    phase4?.shares_outstanding ?? null,
+    p3?.volume_ratio ?? null,
+    phase1b?.gap_pct ?? null,
+    phase1b?.ah_move_pct ?? null,
+    phase1?.prior_424b_count_12m ?? 0,
+    p3?.borrow,
+    phase1b?.ah_classification ?? null
+  );
+
+  if (disqualifiers.length > 0) {
+    return {
+      timestamp: new Date().toISOString(),
+      score: 0,
+      bias: 'NEUTRAL',
+      confidence: 0,
+      signals: [],
+      reason: 'Disqualified',
+      probabilities: [{ path: 'chop', pct: 100 }],
+      section: null,
+      section_prob: null,
+      clean_score: null,
+      clean_outcome: null,
+      outcome_profile: null,
+      overrides_fired: [],
+      regime: null,
+      pattern_stats: [],
+      predicted_bucket: 'DELAYED',
+      pre_fall_score: 0,
+      pre_fall_tier: 'SKIP',
+      pre_fall_flags: [],
+      disqualifiers,
+      bucket_dump_pct: null,
+    };
+  }
+
+  // ── Gate 2: 17-rule weighted scorer ─────────────────────────────────────────
   const r1  = ruleAH(phase1b?.ah_move_pct ?? null);
   const r2  = ruleStrongHoldTrap(p3?.structure, p3?.borrow, phase2?.catalyst_tier ?? null);
   const r3  = ruleRunDay(p3?.day_of_run ?? null);
@@ -734,15 +797,17 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
   const r13 = ruleLFBlowoffFade(p3?.structure, p3?.pm_high_reclaimed ?? null, regime);
   const r14 = ruleAHFilingGap(phase1b?.ah_move_pct ?? null, phase1b?.ah_vol_ratio ?? null, phase1b?.gap_pct ?? null, phase1?.same_day_424b ?? [], phase1?.eightk?.found ?? false, eightk_signals);
   const r15 = ruleInsiderSignals((phase1 as any)?.insider_signals, eightk_signals);
+  const r16 = ruleSerialHeavy(phase1?.prior_424b_count_12m ?? 0);
+  const r17 = rulePrior3Dilution(phase1?.prior_424b_count_12m ?? 0, phase1?.same_day_424b ?? []);
 
   const rawScore =
     r1.points + r2.points + r3.points + r4.points + r5.points +
     r6.points + r7.points + r8.points + r9.points + r10.points + r11.points +
-    r12.points + r13.points + r14.points + r15.points;
+    r12.points + r13.points + r14.points + r15.points + r16.points + r17.points;
 
   const score = parseFloat(rawScore.toFixed(1));
 
-  const singleTagRules = [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14];
+  const singleTagRules = [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r16, r17];
   const signals: SignalTag[] = [
     ...singleTagRules.filter(r => r.tag !== null).map(r => r.tag as SignalTag),
     ...r15.tags,
@@ -770,12 +835,13 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     signals
   );
 
+  // ── Gate 3: Section assignment (score >= 10 required) ───────────────────────
   let section: TradeSection | null = null;
   let clean_score: number | null = null;
   let clean_outcome: CleanOutcome | null = null;
   let outcome_profile: OutcomeProfile | null = null;
 
-  if (score >= 8) {
+  if (score >= 10) {
     section = classifySection(predicted_bucket);
 
     if (section === 'S1') {
@@ -817,28 +883,16 @@ export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
     p3?.day_of_run ?? null
   );
 
-  // v4 — pre-fall score
-  const disqualifiers = checkDisqualifiers(
-    phase4?.shares_outstanding ?? null,
-    p3?.volume_ratio ?? null,
-    phase1b?.gap_pct ?? null,
+  // v4 — pre-fall score (disqualifiers already handled above; always compute here)
+  const { score: preFallRaw, flags: preFallFlags } = computePreFallScore(
+    signals,
+    p3?.day_of_run ?? null,
     phase1b?.ah_move_pct ?? null,
     phase1?.prior_424b_count_12m ?? 0,
-    p3?.borrow,
-    phase1b?.ah_classification ?? null
+    p3?.efficiency ?? null,
+    phase1b?.gap_pct ?? null,
+    phase1?.same_day_424b ?? []
   );
-
-  const { score: preFallRaw, flags: preFallFlags } = disqualifiers.length === 0
-    ? computePreFallScore(
-        signals,
-        p3?.day_of_run ?? null,
-        phase1b?.ah_move_pct ?? null,
-        phase1?.prior_424b_count_12m ?? 0,
-        p3?.efficiency ?? null,
-        phase1b?.gap_pct ?? null,
-        phase1?.same_day_424b ?? []
-      )
-    : { score: 0, flags: [] };
 
   const preFallTier = scoreToPreFallTier(preFallRaw);
   const bucketDumpPct = predicted_bucket ? BUCKET_DUMP_PCT[predicted_bucket] : null;
