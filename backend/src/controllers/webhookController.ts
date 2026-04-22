@@ -944,6 +944,41 @@ async function handleOrderSignal(data: {
   });
 
   if (pendingIntent) {
+    // Block re-entry: if this intent already has an executed/partially_filled order,
+    // it belongs to a prior entry — reject so a new WALL signal is required
+    const priorExecution = await prisma.execution.findFirst({
+      where: {
+        intent_id: pendingIntent.id,
+        status: { in: ['executed', 'partially_filled', 'confirmed'] }
+      }
+    });
+    if (priorExecution) {
+      await prisma.execution.update({
+        where: { id: execution.id },
+        data: { status: 'cancelled', error_message: 'Re-entry blocked: intent already executed — new WALL signal required' }
+      });
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'execution_cancelled_reentry_blocked',
+          ticker: tickerUpper,
+          details: JSON.stringify({
+            execution_id: execution.id,
+            intent_id: pendingIntent.id,
+            prior_execution_id: priorExecution.id,
+            reason: 'Re-entry blocked: intent already has executed order'
+          })
+        }
+      });
+      console.warn(`🚫 Re-entry blocked for ${tickerUpper} — intent ${pendingIntent.id} already executed (${priorExecution.id})`);
+      return {
+        execution_id: execution.id,
+        intent_id: pendingIntent.id,
+        message: `Re-entry blocked for ${tickerUpper} — new WALL signal required`,
+        blocked: true,
+        reason: 'reentry_blocked'
+      };
+    }
+
     // Link execution to intent
     await prisma.execution.update({
       where: { id: execution.id },
@@ -1065,6 +1100,19 @@ async function handleExitSignal(data: {
   // Validate position exists - EXIT signals require an open position
   if (!openPosition) {
     console.warn(`⚠️ EXIT signal rejected: No open position found for ${tickerUpper}`);
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'exit_rejected_no_position',
+        ticker: tickerUpper,
+        details: JSON.stringify({
+          source: 'webhook',
+          type: 'EXIT',
+          quantity_from_signal: quantity ?? null,
+          limit_price: limit_price ?? price ?? null,
+          reason: 'No open position found'
+        })
+      }
+    });
     releaseSymbolLock(tickerUpper, 'position_close');
     return {
       execution_id: null,
@@ -1510,11 +1558,13 @@ async function handleConfirmedSignal(data: {
   });
 
   if (!execution) {
+    // Extend window to 30 minutes for broker-confirmed fills — brokers can take 2-4+ min to confirm
+    const extendedWindowStart = new Date(Date.now() - 30 * 60 * 1000);
     execution = await prisma.execution.findFirst({
       where: {
         ticker: tickerUpper,
         status: { in: ['executing', 'executed', 'partially_filled'] },
-        created_at: { gte: windowStart }
+        created_at: { gte: extendedWindowStart }
       },
       orderBy: { created_at: 'desc' }
     });
