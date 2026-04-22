@@ -16,7 +16,6 @@ import { toast } from "sonner";
 import SwipeDeck from "../components/trading/SwipeDeck";
 import ExecutionQueue from "../components/trading/ExecutionQueue";
 import AuditTimeline from "../components/trading/AuditTimeline";
-import ExecutionModeToggle from "../components/trading/ExecutionModeToggle";
 import StatsOverview from "../components/trading/StatsOverview";
 import TickerList from "../components/trading/TickerList";
 import LimitPriceEditor from "../components/trading/LimitPriceEditor";
@@ -1038,7 +1037,7 @@ export default function Dashboard() {
               )}
             </TabsContent>
 
-            <TabsContent value="executions" className="mt-0 px-4 pt-4 pb-6">
+            <TabsContent value="executions" className="mt-0 px-4 pt-2 pb-6">
               <ExecutionQueue
                 executions={executions}
                 executionMode={settings?.execution_mode || 'safe'}
@@ -1052,7 +1051,7 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="positions" className="mt-0 px-4 pt-4 pb-6">
+            <TabsContent value="positions" className="mt-0 px-4 pt-2 pb-6">
               <PositionsList
                 positions={positions}
                 onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
@@ -1064,7 +1063,7 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0 px-4 pt-4 pb-6">
+            <TabsContent value="history" className="mt-0 px-4 pt-2 pb-6">
               <AuditTimeline logs={auditLogs} />
             </TabsContent>
 
