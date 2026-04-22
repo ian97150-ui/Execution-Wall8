@@ -204,14 +204,26 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
       };
       PushoverNotifications.signalApproved(intent.ticker, approvalNotificationData).catch(err => console.error('Pushover notification error:', err));
 
-      // Forward the linked pending execution to broker immediately
-      const pendingExecution = await prisma.execution.findFirst({
-        where: {
-          intent_id: id,
-          status: 'pending'
-        },
+      // Forward the linked execution to broker immediately.
+      // First try pending; fall back to unmatched_confirm (orphan) if none found.
+      let pendingExecution = await prisma.execution.findFirst({
+        where: { intent_id: id, status: 'pending' },
         orderBy: { created_at: 'desc' }
       });
+      if (!pendingExecution) {
+        pendingExecution = await prisma.execution.findFirst({
+          where: { intent_id: id, status: 'unmatched_confirm' },
+          orderBy: { created_at: 'desc' }
+        });
+        if (pendingExecution) {
+          // Reset orphan to pending so the forwarding flow works normally
+          await prisma.execution.update({
+            where: { id: pendingExecution.id },
+            data: { status: 'pending' }
+          });
+          pendingExecution = { ...pendingExecution, status: 'pending' };
+        }
+      }
 
       if (pendingExecution) {
         const brokerResult = await forwardToBroker(pendingExecution);

@@ -23,7 +23,7 @@ import { startCleanupScheduler } from './services/databaseCleanup';
 import { startExecutionScheduler, stopExecutionScheduler } from './services/executionScheduler';
 import { startDailyResetScheduler, stopDailyResetScheduler } from './services/dailyReset';
 import { startModeScheduler, stopModeScheduler } from './services/modeScheduler';
-import { startSecWatchScanner, stopSecWatchScanner } from './services/secWatchScanner';
+import { startSecWatchScanner, stopSecWatchScanner, startLiveScorePoller, stopLiveScorePoller } from './services/secWatchScanner';
 import { startSpikeMonitor, stopSpikeMonitor } from './services/spikeMonitorService';
 
 // Load environment variables
@@ -133,6 +133,9 @@ app.listen(PORT, () => {
   // Start SEC watch scanner (polls watched tickers at fixed ET times)
   startSecWatchScanner();
 
+  // Start live score poller (refreshes S1/S2 every 60s for active WALL cards)
+  startLiveScorePoller();
+
   // Start spike monitor (auto-detects 40%+ movers, seeds SEC Watch panel)
   startSpikeMonitor();
 });
@@ -144,6 +147,7 @@ process.on('SIGINT', async () => {
   stopDailyResetScheduler();
   stopModeScheduler();
   stopSecWatchScanner();
+  stopLiveScorePoller();
   stopSpikeMonitor();
   await prisma.$disconnect();
   process.exit(0);
@@ -155,6 +159,7 @@ process.on('SIGTERM', async () => {
   stopDailyResetScheduler();
   stopModeScheduler();
   stopSecWatchScanner();
+  stopLiveScorePoller();
   stopSpikeMonitor();
   await prisma.$disconnect();
   process.exit(0);

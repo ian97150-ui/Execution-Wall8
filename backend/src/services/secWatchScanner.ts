@@ -19,7 +19,7 @@ import { prisma } from '../index';
 import { checkSecFilings } from './secCallbackService';
 import { lookupCIK } from './edgarService';
 import { PushoverNotifications } from './pushoverService';
-import { runChecklist } from './secChecklistService';
+import { runChecklist, refreshLiveScore } from './secChecklistService';
 import type { ScoreSnapshot } from './scoringEngineService';
 
 // Fixed ET scan times (HH:MM 24h)
@@ -32,6 +32,7 @@ const SEC_USER_AGENT = process.env.SEC_USER_AGENT || 'Wall8TradingApp contact@ex
 let scannerInterval: NodeJS.Timeout | null = null;
 let lastFiredMinute: string | null = null;
 let ahRssInterval: NodeJS.Timeout | null = null;
+let liveScoreInterval: NodeJS.Timeout | null = null;
 
 function getETMinute(): string {
   return new Date().toLocaleTimeString('en-US', {
@@ -336,5 +337,41 @@ export function stopSecWatchScanner(): void {
   if (ahRssInterval) {
     clearInterval(ahRssInterval);
     ahRssInterval = null;
+  }
+}
+
+// ─── Live Score Poller ────────────────────────────────────────────────────────
+// Refreshes price action + borrow for all active (non-swiped-off) intents that
+// have a cached checklist. Runs every 60s. Stops automatically when no intents
+// are active. Does NOT re-call EDGAR — only fast market/borrow APIs.
+
+export function startLiveScorePoller(): void {
+  if (liveScoreInterval) return;
+
+  liveScoreInterval = setInterval(async () => {
+    const active = await prisma.tradeIntent.findMany({
+      where: {
+        status: { not: 'swiped_off' },
+        sec_checklist: { not: null },
+        OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
+      },
+      select: { ticker: true },
+      distinct: ['ticker'],
+    }).catch(() => []);
+
+    for (const { ticker } of active) {
+      refreshLiveScore(ticker).catch(err =>
+        console.warn(`[LiveScorePoller] ${ticker} refresh failed: ${err?.message}`)
+      );
+    }
+  }, 60_000);
+
+  console.log('📡 Live score poller started — refreshing S1/S2 every 60s for active cards');
+}
+
+export function stopLiveScorePoller(): void {
+  if (liveScoreInterval) {
+    clearInterval(liveScoreInterval);
+    liveScoreInterval = null;
   }
 }

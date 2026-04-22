@@ -8,6 +8,7 @@ import { getAnalystCoverage, getShortInterest, getRecentNews, AnalystCoverage, N
 import { getPriceActionSignals } from './marketDataService';
 import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
 import { fetchAlpacaPhase3Fields } from './alpacaFlowService';
+import { prisma } from '../index';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -351,6 +352,96 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
   const score_snapshot = computeScoreSnapshot(partial as SecChecklist);
 
   return { ...partial, score_snapshot };
+}
+
+// ─── refreshLiveScore ─────────────────────────────────────────────────────────
+// Re-fetches only price action + borrow (fast, no EDGAR) and re-runs the
+// scoring engine against cached EDGAR data. Called every 60s by the live poller.
+
+export async function refreshLiveScore(ticker: string): Promise<void> {
+  const upper = ticker.toUpperCase();
+
+  // Find the most recent active intent that has a cached checklist
+  const intent = await prisma.tradeIntent.findFirst({
+    where: {
+      ticker: upper,
+      status: { not: 'swiped_off' },
+      sec_checklist: { not: null },
+    },
+    orderBy: { created_date: 'desc' },
+  });
+  if (!intent?.sec_checklist) return;
+
+  let cached: SecChecklist;
+  try {
+    cached = JSON.parse(intent.sec_checklist);
+  } catch {
+    return;
+  }
+
+  // Fetch only the fast-changing data in parallel (skip EDGAR/Finnhub)
+  const [freshPriceAction, freshAlpaca] = await Promise.all([
+    getPriceActionSignals(upper).catch(() => null),
+    fetchAlpacaPhase3Fields(upper).catch(() => ({} as Awaited<ReturnType<typeof fetchAlpacaPhase3Fields>>)),
+  ]);
+
+  const phase1b: SecChecklist['phase1b'] = freshPriceAction
+    ? {
+        ah_high: freshPriceAction.ah_high,
+        ah_low: freshPriceAction.ah_low,
+        ah_move_pct: freshPriceAction.ah_move_pct,
+        ah_vol_ratio: freshPriceAction.ah_vol_ratio,
+        ah_classification: freshPriceAction.ah_classification,
+        ah_reversal_pct: freshPriceAction.ah_reversal_pct,
+        prior_close: freshPriceAction.prior_close,
+        gap_pct: freshPriceAction.gap_pct,
+      }
+    : cached.phase1b;
+
+  const phase3: SecChecklist['phase3'] = {
+    ...cached.phase3,
+    ...(freshPriceAction
+      ? {
+          market_open: freshPriceAction.market_open,
+          pm_high: freshPriceAction.pm_high,
+          rth_open: freshPriceAction.rth_open,
+          pm_high_reclaimed: freshPriceAction.pm_high_reclaimed,
+          vwap: freshPriceAction.vwap,
+          vwap_failed: freshPriceAction.vwap_failed,
+          wick_ratio: freshPriceAction.wick_ratio,
+          volume_ratio: freshPriceAction.volume_ratio,
+          day_of_run: freshPriceAction.day_of_run,
+          current_price: freshPriceAction.current_price,
+          intraday_move_pct: freshPriceAction.intraday_move_pct,
+          efficiency: freshPriceAction.efficiency,
+          structure: cached.phase3.structure ?? freshPriceAction.structure,
+        }
+      : {}),
+    // Alpaca fields: live values take precedence over cached, but manual overrides win
+    large_print_zone: cached.phase3.large_print_zone ?? freshAlpaca.large_print_zone ?? null,
+    borrow: cached.phase3.borrow ?? freshAlpaca.borrow ?? null,
+    w1_imbalance: cached.phase3.w1_imbalance ?? freshAlpaca.w1_imbalance ?? null,
+  };
+
+  const merged: SecChecklist = { ...cached, phase1b, phase3 };
+
+  const overrides = computeOverrides(merged.phase1, phase1b, merged.phase2, phase3, merged.phase4);
+  const bias = computeBias(merged.phase1, overrides);
+  const score = computeScore(merged.phase1, merged.phase2, phase3, merged.phase4, overrides);
+  const completion_pct = computeCompletion(merged.phase1, phase1b, merged.phase2, phase3, merged.phase4);
+  const withRecomputed = { ...merged, overrides, bias, score, completion_pct };
+  const score_snapshot = computeScoreSnapshot(withRecomputed);
+  const final = { ...withRecomputed, score_snapshot };
+
+  // Update all active intents for this ticker
+  await prisma.tradeIntent.updateMany({
+    where: {
+      ticker: upper,
+      status: { not: 'swiped_off' },
+      sec_checklist: { not: null },
+    },
+    data: { sec_checklist: JSON.stringify(final), sec_bias: final.bias },
+  });
 }
 
 // ─── applyManualOverride ──────────────────────────────────────────────────────
