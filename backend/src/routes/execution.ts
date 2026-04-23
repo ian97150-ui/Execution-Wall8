@@ -413,6 +413,35 @@ router.post('/:id/execute', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Execution already completed' });
     }
 
+    // Block EXIT orders with no associated open position — prevents outbound
+    // broker calls and notifications when the position no longer exists.
+    let isExitOrder = false;
+    if (execution.raw_payload) {
+      try {
+        const payload = JSON.parse(execution.raw_payload);
+        isExitOrder = payload.event === 'EXIT';
+      } catch (_) {}
+    }
+    if (isExitOrder) {
+      const openPosition = await prisma.position.findFirst({
+        where: { ticker: execution.ticker, closed_at: null }
+      });
+      if (!openPosition) {
+        await prisma.execution.update({
+          where: { id },
+          data: { status: 'failed', error_message: 'No open position found — EXIT blocked before broker' }
+        });
+        await prisma.auditLog.create({
+          data: {
+            event_type: 'exit_rejected_no_position',
+            ticker: execution.ticker,
+            details: JSON.stringify({ execution_id: id, source: 'force_execute', reason: 'No open position found' })
+          }
+        });
+        return res.status(409).json({ error: `No open position for ${execution.ticker} — EXIT order blocked` });
+      }
+    }
+
     // Forward to broker webhook first
     const brokerResult = await forwardToBroker(execution);
 
