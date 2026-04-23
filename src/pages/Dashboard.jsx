@@ -839,26 +839,6 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Compact execution mode toggle in header */}
-              <div className="flex items-center bg-slate-800/80 rounded-lg p-0.5 gap-0.5">
-                {[
-                  { value: 'off', label: 'OFF', color: 'bg-red-500 text-white' },
-                  { value: 'safe', label: 'SAFE', color: 'bg-amber-500 text-amber-950' },
-                  { value: 'full', label: 'FULL', color: 'bg-emerald-500 text-emerald-950' },
-                ].map(m => (
-                  <button
-                    key={m.value}
-                    onClick={() => updateSettingsMutation.mutate({ execution_mode: m.value })}
-                    className={cn(
-                      "px-2 py-1 rounded text-[10px] font-bold transition-all",
-                      settings?.execution_mode === m.value ? m.color : "text-slate-500 hover:text-slate-300"
-                    )}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-
               <Link to={createPageUrl("AuditLog")}>
                 <Button variant="ghost" size="icon" className="text-slate-400" title="Audit Log">
                   <ScrollText className="w-5 h-5" />
@@ -894,17 +874,17 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Execution mode color bar */}
-          <div className={cn(
-            "h-1",
-            settings?.execution_mode === 'off' ? "bg-red-500" :
-              settings?.execution_mode === 'safe' ? "bg-amber-500" :
-                "bg-emerald-500"
-          )} />
         </header>
 
         {/* Main content */}
         <main ref={mainRef} className="flex-1 overflow-y-auto pb-16 sm:pb-20">
+          {/* Execution mode toggle — always visible above all tabs */}
+          <div className="px-4 pt-3 pb-2">
+            <ExecutionModeToggle
+              mode={settings?.execution_mode || 'safe'}
+              onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
+            />
+          </div>
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100vh - 240px)', overflow: 'hidden' } : {}}>
               {/* View mode toggle */}
@@ -1037,7 +1017,7 @@ export default function Dashboard() {
               )}
             </TabsContent>
 
-            <TabsContent value="executions" className="mt-0 px-4 pt-2 pb-6">
+            <TabsContent value="executions" className="mt-0 px-4 py-6">
               <ExecutionQueue
                 executions={executions}
                 executionMode={settings?.execution_mode || 'safe'}
@@ -1051,7 +1031,7 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="positions" className="mt-0 px-4 pt-2 pb-6">
+            <TabsContent value="positions" className="mt-0 px-4 py-6">
               <PositionsList
                 positions={positions}
                 onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
@@ -1063,7 +1043,7 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0 px-4 pt-2 pb-6">
+            <TabsContent value="history" className="mt-0 px-4 py-6">
               <AuditTimeline logs={auditLogs} />
             </TabsContent>
 
