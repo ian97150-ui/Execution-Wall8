@@ -22,15 +22,15 @@ WORKDIR /app/backend
 COPY backend/package*.json ./
 RUN npm install
 COPY backend/ .
+# Generate Prisma client (no db push — DATABASE_URL not available at build time)
 RUN npx prisma generate
-RUN npm run build
+# Compile TypeScript only
+RUN npx tsc
 
-# Copy frontend to backend's frontend-dist
+# Copy frontend into backend's static serve directory
 RUN mkdir -p frontend-dist && cp -r /app/dist/* frontend-dist/
 RUN echo "=== Backend frontend-dist ===" && ls -la frontend-dist/
 
-# Expose port
 EXPOSE 3000
 
-# Start the server
 CMD ["node", "dist/index.js"]
