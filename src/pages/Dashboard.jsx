@@ -24,6 +24,7 @@ import CandidatesList from "../components/trading/CandidatesList";
 import SecWatchList from "../components/trading/SecWatchList";
 import PositionsList from "../components/trading/PositionsList";
 import BlockedTickersList from "../components/trading/BlockedTickersList";
+import ExecutionModeToggle from "../components/trading/ExecutionModeToggle";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 // Import new REST API client
