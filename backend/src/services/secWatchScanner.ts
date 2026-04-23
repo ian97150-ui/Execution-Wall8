@@ -353,7 +353,7 @@ export function startLiveScorePoller(): void {
       where: {
         status: { not: 'swiped_off' },
         sec_checklist: { not: null },
-        OR: [{ expires_at: { equals: null } }, { expires_at: { gt: new Date() } }],
+        expires_at: { gt: new Date() },
       },
       select: { ticker: true },
       distinct: ['ticker'],
