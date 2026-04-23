@@ -1037,34 +1037,59 @@ export default function Dashboard() {
               )}
             </TabsContent>
 
-            <TabsContent value="executions" className="mt-0 px-4 pt-2 pb-6">
-              <ExecutionQueue
-                executions={executions}
-                executionMode={settings?.execution_mode || 'safe'}
-                onCancel={(exec) => cancelExecutionMutation.mutate(exec)}
-                onForceExecute={(exec) => forceExecuteMutation.mutate(exec)}
-                onApprove={(exec) => approveExecutionMutation.mutate(exec)}
-                onRetry={(exec) => retryExecutionMutation.mutate(exec)}
-                onEditLimit={handleEditLimit}
-                onCreateDemo={() => createDemoMutation.mutate()}
-                isDemoLoading={createDemoMutation.isPending}
-              />
+            <TabsContent value="executions" className="mt-0 flex flex-col pb-6">
+              <div className="shrink-0 flex items-center justify-between px-4 pt-3 pb-3 border-b border-slate-800/60">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Execution Queue</span>
+                <span className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-bold",
+                  settings?.execution_mode === 'off'  ? "bg-red-500/20 text-red-400" :
+                  settings?.execution_mode === 'full' ? "bg-emerald-500/20 text-emerald-400" :
+                                                        "bg-amber-500/20 text-amber-400"
+                )}>
+                  {(settings?.execution_mode || 'safe').toUpperCase()}
+                </span>
+              </div>
+              <div className="px-4 pt-3">
+                <ExecutionQueue
+                  executions={executions}
+                  executionMode={settings?.execution_mode || 'safe'}
+                  onCancel={(exec) => cancelExecutionMutation.mutate(exec)}
+                  onForceExecute={(exec) => forceExecuteMutation.mutate(exec)}
+                  onApprove={(exec) => approveExecutionMutation.mutate(exec)}
+                  onRetry={(exec) => retryExecutionMutation.mutate(exec)}
+                  onEditLimit={handleEditLimit}
+                  onCreateDemo={() => createDemoMutation.mutate()}
+                  isDemoLoading={createDemoMutation.isPending}
+                />
+              </div>
             </TabsContent>
 
-            <TabsContent value="positions" className="mt-0 px-4 pt-2 pb-6">
-              <PositionsList
-                positions={positions}
-                onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
-                onUnblockSignals={(position) => unblockSignalsMutation.mutate(position)}
-                onMarkFlat={(position) => markFlatMutation.mutate(position)}
-                onSetTTP={(position, price) => setTTPMutation.mutate({ position, price })}
-                onClearTTP={(position) => clearTTPMutation.mutate(position)}
-                tickers={tickers}
-              />
+            <TabsContent value="positions" className="mt-0 flex flex-col pb-6">
+              <div className="shrink-0 flex items-center justify-between px-4 pt-3 pb-3 border-b border-slate-800/60">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Open Positions</span>
+                <span className="text-xs text-slate-500">{positions.length} active</span>
+              </div>
+              <div className="px-4 pt-3">
+                <PositionsList
+                  positions={positions}
+                  onBlockSignals={(position) => blockSignalsMutation.mutate(position)}
+                  onUnblockSignals={(position) => unblockSignalsMutation.mutate(position)}
+                  onMarkFlat={(position) => markFlatMutation.mutate(position)}
+                  onSetTTP={(position, price) => setTTPMutation.mutate({ position, price })}
+                  onClearTTP={(position) => clearTTPMutation.mutate(position)}
+                  tickers={tickers}
+                />
+              </div>
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0 px-4 pt-2 pb-6">
-              <AuditTimeline logs={auditLogs} />
+            <TabsContent value="history" className="mt-0 flex flex-col pb-6">
+              <div className="shrink-0 flex items-center justify-between px-4 pt-3 pb-3 border-b border-slate-800/60">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Audit History</span>
+                <span className="text-xs text-slate-500">{auditLogs.length} events</span>
+              </div>
+              <div className="px-4 pt-3">
+                <AuditTimeline logs={auditLogs} />
+              </div>
             </TabsContent>
 
             {/* Bottom navigation */}
