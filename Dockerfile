@@ -17,11 +17,13 @@ COPY jsconfig.json ./
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Setup backend
+# Copy backend files while still in /app context (avoids BuildKit /backend path bug)
+COPY backend/package*.json ./backend/
+COPY backend/ ./backend/
+
+# Install backend deps and compile
 WORKDIR /app/backend
-COPY backend/package*.json ./
 RUN npm install
-COPY backend/ .
 # Generate Prisma client (no db push — DATABASE_URL not available at build time)
 RUN npx prisma generate
 # Compile TypeScript only
