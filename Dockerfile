@@ -23,5 +23,4 @@ RUN echo "=== Backend frontend-dist ===" && ls -la frontend-dist/
 
 EXPOSE 3000
 
-# prisma db push runs at startup when DATABASE_URL is available
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/index.js"]
+CMD ["node", "dist/index.js"]
