@@ -13,9 +13,10 @@ RUN npm install
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Build backend — --ignore-scripts skips prisma db push (no DATABASE_URL at build time)
+# Build backend — plain npm install so Prisma can download its engine binaries
+# (no prepare/postinstall in package.json, so prisma db push never runs here)
 WORKDIR /app/backend
-RUN npm install --ignore-scripts
+RUN npm install
 RUN npx prisma generate
 RUN npx tsc
 
