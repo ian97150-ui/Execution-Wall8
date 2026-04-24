@@ -11,9 +11,9 @@ RUN npm install
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Build backend
+# Build backend — ignore-scripts prevents prisma db push firing without DATABASE_URL
 WORKDIR /app/backend
-RUN npm install
+RUN npm install --ignore-scripts
 RUN npx prisma generate
 RUN npx tsc
 
@@ -23,4 +23,5 @@ RUN echo "=== Backend frontend-dist ===" && ls -la frontend-dist/
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+# prisma db push runs at startup when DATABASE_URL is available
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/index.js"]
