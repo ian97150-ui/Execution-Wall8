@@ -17,9 +17,11 @@ COPY jsconfig.json ./
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Copy backend files while still in /app context (avoids BuildKit /backend path bug)
+# Copy backend files explicitly — avoids BuildKit /backend glob cache-key bug
 COPY backend/package*.json ./backend/
-COPY backend/ ./backend/
+COPY backend/tsconfig.json ./backend/
+COPY backend/src/ ./backend/src/
+COPY backend/prisma/ ./backend/prisma/
 
 # Install backend deps and compile
 WORKDIR /app/backend
