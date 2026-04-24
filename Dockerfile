@@ -1,33 +1,25 @@
-# node:20-slim (Debian) — Prisma requires glibc + OpenSSL, both present here
+# node:20-slim (Debian/glibc) — Prisma binaries require glibc + OpenSSL
 FROM node:20-slim
 
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install frontend dependencies and build
-COPY package*.json ./
+# Single COPY avoids Railway BuildKit per-directory cache-key bug
+COPY . .
+
+# Build frontend (root package.json build = vite build)
 RUN npm install
-COPY src/ ./src/
-COPY public/ ./public/
-COPY index.html ./
-COPY vite.config.js ./
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
-COPY components.json ./
-COPY jsconfig.json ./
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Setup backend (WORKDIR set first so COPY backend/ . lands in /app/backend)
+# Build backend — --ignore-scripts skips prisma db push (no DATABASE_URL at build time)
 WORKDIR /app/backend
-COPY backend/package*.json ./
-RUN npm install
-COPY backend/ .
+RUN npm install --ignore-scripts
 RUN npx prisma generate
 RUN npx tsc
 
-# Copy frontend into backend's static serve directory
+# Copy frontend dist into backend's static serve directory
 RUN mkdir -p frontend-dist && cp -r /app/dist/* frontend-dist/
 RUN echo "=== Backend frontend-dist ===" && ls -la frontend-dist/
 
