@@ -1,34 +1,20 @@
-# Single stage build
+# Single stage build — uses COPY . . to avoid BuildKit /backend path cache-key bug
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install frontend dependencies and build
-COPY package*.json ./
+# Copy entire context at once (node_modules excluded via .dockerignore)
+COPY . .
+
+# Build frontend
 RUN npm install
-COPY src/ ./src/
-COPY public/ ./public/
-COPY index.html ./
-COPY vite.config.js ./
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
-COPY components.json ./
-COPY jsconfig.json ./
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Copy backend files explicitly — avoids BuildKit /backend glob cache-key bug
-COPY backend/package*.json ./backend/
-COPY backend/tsconfig.json ./backend/
-COPY backend/src/ ./backend/src/
-COPY backend/prisma/ ./backend/prisma/
-
-# Install backend deps and compile
+# Build backend
 WORKDIR /app/backend
 RUN npm install
-# Generate Prisma client (no db push — DATABASE_URL not available at build time)
 RUN npx prisma generate
-# Compile TypeScript only
 RUN npx tsc
 
 # Copy frontend into backend's static serve directory
