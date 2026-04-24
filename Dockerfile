@@ -1,8 +1,8 @@
-# Single stage build — uses COPY . . to avoid BuildKit /backend path cache-key bug
-FROM node:20-alpine
+# node:20-slim (Debian) — avoids Alpine musl/OpenSSL binary incompatibility with Prisma
+FROM node:20-slim
 
-# Prisma's schema engine requires OpenSSL — not present in alpine by default
-RUN apk add --no-cache openssl
+# Prisma's schema engine requires OpenSSL
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
