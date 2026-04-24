@@ -5,6 +5,7 @@ import { PushoverNotifications } from '../services/pushoverService';
 import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runChecklist } from '../services/secChecklistService';
+import { captureGradeSnapshot } from '../services/gradeSnapshotService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -871,6 +872,7 @@ async function handleOrderSignal(data: {
       raw_payload: orderPayload
     }
   });
+  captureGradeSnapshot(execution.ticker, execution.id, execution.intent_id ?? null).catch(console.error);
 
   // Wake up the scheduler whenever a pending order is created (safe mode only)
   if (!isFullMode) {
@@ -1262,6 +1264,7 @@ async function handleExitSignal(data: {
       raw_payload: orderPayload  // Contains event: 'EXIT' and position_id for identification
     }
   });
+  captureGradeSnapshot(execution.ticker, execution.id, null).catch(console.error);
 
   // Wake up the scheduler if exit is queued (not immediate)
   if (!isImmediateExecution) {

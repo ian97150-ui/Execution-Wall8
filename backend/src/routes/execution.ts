@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../index';
 import { forwardToBroker } from '../services/brokerWebhook';
+import { captureGradeSnapshot } from '../services/gradeSnapshotService';
 
 const router = express.Router();
 
@@ -255,6 +256,54 @@ router.get('/:id/with-position', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Grade Snapshot TXT Export ───────────────────────────────────────────────
+// GET /api/executions/export-grades
+// Downloads a newline-delimited JSON (.txt) of all executions with grade snapshots.
+// Each line is a self-contained JSON object with order info + scoring fields.
+router.get('/export-grades', async (req: Request, res: Response) => {
+  try {
+    const executions = await prisma.execution.findMany({
+      orderBy: { created_at: 'desc' },
+      take: 5000,
+    });
+
+    const lines = executions.map((e: any) => {
+      let grade: any = null;
+      try { if (e.grade_snapshot) grade = JSON.parse(e.grade_snapshot); } catch {}
+      return JSON.stringify({
+        id: e.id,
+        date: e.created_at,
+        ticker: e.ticker,
+        action: e.order_action,
+        dir: e.dir,
+        quantity: e.quantity,
+        price: e.limit_price ? Number(e.limit_price) : null,
+        status: e.status,
+        executed_at: e.executed_at,
+        // Grade fields — null when no WALL card checklist existed at order time
+        score: grade?.score ?? null,
+        bias: grade?.bias ?? null,
+        pre_fall_score: grade?.pre_fall_score ?? null,
+        pre_fall_tier: grade?.pre_fall_tier ?? null,
+        predicted_bucket: grade?.predicted_bucket ?? null,
+        bucket_dump_pct: grade?.bucket_dump_pct ?? null,
+        signals: grade?.signals ?? null,
+        confidence: grade?.confidence ?? null,
+        section: grade?.section ?? null,
+        snapshot_at: grade?.timestamp ?? null,
+      });
+    });
+
+    const date = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="execution-grades-${date}.txt"`);
+    res.send(lines.join('\n'));
+  } catch (error: any) {
+    console.error('Error exporting grade snapshots:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create execution
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -298,6 +347,7 @@ router.post('/', async (req: Request, res: Response) => {
         raw_payload: orderPayload
       }
     });
+    captureGradeSnapshot(execution.ticker, execution.id, execution.intent_id).catch(console.error);
 
     await prisma.auditLog.create({
       data: {
@@ -361,6 +411,7 @@ router.post('/custom', async (req: Request, res: Response) => {
         })
       }
     });
+    captureGradeSnapshot(execution.ticker, execution.id, execution.intent_id).catch(console.error);
 
     const brokerResult = await forwardToBroker(execution);
 
@@ -444,6 +495,10 @@ router.post('/:id/execute', async (req: Request, res: Response) => {
 
     // Forward to broker webhook first
     const brokerResult = await forwardToBroker(execution);
+    // Capture grade snapshot if not already set (execution was created via a different path)
+    if (!execution.grade_snapshot) {
+      captureGradeSnapshot(execution.ticker, execution.id, execution.intent_id).catch(console.error);
+    }
 
     // Update execution as executed (even if broker fails - local state is tracked)
     const updatedExecution = await prisma.execution.update({

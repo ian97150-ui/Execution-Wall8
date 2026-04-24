@@ -6,6 +6,7 @@ import { runSecWatchScan } from '../services/secWatchScanner';
 import { forwardToBroker } from '../services/brokerWebhook';
 import { runChecklist, applyManualOverride, SecChecklist } from '../services/secChecklistService';
 import { runSpikeScanOnDemand } from '../services/spikeMonitorService';
+import { captureGradeSnapshot } from '../services/gradeSnapshotService';
 import { getW1Imbalance, getLargePrintZone, inferBorrowRegime } from '../services/alpacaFlowService';
 
 const router = express.Router();
@@ -227,6 +228,9 @@ router.post('/:id/swipe', async (req: Request, res: Response) => {
 
       if (pendingExecution) {
         const brokerResult = await forwardToBroker(pendingExecution);
+        if (!pendingExecution.grade_snapshot) {
+          captureGradeSnapshot(pendingExecution.ticker, pendingExecution.id, pendingExecution.intent_id).catch(console.error);
+        }
         await prisma.execution.update({
           where: { id: pendingExecution.id },
           data: {

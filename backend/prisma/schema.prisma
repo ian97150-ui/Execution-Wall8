@@ -173,6 +173,9 @@ model Execution {
   // Raw payload for broker forwarding (TradingView ORDER format)
   raw_payload      String?   // JSON: original/constructed order payload
 
+  // Grading snapshot captured at order creation time (for backtesting)
+  grade_snapshot   String?   // JSON: ScoreSnapshot from scoring engine at order receipt
+
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 
