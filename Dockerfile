@@ -1,22 +1,29 @@
-# node:20-slim (Debian) — avoids Alpine musl/OpenSSL binary incompatibility with Prisma
+# node:20-slim (Debian) — Prisma requires glibc + OpenSSL, both present here
 FROM node:20-slim
 
-# Prisma's schema engine requires OpenSSL
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy entire context at once (node_modules excluded via .dockerignore)
-COPY . .
-
-# Build frontend
+# Install frontend dependencies and build
+COPY package*.json ./
 RUN npm install
+COPY src/ ./src/
+COPY public/ ./public/
+COPY index.html ./
+COPY vite.config.js ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+COPY components.json ./
+COPY jsconfig.json ./
 RUN npm run build
 RUN echo "=== Frontend build ===" && ls -la dist/
 
-# Build backend — ignore-scripts prevents prisma db push firing without DATABASE_URL
+# Setup backend (WORKDIR set first so COPY backend/ . lands in /app/backend)
 WORKDIR /app/backend
-RUN npm install --ignore-scripts
+COPY backend/package*.json ./
+RUN npm install
+COPY backend/ .
 RUN npx prisma generate
 RUN npx tsc
 
