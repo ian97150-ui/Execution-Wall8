@@ -174,7 +174,8 @@ model Execution {
   raw_payload      String?   // JSON: original/constructed order payload
 
   // Grading snapshot captured at order creation time (for backtesting)
-  grade_snapshot   String?   // JSON: ScoreSnapshot from scoring engine at order receipt
+  grade_snapshot            String?   // JSON: ScoreSnapshot from scoring engine at order receipt
+  sec_checklist_snapshot    String?   // JSON: full SecChecklist (all phase inputs) at order receipt
 
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt

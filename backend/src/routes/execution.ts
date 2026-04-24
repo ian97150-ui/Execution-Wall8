@@ -269,8 +269,11 @@ router.get('/export-grades', async (req: Request, res: Response) => {
 
     const lines = executions.map((e: any) => {
       let grade: any = null;
+      let cl: any = null;
       try { if (e.grade_snapshot) grade = JSON.parse(e.grade_snapshot); } catch {}
+      try { if (e.sec_checklist_snapshot) cl = JSON.parse(e.sec_checklist_snapshot); } catch {}
       return JSON.stringify({
+        // ── Order ────────────────────────────────────────────────────────────
         id: e.id,
         date: e.created_at,
         ticker: e.ticker,
@@ -280,17 +283,72 @@ router.get('/export-grades', async (req: Request, res: Response) => {
         price: e.limit_price ? Number(e.limit_price) : null,
         status: e.status,
         executed_at: e.executed_at,
-        // Grade fields — null when no WALL card checklist existed at order time
+        snapshot_at: grade?.timestamp ?? null,
+        // ── Score headline ───────────────────────────────────────────────────
         score: grade?.score ?? null,
         bias: grade?.bias ?? null,
+        confidence: grade?.confidence ?? null,
+        reason: grade?.reason ?? null,
+        section: grade?.section ?? null,
+        // ── Pre-fall ─────────────────────────────────────────────────────────
         pre_fall_score: grade?.pre_fall_score ?? null,
         pre_fall_tier: grade?.pre_fall_tier ?? null,
+        pre_fall_flags: grade?.pre_fall_flags ?? null,
+        // ── Signals & overrides ───────────────────────────────────────────────
+        signals: grade?.signals ?? null,
+        overrides_fired: grade?.overrides_fired ?? null,
+        disqualifiers: grade?.disqualifiers ?? null,
+        // ── Timing ───────────────────────────────────────────────────────────
         predicted_bucket: grade?.predicted_bucket ?? null,
         bucket_dump_pct: grade?.bucket_dump_pct ?? null,
-        signals: grade?.signals ?? null,
-        confidence: grade?.confidence ?? null,
-        section: grade?.section ?? null,
-        snapshot_at: grade?.timestamp ?? null,
+        // ── Probabilities ─────────────────────────────────────────────────────
+        probabilities: grade?.probabilities ?? null,
+        section_prob: grade?.section_prob ?? null,
+        // ── Regime ───────────────────────────────────────────────────────────
+        regime: grade?.regime ?? null,
+        pattern_stats: grade?.pattern_stats ?? null,
+        // ── S1 clean score ────────────────────────────────────────────────────
+        clean_score: grade?.clean_score ?? null,
+        clean_outcome: grade?.clean_outcome ?? null,
+        outcome_profile: grade?.outcome_profile ?? null,
+        // ── SEC checklist — phase inputs ──────────────────────────────────────
+        sec_bias: cl?.bias ?? null,
+        sec_completion_pct: cl?.completion_pct ?? null,
+        // Phase 1 — EDGAR
+        shelf_type: cl?.phase1?.shelf_type ?? null,
+        shelf_date: cl?.phase1?.shelf_date ?? null,
+        shelf_age_days: cl?.phase1?.shelf_age_days ?? null,
+        prior_424b_count_12m: cl?.phase1?.prior_424b_count_12m ?? null,
+        same_day_424b_count: cl?.phase1?.same_day_424b?.length ?? null,
+        insider_signals: cl?.phase1?.insider_signals ?? null,
+        // Phase 1b — AH price action
+        ah_move_pct: cl?.phase1b?.ah_move_pct ?? null,
+        ah_vol_ratio: cl?.phase1b?.ah_vol_ratio ?? null,
+        ah_classification: cl?.phase1b?.ah_classification ?? null,
+        ah_reversal_pct: cl?.phase1b?.ah_reversal_pct ?? null,
+        gap_pct: cl?.phase1b?.gap_pct ?? null,
+        prior_close: cl?.phase1b?.prior_close ?? null,
+        // Phase 2 — catalyst
+        catalyst_tier: cl?.phase2?.catalyst_tier ?? null,
+        proceeds_type: cl?.phase2?.proceeds_type ?? null,
+        sympathy_trade: cl?.phase2?.sympathy_trade ?? null,
+        // Phase 3 — intraday
+        borrow: cl?.phase3?.borrow ?? null,
+        structure: cl?.phase3?.structure ?? null,
+        vwap: cl?.phase3?.vwap ?? null,
+        vwap_failed: cl?.phase3?.vwap_failed ?? null,
+        wick_ratio: cl?.phase3?.wick_ratio ?? null,
+        day_of_run: cl?.phase3?.day_of_run ?? null,
+        efficiency: cl?.phase3?.efficiency ?? null,
+        intraday_move_pct: cl?.phase3?.intraday_move_pct ?? null,
+        large_print_zone: cl?.phase3?.large_print_zone ?? null,
+        w1_imbalance: cl?.phase3?.w1_imbalance ?? null,
+        // Phase 4 — short interest
+        short_float_pct: cl?.phase4?.short_float_pct ?? null,
+        short_interest: cl?.phase4?.short_interest ?? null,
+        shares_outstanding: cl?.phase4?.shares_outstanding ?? null,
+        // Computed overrides
+        overrides: cl?.overrides ?? null,
       });
     });
 

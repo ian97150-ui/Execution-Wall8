@@ -44,7 +44,10 @@ export async function captureGradeSnapshot(
 
   await prisma.execution.update({
     where: { id: executionId },
-    data: { grade_snapshot: JSON.stringify(checklist.score_snapshot) },
+    data: {
+      grade_snapshot: JSON.stringify(checklist.score_snapshot),
+      sec_checklist_snapshot: JSON.stringify(checklist),
+    },
   });
 
   console.log(`📊 Grade snapshot: ${upper} score=${checklist.score_snapshot.score} bias=${checklist.bias} pre_fall=${checklist.score_snapshot.pre_fall_tier}`);
