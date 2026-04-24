@@ -1,6 +1,9 @@
 # Single stage build — uses COPY . . to avoid BuildKit /backend path cache-key bug
 FROM node:20-alpine
 
+# Prisma's schema engine requires OpenSSL — not present in alpine by default
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy entire context at once (node_modules excluded via .dockerignore)
