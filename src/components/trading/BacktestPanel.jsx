@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart2, Plus, Trash2, Play, Square, ChevronRight } from 'lucide-react';
 
-const API = '/api/sim';
+const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(API + path, opts);
