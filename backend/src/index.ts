@@ -113,24 +113,24 @@ app.get('*', (req, res) => {
   }
 });
 
-// Seed sim_tickers from committed CSV on first startup
+// Seed sim_tickers from committed CSV on first startup (pure Node.js, no Python dependency)
 async function seedSimTickersFromCSV(): Promise<void> {
   try {
     const count = await prisma.simTicker.count();
     if (count > 0) return;
     const csvPath = path.join(__dirname, '../..', 'python/market_conditions.csv');
-    if (!fs.existsSync(csvPath)) return;
+    if (!fs.existsSync(csvPath)) { console.warn('[sim] market_conditions.csv not found at', csvPath); return; }
 
-    const { spawnSync } = await import('child_process');
-    const result = spawnSync('python3', [
-      '-c',
-      `import csv,json,sys; r=list(csv.DictReader(open(sys.argv[1],encoding='utf-8-sig'))); print(json.dumps(r))`,
-      csvPath,
-    ]);
-    if (result.status !== 0) return;
+    const content = fs.readFileSync(csvPath, 'utf-8').replace(/^﻿/, ''); // strip BOM
+    const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return;
 
-    const rows: Record<string, string>[] = JSON.parse(result.stdout.toString());
-    for (const row of rows) {
+    const headers = lines[0].split(',');
+    let seeded = 0;
+    for (const line of lines.slice(1)) {
+      const vals = line.split(',');
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { row[h.trim()] = (vals[i] ?? '').trim(); });
       const t = row.ticker?.toUpperCase();
       const d = row.spike_date;
       if (!t || !d) continue;
@@ -139,8 +139,9 @@ async function seedSimTickersFromCSV(): Promise<void> {
         create: { ticker: t, spike_date: d, csv_fields: JSON.stringify(row) },
         update: {},
       });
+      seeded++;
     }
-    console.log(`[sim] seeded ${rows.length} rows from market_conditions.csv`);
+    console.log(`[sim] seeded ${seeded} rows from market_conditions.csv`);
   } catch (e) {
     console.error('[sim] seed error:', e);
   }

@@ -16,7 +16,7 @@ function stripAnsi(str: string): string {
 async function writeCSVFromDB(csvPath: string): Promise<void> {
   const tickers = await prisma.simTicker.findMany({ orderBy: { created_at: 'asc' } });
   if (!tickers.length) {
-    fs.writeFileSync(csvPath, 'ticker,spike_date,csv_fields\n');
+    fs.writeFileSync(csvPath, 'ticker,spike_date\n');
     return;
   }
   const rows = tickers.map(t => JSON.parse(t.csv_fields) as Record<string, string>);
@@ -96,15 +96,35 @@ router.get('/run', async (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable Nginx/Railway proxy buffering
   res.flushHeaders();
+
+  // Keepalive: send a comment line every 15s so Railway doesn't close idle connections
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
+  // Guard against writing after the stream is done (proc error + close both fire)
+  let streamDone = false;
+  const cleanup = (csvPath: string) => {
+    if (streamDone) return;
+    streamDone = true;
+    clearInterval(keepalive);
+    try { fs.unlinkSync(csvPath); } catch {}
+  };
+  const finish = (csvPath: string, code: number) => {
+    if (streamDone) return;
+    cleanup(csvPath);
+    res.write(`event: done\ndata: ${JSON.stringify({ code })}\n\n`);
+    res.end();
+  };
 
   const csvPath = `/tmp/sim_run_${Date.now()}.csv`;
   try {
     await writeCSVFromDB(csvPath);
   } catch (e) {
-    res.write(`data: ${JSON.stringify('[error] failed to write CSV')}\n\n`);
-    res.end();
+    res.write(`data: ${JSON.stringify('[error] failed to write CSV: ' + String(e))}\n\n`);
+    finish(csvPath, 1);
     return;
   }
 
@@ -113,8 +133,7 @@ router.get('/run', async (req: Request, res: Response) => {
     case 'flips':
       if (!ticker || !date) {
         res.write(`data: ${JSON.stringify('[error] ticker and date required for flips')}\n\n`);
-        res.write(`event: done\ndata: ${JSON.stringify({ code: 1 })}\n\n`);
-        res.end(); return;
+        finish(csvPath, 1); return;
       }
       args.push('--flips', ticker.toUpperCase(), date, '--csv', csvPath);
       break;
@@ -124,8 +143,7 @@ router.get('/run', async (req: Request, res: Response) => {
     case 'replay':
       if (!ticker || !date) {
         res.write(`data: ${JSON.stringify('[error] ticker and date required for replay')}\n\n`);
-        res.write(`event: done\ndata: ${JSON.stringify({ code: 1 })}\n\n`);
-        res.end(); return;
+        finish(csvPath, 1); return;
       }
       args.push('--replay', ticker.toUpperCase(), date, '--no-interactive', '--csv', csvPath);
       break;
@@ -136,41 +154,36 @@ router.get('/run', async (req: Request, res: Response) => {
       args.push('--backtest', '--csv', csvPath);
       break;
     default:
-      res.write(`event: done\ndata: ${JSON.stringify({ code: 0 })}\n\n`);
-      res.end();
-      try { fs.unlinkSync(csvPath); } catch {}
-      return;
+      finish(csvPath, 0); return;
   }
 
   const polygonKey = process.env.POLYGON_API_KEY;
   if (polygonKey) args.push('--polygon-key', polygonKey);
 
+  // Log what we're running so errors are diagnosable
+  res.write(`data: ${JSON.stringify(`> python3 ${args.slice(1).join(' ')}`)}\n\n`);
+
   const proc = spawn('python3', args, { cwd: path.join(__dirname, '../../..') });
 
   const send = (text: string) => {
-    const clean = stripAnsi(text);
-    if (clean.trim()) res.write(`data: ${JSON.stringify(clean)}\n\n`);
+    if (streamDone) return;
+    res.write(`data: ${JSON.stringify(stripAnsi(text))}\n\n`);
   };
 
   proc.stdout.on('data', (c: Buffer) => send(c.toString()));
-  proc.stderr.on('data', (c: Buffer) => send('[err] ' + c.toString()));
+  proc.stderr.on('data', (c: Buffer) => send(c.toString())); // stderr shown as-is for error diagnosis
 
   proc.on('close', (code: number) => {
-    try { fs.unlinkSync(csvPath); } catch {}
-    res.write(`event: done\ndata: ${JSON.stringify({ code })}\n\n`);
-    res.end();
+    finish(csvPath, code ?? 0);
   });
 
   proc.on('error', (err: Error) => {
-    try { fs.unlinkSync(csvPath); } catch {}
-    send(`[proc error] ${err.message}`);
-    res.write(`event: done\ndata: ${JSON.stringify({ code: -1 })}\n\n`);
-    res.end();
+    send(`[error] failed to run python3: ${err.message}\nMake sure python3 is installed and cat5ive_sim.py is at ${SCRIPT_PATH}`);
+    finish(csvPath, -1);
   });
 
   req.on('close', () => {
-    proc.kill();
-    try { fs.unlinkSync(csvPath); } catch {}
+    if (!streamDone) { proc.kill(); cleanup(csvPath); }
   });
 });
 
