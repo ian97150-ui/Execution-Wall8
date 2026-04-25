@@ -17,6 +17,7 @@ import tickerConfigRoutes from './routes/tickerConfig';
 import authRoutes from './routes/auth';
 import databaseRoutes from './routes/database';
 import schedulesRoutes from './routes/schedules';
+import simRoutes from './routes/sim';
 
 // Import services
 import { startCleanupScheduler } from './services/databaseCleanup';
@@ -68,6 +69,7 @@ app.use('/api/ticker-configs', tickerConfigRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/schedules', schedulesRoutes);
+app.use('/api/sim', simRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -111,6 +113,39 @@ app.get('*', (req, res) => {
   }
 });
 
+// Seed sim_tickers from committed CSV on first startup
+async function seedSimTickersFromCSV(): Promise<void> {
+  try {
+    const count = await prisma.simTicker.count();
+    if (count > 0) return;
+    const csvPath = path.join(__dirname, '../..', 'python/market_conditions.csv');
+    if (!fs.existsSync(csvPath)) return;
+
+    const { spawnSync } = await import('child_process');
+    const result = spawnSync('python3', [
+      '-c',
+      `import csv,json,sys; r=list(csv.DictReader(open(sys.argv[1],encoding='utf-8-sig'))); print(json.dumps(r))`,
+      csvPath,
+    ]);
+    if (result.status !== 0) return;
+
+    const rows: Record<string, string>[] = JSON.parse(result.stdout.toString());
+    for (const row of rows) {
+      const t = row.ticker?.toUpperCase();
+      const d = row.spike_date;
+      if (!t || !d) continue;
+      await prisma.simTicker.upsert({
+        where:  { ticker_spike_date: { ticker: t, spike_date: d } },
+        create: { ticker: t, spike_date: d, csv_fields: JSON.stringify(row) },
+        update: {},
+      });
+    }
+    console.log(`[sim] seeded ${rows.length} rows from market_conditions.csv`);
+  } catch (e) {
+    console.error('[sim] seed error:', e);
+  }
+}
+
 // Start server
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
@@ -138,6 +173,9 @@ app.listen(PORT, () => {
 
   // Start spike monitor (auto-detects 40%+ movers, seeds SEC Watch panel)
   startSpikeMonitor();
+
+  // Seed backtest ticker list from committed CSV (no-op if already seeded)
+  seedSimTickersFromCSV().catch(err => console.error('[sim] seed failed:', err));
 });
 
 // Graceful shutdown

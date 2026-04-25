@@ -15,7 +15,7 @@ import { toast } from "sonner";
 
 import SwipeDeck from "../components/trading/SwipeDeck";
 import ExecutionQueue from "../components/trading/ExecutionQueue";
-import AuditTimeline from "../components/trading/AuditTimeline";
+import { BacktestPanel } from "../components/trading/BacktestPanel";
 import StatsOverview from "../components/trading/StatsOverview";
 import TickerList from "../components/trading/TickerList";
 import LimitPriceEditor from "../components/trading/LimitPriceEditor";
@@ -1044,8 +1044,8 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0 px-4 py-6">
-              <AuditTimeline logs={auditLogs} />
+            <TabsContent value="history" className="mt-0 h-full">
+              <BacktestPanel />
             </TabsContent>
 
             {/* Bottom navigation */}

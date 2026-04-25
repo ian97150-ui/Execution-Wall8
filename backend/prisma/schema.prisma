@@ -240,3 +240,14 @@ model WallEvent {
   @@index([ticker])
   @@map("wall_events")
 }
+
+model SimTicker {
+  id          String   @id @default(uuid())
+  ticker      String
+  spike_date  String
+  csv_fields  String   // JSON: full CSV row (all static fields)
+  created_at  DateTime @default(now())
+
+  @@unique([ticker, spike_date])
+  @@map("sim_tickers")
+}

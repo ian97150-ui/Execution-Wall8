@@ -1,7 +1,8 @@
 # node:20-slim (Debian/glibc) — Prisma binaries require glibc + OpenSSL
 FROM node:20-slim
 
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --break-system-packages yfinance requests
 
 WORKDIR /app
 
