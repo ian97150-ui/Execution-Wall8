@@ -254,8 +254,8 @@ export function BacktestPanel() {
               label="Health Check"
               disabled={running}
               onClick={() => {
-                setLines(['[fetch] GET /api/sim/health ...']);
-                fetch('/api/sim/health')
+                setLines([`[fetch] GET ${API}/health ...`]);
+                fetch(`${API}/health`)
                   .then(r => {
                     setLines(prev => [...prev, `[http] status ${r.status}`]);
                     return r.text();
