@@ -6,7 +6,14 @@ const API = '/api/sim';
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(API + path, opts);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    let parsed = {};
+    try { parsed = JSON.parse(text); } catch {}
+    const err = new Error(parsed.error || text);
+    err.output = parsed.output || null;
+    throw err;
+  }
   return res.json();
 }
 
@@ -108,7 +115,10 @@ export function BacktestPanel() {
       setAddTicker(''); setAddDate('');
       if (data.output) setLines(data.output.split('\n'));
     },
-    onError: (err) => setAddStatus(`Error: ${err.message}`),
+    onError: (err) => {
+      setAddStatus(`Error: ${err.message}`);
+      if (err.output) setLines(String(err.output).split('\n'));
+    },
   });
 
   const handleAdd = (e) => {

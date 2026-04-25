@@ -81,11 +81,23 @@ router.post('/tickers', async (req: Request, res: Response) => {
   if (polygonKey) args.push('--polygon-key', polygonKey);
 
   let output = '';
+  let responded = false;
+  const reply = (status: number, body: object) => {
+    if (responded) return;
+    responded = true;
+    try { fs.unlinkSync(csvPath); } catch {}
+    res.status(status).json(body);
+  };
+
   const proc = spawn('python3', args, { cwd: path.join(__dirname, '../../..') });
   proc.stdout.on('data', (c: Buffer) => { output += c.toString(); });
   proc.stderr.on('data', (c: Buffer) => { output += c.toString(); });
 
-  proc.on('close', async () => {
+  proc.on('close', async (code: number) => {
+    if (code !== 0) {
+      reply(500, { error: `Python exited with code ${code}`, output: stripAnsi(output) });
+      return;
+    }
     try {
       // Use Python to parse the CSV back as JSON (handles quoted fields)
       const parseResult = spawnSync('python3', [
@@ -108,13 +120,11 @@ router.post('/tickers', async (req: Request, res: Response) => {
     } catch (e) {
       console.error('[sim] add-ticker sync error', e);
     }
-    try { fs.unlinkSync(csvPath); } catch {}
-    res.json({ ok: true, output: stripAnsi(output) });
+    reply(200, { ok: true, output: stripAnsi(output) });
   });
 
-  proc.on('error', (err) => {
-    try { fs.unlinkSync(csvPath); } catch {}
-    res.status(500).json({ error: String(err), output: stripAnsi(output) });
+  proc.on('error', (err: Error) => {
+    reply(500, { error: `Failed to spawn python3: ${err.message}`, output: stripAnsi(output) });
   });
 });
 
