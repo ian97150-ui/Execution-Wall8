@@ -83,8 +83,9 @@ export function BacktestPanel() {
       setRunning(false);
     });
 
-    es.onerror = () => {
-      setLines(prev => [...prev, '[connection closed]']);
+    es.onerror = (e) => {
+      console.error('[BacktestPanel] EventSource error', e, 'readyState:', es.readyState);
+      setLines(prev => [...prev, `[connection closed — readyState=${es.readyState}]`]);
       es.close(); esRef.current = null;
       setRunning(false);
     };
@@ -250,10 +251,23 @@ export function BacktestPanel() {
           {/* Command buttons */}
           <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 flex-wrap">
             <CmdButton
+              label="Health Check"
+              disabled={running}
+              onClick={() => {
+                setLines(['[fetch] GET /api/sim/health ...']);
+                fetch('/api/sim/health')
+                  .then(r => {
+                    setLines(prev => [...prev, `[http] status ${r.status}`]);
+                    return r.text();
+                  })
+                  .then(t => setLines(prev => [...prev, t]))
+                  .catch(e => setLines(prev => [...prev, `[error] ${e.message}`]));
+              }}
+            />
+            <CmdButton
               label="Test SSE"
               disabled={running}
               onClick={() => runCmd('test')}
-              className="text-muted-foreground"
             />
             <span className="text-border">|</span>
             <CmdButton
