@@ -219,8 +219,8 @@ router.get('/run', async (req: Request, res: Response) => {
     res.write(`data: ${JSON.stringify(stripAnsi(text))}\n\n`);
   };
 
-  proc.stdout.on('data', (c: Buffer) => send(c.toString()));
-  proc.stderr.on('data', (c: Buffer) => send(c.toString())); // stderr shown as-is for error diagnosis
+  proc.stdout?.on('data', (c: Buffer) => send(c.toString()));
+  proc.stderr?.on('data', (c: Buffer) => send(c.toString()));
 
   proc.on('close', (code: number | null) => {
     finish(csvPath, code ?? 0);
