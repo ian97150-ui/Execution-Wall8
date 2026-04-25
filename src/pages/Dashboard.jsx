@@ -736,6 +736,29 @@ export default function Dashboard() {
     }
   });
 
+  // Block all current candidates (Close All from Review All view)
+  const closeAllCandidatesMutation = useMutation({
+    mutationFn: async (tickers) => {
+      await Promise.all(tickers.map(ticker =>
+        api.put(`/ticker-configs/${ticker}`, { alerts_blocked: true })
+      ));
+      await api.post('/audit-logs', {
+        event_type: 'wall_alerts_blocked',
+        ticker: null,
+        details: JSON.stringify({
+          reason: `Close All — blocked ${tickers.length} ticker(s): ${tickers.join(', ')}`
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickers'] });
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      toast.success('All wall cards closed and blocked');
+    },
+    onError: () => toast.error('Failed to close all')
+  });
+
   // Unblock wall alerts for a ticker
   const unblockAlertsMutation = useMutation({
     mutationFn: async (ticker) => {
@@ -889,7 +912,7 @@ export default function Dashboard() {
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsContent value="candidates" className="mt-0 flex flex-col" style={viewMode === 'deck' ? { height: 'calc(100vh - 240px)', overflow: 'hidden' } : {}}>
               {/* View mode toggle */}
-              <div className="shrink-0 flex gap-2 px-4 pt-3 pb-3 overflow-x-auto">
+              <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-3 overflow-x-auto">
                 <button
                   onClick={() => setViewMode("deck")}
                   className={cn(
@@ -936,6 +959,21 @@ export default function Dashboard() {
                 >
                   SEC Watch {secWatchIntents.length > 0 && `(${secWatchIntents.length})`}
                 </button>
+
+                {viewMode === "list" && candidates.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const tickers = [...new Set(candidates.map(c => c.ticker))];
+                      if (window.confirm(`Block all ${tickers.length} ticker(s) on the wall?\n\n${tickers.join(', ')}`)) {
+                        closeAllCandidatesMutation.mutate(tickers);
+                      }
+                    }}
+                    disabled={closeAllCandidatesMutation.isPending}
+                    className="ml-auto shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 disabled:opacity-50"
+                  >
+                    {closeAllCandidatesMutation.isPending ? 'Closing…' : `Close All (${candidates.length})`}
+                  </button>
+                )}
               </div>
 
               {viewMode === "deck" && (
