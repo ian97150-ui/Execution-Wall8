@@ -738,21 +738,28 @@ export default function Dashboard() {
 
   // Block all current candidates (Close All from Review All view)
   const closeAllCandidatesMutation = useMutation({
-    mutationFn: async (tickers) => {
-      await Promise.all(tickers.map(ticker =>
+    mutationFn: async (intents) => {
+      // Swipe off every intent so they appear in the Blocked section
+      await Promise.all(intents.map(intent =>
+        api.post(`/trade-intents/${intent.id}/swipe`, { action: 'off' })
+      ));
+      // Also block alerts so new ones don't come in for these tickers
+      const uniqueTickers = [...new Set(intents.map(i => i.ticker))];
+      await Promise.all(uniqueTickers.map(ticker =>
         api.put(`/ticker-configs/${ticker}`, { alerts_blocked: true })
       ));
       await api.post('/audit-logs', {
         event_type: 'wall_alerts_blocked',
         ticker: null,
         details: JSON.stringify({
-          reason: `Close All — blocked ${tickers.length} ticker(s): ${tickers.join(', ')}`
+          reason: `Close All — swiped off ${intents.length} card(s): ${uniqueTickers.join(', ')}`
         })
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickers'] });
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['blockedIntents'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
       toast.success('All wall cards closed and blocked');
     },
@@ -964,8 +971,8 @@ export default function Dashboard() {
                   <button
                     onClick={() => {
                       const tickers = [...new Set(candidates.map(c => c.ticker))];
-                      if (window.confirm(`Block all ${tickers.length} ticker(s) on the wall?\n\n${tickers.join(', ')}`)) {
-                        closeAllCandidatesMutation.mutate(tickers);
+                      if (window.confirm(`Close all ${candidates.length} card(s) on the wall?\n\n${tickers.join(', ')}`)) {
+                        closeAllCandidatesMutation.mutate(candidates);
                       }
                     }}
                     disabled={closeAllCandidatesMutation.isPending}
