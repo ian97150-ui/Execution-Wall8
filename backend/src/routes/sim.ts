@@ -222,7 +222,7 @@ router.get('/run', async (req: Request, res: Response) => {
   proc.stdout.on('data', (c: Buffer) => send(c.toString()));
   proc.stderr.on('data', (c: Buffer) => send(c.toString())); // stderr shown as-is for error diagnosis
 
-  proc.on('close', (code: number) => {
+  proc.on('close', (code: number | null) => {
     finish(csvPath, code ?? 0);
   });
 
