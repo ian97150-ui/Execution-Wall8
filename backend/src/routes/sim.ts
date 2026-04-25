@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'child_process';
 import { prisma } from '../index';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 const router = Router();
 
@@ -159,7 +160,7 @@ router.get('/run', async (req: Request, res: Response) => {
     res.end();
   };
 
-  const csvPath = `/tmp/sim_run_${Date.now()}.csv`;
+  const csvPath = path.join(os.tmpdir(), `sim_run_${Date.now()}.csv`);
   try {
     await writeCSVFromDB(csvPath);
   } catch (e) {
