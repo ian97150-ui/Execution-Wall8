@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { spawn, spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import { prisma } from '../index';
 import path from 'path';
 import fs from 'fs';
@@ -62,70 +62,31 @@ router.delete('/tickers/:ticker/:date', async (req: Request, res: Response) => {
 });
 
 // POST /api/sim/tickers  { ticker, date }
-// Runs python --add-ticker, then reads back updated CSV row and upserts to DB.
+// Saves ticker+date directly to DB. Bars are fetched live when running commands.
 router.post('/tickers', async (req: Request, res: Response) => {
   const { ticker, date } = req.body as { ticker?: string; date?: string };
   if (!ticker || !date) {
     return res.status(400).json({ error: 'ticker and date required' });
   }
 
-  const csvPath = `/tmp/sim_add_${Date.now()}.csv`;
-  try {
-    await writeCSVFromDB(csvPath);
-  } catch (e) {
-    return res.status(500).json({ error: 'failed to write temp CSV' });
+  // Basic date validation
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
   }
 
-  const args = [SCRIPT_PATH, '--add-ticker', ticker.toUpperCase(), date, '--csv', csvPath];
-  const polygonKey = process.env.POLYGON_API_KEY;
-  if (polygonKey) args.push('--polygon-key', polygonKey);
+  const t = ticker.trim().toUpperCase();
 
-  let output = '';
-  let responded = false;
-  const reply = (status: number, body: object) => {
-    if (responded) return;
-    responded = true;
-    try { fs.unlinkSync(csvPath); } catch {}
-    res.status(status).json(body);
-  };
-
-  const proc = spawn('python3', args, { cwd: path.join(__dirname, '../../..') });
-  proc.stdout.on('data', (c: Buffer) => { output += c.toString(); });
-  proc.stderr.on('data', (c: Buffer) => { output += c.toString(); });
-
-  proc.on('close', async (code: number) => {
-    if (code !== 0) {
-      reply(500, { error: `Python exited with code ${code}`, output: stripAnsi(output) });
-      return;
-    }
-    try {
-      // Use Python to parse the CSV back as JSON (handles quoted fields)
-      const parseResult = spawnSync('python3', [
-        '-c',
-        `import csv,json,sys; r=list(csv.DictReader(open(sys.argv[1],encoding='utf-8-sig'))); print(json.dumps(r))`,
-        csvPath,
-      ]);
-      if (parseResult.status === 0) {
-        const rows: Record<string, string>[] = JSON.parse(parseResult.stdout.toString());
-        const t = ticker.toUpperCase();
-        const row = rows.find(r => r.ticker?.toUpperCase() === t && r.spike_date === date);
-        if (row) {
-          await prisma.simTicker.upsert({
-            where:  { ticker_spike_date: { ticker: t, spike_date: date } },
-            create: { ticker: t, spike_date: date, csv_fields: JSON.stringify(row) },
-            update: { csv_fields: JSON.stringify(row) },
-          });
-        }
-      }
-    } catch (e) {
-      console.error('[sim] add-ticker sync error', e);
-    }
-    reply(200, { ok: true, output: stripAnsi(output) });
-  });
-
-  proc.on('error', (err: Error) => {
-    reply(500, { error: `Failed to spawn python3: ${err.message}`, output: stripAnsi(output) });
-  });
+  try {
+    await prisma.simTicker.upsert({
+      where:  { ticker_spike_date: { ticker: t, spike_date: date } },
+      create: { ticker: t, spike_date: date, csv_fields: JSON.stringify({ ticker: t, spike_date: date }) },
+      update: {},  // don't overwrite existing enriched data
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[sim] add ticker error', e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 // GET /api/sim/run?cmd=flips&ticker=SKYQ&date=2026-04-13  (SSE stream)

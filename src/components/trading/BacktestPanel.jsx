@@ -109,15 +109,14 @@ export function BacktestPanel() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ ticker, date }),
       }),
-    onSuccess: (data) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sim-tickers'] });
-      setAddStatus('Added successfully.');
+      setAddStatus('Added.');
       setAddTicker(''); setAddDate('');
-      if (data.output) setLines(data.output.split('\n'));
+      setTimeout(() => setAddStatus(''), 2000);
     },
     onError: (err) => {
       setAddStatus(`Error: ${err.message}`);
-      if (err.output) setLines(String(err.output).split('\n'));
     },
   });
 
