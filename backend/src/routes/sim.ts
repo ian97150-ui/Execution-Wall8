@@ -50,7 +50,7 @@ router.get('/tickers', async (_req: Request, res: Response) => {
 
 // DELETE /api/sim/tickers/:ticker/:date
 router.delete('/tickers/:ticker/:date', async (req: Request, res: Response) => {
-  const { ticker, date } = req.params;
+  const { ticker, date } = req.params as { ticker: string; date: string };
   try {
     await prisma.simTicker.deleteMany({
       where: { ticker: ticker.toUpperCase(), spike_date: date },
