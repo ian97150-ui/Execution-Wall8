@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { prisma } from '../index';
 import path from 'path';
 import fs from 'fs';
@@ -8,6 +8,46 @@ const router = Router();
 
 const PYTHON_DIR  = path.join(__dirname, '../../..', 'python');
 const SCRIPT_PATH = path.join(PYTHON_DIR, 'cat5ive_sim.py');
+
+// Resolve python binary: try python3, fall back to python
+function getPythonBin(): string {
+  try {
+    const r = spawnSync('python3', ['--version'], { timeout: 3000 });
+    if (r.status === 0) return 'python3';
+  } catch {}
+  try {
+    const r = spawnSync('python', ['--version'], { timeout: 3000 });
+    if (r.status === 0) return 'python';
+  } catch {}
+  return 'python3'; // fallback — error will surface in terminal
+}
+const PYTHON_BIN = getPythonBin();
+
+// GET /api/sim/health — diagnostic endpoint
+router.get('/health', async (_req: Request, res: Response) => {
+  const pyVersion = (() => {
+    try {
+      const r = spawnSync(PYTHON_BIN, ['--version'], { timeout: 3000 });
+      return r.status === 0
+        ? (r.stdout?.toString().trim() || r.stderr?.toString().trim())
+        : `exit ${r.status}: ${r.stderr?.toString().trim()}`;
+    } catch (e) { return `error: ${String(e)}`; }
+  })();
+
+  const scriptExists = fs.existsSync(SCRIPT_PATH);
+  let dbCount = -1;
+  try { dbCount = await prisma.simTicker.count(); } catch {}
+
+  res.json({
+    python_bin:    PYTHON_BIN,
+    python_version: pyVersion,
+    script_path:   SCRIPT_PATH,
+    script_exists: scriptExists,
+    python_dir:    PYTHON_DIR,
+    db_rows:       dbCount,
+    __dirname:     __dirname,
+  });
+});
 
 function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*[mGKHJ]/g, '');
@@ -106,13 +146,13 @@ router.get('/run', async (req: Request, res: Response) => {
 
   // Guard against writing after the stream is done (proc error + close both fire)
   let streamDone = false;
-  const cleanup = (csvPath: string) => {
+  const cleanup = (csvPath?: string) => {
     if (streamDone) return;
     streamDone = true;
     clearInterval(keepalive);
-    try { fs.unlinkSync(csvPath); } catch {}
+    if (csvPath) try { fs.unlinkSync(csvPath); } catch {}
   };
-  const finish = (csvPath: string, code: number) => {
+  const finish = (csvPath: string | undefined, code: number) => {
     if (streamDone) return;
     cleanup(csvPath);
     res.write(`event: done\ndata: ${JSON.stringify({ code })}\n\n`);
@@ -125,6 +165,15 @@ router.get('/run', async (req: Request, res: Response) => {
   } catch (e) {
     res.write(`data: ${JSON.stringify('[error] failed to write CSV: ' + String(e))}\n\n`);
     finish(csvPath, 1);
+    return;
+  }
+
+  // cmd=test: verify SSE works without Python
+  if (cmd === 'test') {
+    res.write(`data: ${JSON.stringify('SSE connection OK')}\n\n`);
+    res.write(`data: ${JSON.stringify(`python_bin: ${PYTHON_BIN}`)}\n\n`);
+    res.write(`data: ${JSON.stringify(`script: ${SCRIPT_PATH} (exists: ${fs.existsSync(SCRIPT_PATH)})`)}\n\n`);
+    finish('', 0);
     return;
   }
 
@@ -163,7 +212,7 @@ router.get('/run', async (req: Request, res: Response) => {
   // Log what we're running so errors are diagnosable
   res.write(`data: ${JSON.stringify(`> python3 ${args.slice(1).join(' ')}`)}\n\n`);
 
-  const proc = spawn('python3', args, { cwd: path.join(__dirname, '../../..') });
+  const proc = spawn(PYTHON_BIN, args, { cwd: path.join(__dirname, '../../..') });
 
   const send = (text: string) => {
     if (streamDone) return;

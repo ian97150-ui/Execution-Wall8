@@ -250,6 +250,13 @@ export function BacktestPanel() {
           {/* Command buttons */}
           <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 flex-wrap">
             <CmdButton
+              label="Test SSE"
+              disabled={running}
+              onClick={() => runCmd('test')}
+              className="text-muted-foreground"
+            />
+            <span className="text-border">|</span>
+            <CmdButton
               label="Flip Analysis"
               icon={<Play className="w-3 h-3" />}
               disabled={running || !selected}
