@@ -51,7 +51,9 @@ router.get('/health', async (_req: Request, res: Response) => {
 });
 
 function stripAnsi(str: string): string {
-  return str.replace(/\x1b\[[0-9;]*[mGKHJ]/g, '');
+  return str
+    .replace(/﻿/g, '')                  // strip BOM
+    .replace(/\x1b\[[0-9;]*[mGKHJ]/g, '');  // strip ANSI color codes
 }
 
 async function writeCSVFromDB(csvPath: string): Promise<void> {
@@ -213,15 +215,18 @@ router.get('/run', async (req: Request, res: Response) => {
   // Log what we're running so errors are diagnosable
   res.write(`data: ${JSON.stringify(`> python3 ${args.slice(1).join(' ')}`)}\n\n`);
 
-  const proc = spawn(PYTHON_BIN, args, { cwd: path.join(__dirname, '../../..') });
+  const proc = spawn(PYTHON_BIN, args, {
+    cwd: path.join(__dirname, '../../..'),
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+  });
 
   const send = (text: string) => {
     if (streamDone) return;
     res.write(`data: ${JSON.stringify(stripAnsi(text))}\n\n`);
   };
 
-  proc.stdout?.on('data', (c: Buffer) => send(c.toString()));
-  proc.stderr?.on('data', (c: Buffer) => send(c.toString()));
+  proc.stdout?.on('data', (c: Buffer) => send(c.toString('utf8')));
+  proc.stderr?.on('data', (c: Buffer) => send(c.toString('utf8')));
 
   proc.on('close', (code: number | null) => {
     finish(csvPath, code ?? 0);
