@@ -1648,7 +1648,7 @@ class ReplaySession:
             vpin_r = self.static.get("vpin_regime", "UNKNOWN")
             lam_r  = self.static.get("lambda_regime", "UNKNOWN")
             svr    = self.static.get("short_vol_ratio")
-            print(f" VPIN={vpin_r}  Lambda={lam_r}  ShortVol={round(svr,3) if svr else 'N/A'}")
+            print(f" VPIN={vpin_r}  Lambda={lam_r}  ShortVol={round(float(svr),3) if svr else 'N/A'}")
 
         # Build timeline
         print(f"  Building timeline ...", end="", flush=True)
