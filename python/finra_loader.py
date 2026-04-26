@@ -85,9 +85,10 @@ def _load_finra_file(date_str: str) -> dict:
         return {}
 
     url = _finra_url(date_str)
+    _headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
     try:
         time.sleep(0.5)
-        resp = requests.get(url, timeout=20)
+        resp = requests.get(url, timeout=20, headers=_headers)
         resp.raise_for_status()
         text = resp.text
     except Exception as e:
