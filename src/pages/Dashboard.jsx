@@ -1149,7 +1149,7 @@ export default function Dashboard() {
                   )}
                 >
                   <History className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs font-medium">History</span>
+                  <span className="text-[10px] sm:text-xs font-medium">Evaluation</span>
                 </TabsTrigger>
               </TabsList>
             </div>

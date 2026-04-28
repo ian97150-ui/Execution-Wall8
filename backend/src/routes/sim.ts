@@ -7,8 +7,10 @@ import os from 'os';
 
 const router = Router();
 
-const PYTHON_DIR  = path.join(__dirname, '../../..', 'python');
-const SCRIPT_PATH = path.join(PYTHON_DIR, 'cat5ive_sim.py');
+const PYTHON_DIR   = path.join(__dirname, '../../..', 'python');
+const SCRIPT_PATH  = path.join(PYTHON_DIR, 'cat5ive_sim.py');
+const MERGER_PATH  = path.join(PYTHON_DIR, 'csv_merger.py');
+const LOCAL_CSV    = path.join(PYTHON_DIR, 'market_conditions.csv');
 
 // Resolve python binary: try python3, fall back to python
 function getPythonBin(): string {
@@ -54,6 +56,17 @@ function stripAnsi(str: string): string {
   return str
     .replace(/﻿/g, '')                  // strip BOM
     .replace(/\x1b\[[0-9;]*[mGKHJ]/g, '');  // strip ANSI color codes
+}
+
+function mergeCSV(appCsvPath: string): string {
+  const mergedPath = path.join(os.tmpdir(), `cat5_merged_${Date.now()}.csv`);
+  if (!fs.existsSync(MERGER_PATH) || !fs.existsSync(LOCAL_CSV)) return appCsvPath;
+  const r = spawnSync(PYTHON_BIN, [MERGER_PATH, '--merge', '--app', appCsvPath, '--local', LOCAL_CSV, '--output', mergedPath], {
+    timeout: 30000,
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+  });
+  if (r.status !== 0 || !fs.existsSync(mergedPath)) return appCsvPath;
+  return mergedPath;
 }
 
 async function writeCSVFromDB(csvPath: string): Promise<void> {
@@ -180,33 +193,37 @@ router.get('/run', async (req: Request, res: Response) => {
     return;
   }
 
+  // Merge app CSV with market_conditions.csv to supply all W1 scoring fields
+  const simCsvPath = mergeCSV(csvPath);
+  const cleanup2 = () => { if (simCsvPath !== csvPath) try { fs.unlinkSync(simCsvPath); } catch {} };
+
   let args: string[] = [SCRIPT_PATH];
   switch (cmd) {
     case 'flips':
       if (!ticker || !date) {
         res.write(`data: ${JSON.stringify('[error] ticker and date required for flips')}\n\n`);
-        finish(csvPath, 1); return;
+        cleanup2(); finish(csvPath, 1); return;
       }
-      args.push('--flips', ticker.toUpperCase(), date, '--csv', csvPath);
+      args.push('--flips', ticker.toUpperCase(), date, '--csv', simCsvPath);
       break;
     case 'flips-all':
-      args.push('--flips', '--csv', csvPath);
+      args.push('--flips', '--csv', simCsvPath);
       break;
     case 'replay':
       if (!ticker || !date) {
         res.write(`data: ${JSON.stringify('[error] ticker and date required for replay')}\n\n`);
-        finish(csvPath, 1); return;
+        cleanup2(); finish(csvPath, 1); return;
       }
-      args.push('--replay', ticker.toUpperCase(), date, '--no-interactive', '--csv', csvPath);
+      args.push('--replay', ticker.toUpperCase(), date, '--no-interactive', '--csv', simCsvPath);
       break;
     case 'patterns':
-      args.push('--patterns', '--csv', csvPath);
+      args.push('--patterns', '--csv', simCsvPath);
       break;
     case 'backtest':
-      args.push('--backtest', '--csv', csvPath);
+      args.push('--backtest', '--csv', simCsvPath);
       break;
     default:
-      finish(csvPath, 0); return;
+      cleanup2(); finish(csvPath, 0); return;
   }
 
   const polygonKey = process.env.POLYGON_API_KEY;
@@ -229,16 +246,18 @@ router.get('/run', async (req: Request, res: Response) => {
   proc.stderr?.on('data', (c: Buffer) => send(c.toString('utf8')));
 
   proc.on('close', (code: number | null) => {
+    cleanup2();
     finish(csvPath, code ?? 0);
   });
 
   proc.on('error', (err: Error) => {
     send(`[error] failed to run python3: ${err.message}\nMake sure python3 is installed and cat5ive_sim.py is at ${SCRIPT_PATH}`);
+    cleanup2();
     finish(csvPath, -1);
   });
 
   req.on('close', () => {
-    if (!streamDone) { proc.kill(); cleanup(csvPath); }
+    if (!streamDone) { proc.kill(); cleanup2(); cleanup(csvPath); }
   });
 });
 
