@@ -1245,31 +1245,41 @@ async function handleExitSignal(data: {
     ? new Date(Date.now() + exitDelaySeconds * 1000)
     : null;
 
-  // In safe mode, check if the position was opened through a tracked intent.
-  // If no intent-linked entry execution exists, the position is untracked (e.g. broker
-  // confirmation with no matching WALL signal). Queue for manual approval instead of
-  // auto-executing, so orphaned positions don't silently send exit orders.
+  // In safe mode, check if the position was opened through a tracked entry.
+  // A tracked entry is either:
+  //   1. Intent-linked (WALL signal → auto or approved entry), OR
+  //   2. A custom order sent manually by the user (source: 'custom' in raw_payload)
+  // Untracked = broker confirmation arrived with no matching app-side order (BIYA case).
   let isUntrackedPosition = false;
   if (executionMode === 'safe' && openPosition) {
-    const trackedEntry = await prisma.execution.findFirst({
+    const recentEntries = await prisma.execution.findMany({
       where: {
         ticker: tickerUpper,
-        intent_id: { not: null },
         order_action: { in: ['sell', 'buy'] },
         status: { in: ['executed', 'confirmed', 'partially_filled'] },
       },
       orderBy: { created_at: 'desc' },
+      take: 10,
     });
-    if (!trackedEntry) {
+
+    const hasTrackedEntry = recentEntries.some(e => {
+      if (e.intent_id) return true;  // WALL-linked entry
+      try {
+        const payload = JSON.parse(e.raw_payload || '{}');
+        return payload.source === 'custom';  // manually sent custom order
+      } catch { return false; }
+    });
+
+    if (!hasTrackedEntry) {
       isUntrackedPosition = true;
-      console.warn(`⚠️ EXIT for ${tickerUpper}: position has no tracked intent — queuing for manual approval (safe mode)`);
+      console.warn(`⚠️ EXIT for ${tickerUpper}: no tracked or custom entry found — queuing for manual approval (safe mode)`);
       await prisma.auditLog.create({
         data: {
           event_type: 'exit_queued_untracked_position',
           ticker: tickerUpper,
           details: JSON.stringify({
             position_id: openPosition.id,
-            reason: 'No intent-linked entry found — manual approval required in safe mode',
+            reason: 'No intent-linked or custom entry found — manual approval required in safe mode',
           }),
         },
       });
