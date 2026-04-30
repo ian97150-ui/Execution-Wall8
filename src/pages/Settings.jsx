@@ -655,7 +655,7 @@ export default function Settings() {
                   </div>
 
                   <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
-                    <span className="text-xs text-slate-400">Position closed</span>
+                    <span className="text-xs text-slate-400">Exit order sent</span>
                     <Switch
                       checked={formData.pushover_on_close}
                       onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_close: checked }))}
