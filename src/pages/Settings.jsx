@@ -63,6 +63,7 @@ export default function Settings() {
         default_delay_bars: settings.default_delay_bars || 2,
         exit_delay_seconds: settings.exit_delay_seconds ?? 10,
         exit_use_position_size: toBool(settings.exit_use_position_size),
+        exit_require_approval: toBool(settings.exit_require_approval),
         confirm_window_seconds: settings.confirm_window_seconds ?? 60,
         gate_threshold: settings.gate_threshold || 5,
         limit_edit_window: settings.limit_edit_window || 120,
@@ -355,6 +356,21 @@ export default function Settings() {
               <p className="text-xs text-slate-500">
                 How long after an ORDER webhook to accept a CONFIRMED fill webhook. Confirmations arriving outside this window are rejected.
               </p>
+            </div>
+
+            {/* Require approval for exit orders */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+              <div>
+                <Label className="text-slate-300">Require Approval for Exit Orders</Label>
+                <p className="text-xs text-slate-500 mt-1">
+                  When enabled, EXIT signals are queued and must be manually approved before
+                  sending to the broker — same as entry orders in safe mode.
+                </p>
+              </div>
+              <Switch
+                checked={formData.exit_require_approval}
+                onCheckedChange={(checked) => setFormData(f => ({ ...f, exit_require_approval: checked }))}
+              />
             </div>
 
             {/* Use tracked position size */}

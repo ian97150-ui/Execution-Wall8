@@ -1277,10 +1277,11 @@ async function handleExitSignal(data: {
   }
 
   // EXIT signals execute immediately if:
-  // 1. Full mode, OR
-  // 2. exit_delay_seconds is 0
-  // But NOT if position is untracked in safe mode
-  const isImmediateExecution = !isUntrackedPosition && (executionMode === 'full' || exitDelaySeconds === 0);
+  // 1. Full mode, AND exit_require_approval is off, AND position is tracked
+  // 2. exit_delay_seconds is 0 AND exit_require_approval is off AND position is tracked
+  // Safe mode with exit_require_approval=true always queues for manual approval
+  const exitRequireApproval = !!(settings as any)?.exit_require_approval;
+  const isImmediateExecution = !isUntrackedPosition && !exitRequireApproval && (executionMode === 'full' || exitDelaySeconds === 0);
 
   // Create Execution for exit
   // Note: order_type and position_id are stored in raw_payload for backwards compatibility
