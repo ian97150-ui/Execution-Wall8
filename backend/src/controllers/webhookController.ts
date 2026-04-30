@@ -1245,10 +1245,42 @@ async function handleExitSignal(data: {
     ? new Date(Date.now() + exitDelaySeconds * 1000)
     : null;
 
+  // In safe mode, check if the position was opened through a tracked intent.
+  // If no intent-linked entry execution exists, the position is untracked (e.g. broker
+  // confirmation with no matching WALL signal). Queue for manual approval instead of
+  // auto-executing, so orphaned positions don't silently send exit orders.
+  let isUntrackedPosition = false;
+  if (executionMode === 'safe' && openPosition) {
+    const trackedEntry = await prisma.execution.findFirst({
+      where: {
+        ticker: tickerUpper,
+        intent_id: { not: null },
+        order_action: { in: ['sell', 'buy'] },
+        status: { in: ['executed', 'confirmed', 'partially_filled'] },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    if (!trackedEntry) {
+      isUntrackedPosition = true;
+      console.warn(`⚠️ EXIT for ${tickerUpper}: position has no tracked intent — queuing for manual approval (safe mode)`);
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'exit_queued_untracked_position',
+          ticker: tickerUpper,
+          details: JSON.stringify({
+            position_id: openPosition.id,
+            reason: 'No intent-linked entry found — manual approval required in safe mode',
+          }),
+        },
+      });
+    }
+  }
+
   // EXIT signals execute immediately if:
   // 1. Full mode, OR
   // 2. exit_delay_seconds is 0
-  const isImmediateExecution = executionMode === 'full' || exitDelaySeconds === 0;
+  // But NOT if position is untracked in safe mode
+  const isImmediateExecution = !isUntrackedPosition && (executionMode === 'full' || exitDelaySeconds === 0);
 
   // Create Execution for exit
   // Note: order_type and position_id are stored in raw_payload for backwards compatibility

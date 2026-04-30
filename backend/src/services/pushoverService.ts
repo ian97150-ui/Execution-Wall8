@@ -95,6 +95,11 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
     'spike_detected': 'pushover_on_sec'  // reuse SEC toggle for spike alerts
   };
 
+  // Exit signals always notify regardless of pushover_on_close setting
+  if (eventType === 'position_closed') {
+    return { send: true, userKey, apiToken };
+  }
+
   const settingKey = eventSettingMap[eventType];
   const settingValue = settings[settingKey];
   // Default to true if undefined, otherwise check for truthy SQLite value
