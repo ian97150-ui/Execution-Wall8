@@ -123,6 +123,7 @@ model ExecutionSettings {
   pushover_on_order    Boolean @default(true)  // Push when ORDER received
   pushover_on_approval Boolean @default(true)  // Push when signal approved
   pushover_on_execution Boolean @default(true) // Push when order executed
+  pushover_on_exit     Boolean @default(true)  // Push when EXIT signal received
   pushover_on_close    Boolean @default(true)  // Push when position closed
   pushover_on_sec      Boolean @default(true)  // Push when SEC filing found (sent by SEC scanner)
 

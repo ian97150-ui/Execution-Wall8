@@ -81,6 +81,7 @@ export default function Settings() {
         pushover_on_order: settings.pushover_on_order !== 0 && settings.pushover_on_order !== false,
         pushover_on_approval: settings.pushover_on_approval !== 0 && settings.pushover_on_approval !== false,
         pushover_on_execution: settings.pushover_on_execution !== 0 && settings.pushover_on_execution !== false,
+        pushover_on_exit: settings.pushover_on_exit !== 0 && settings.pushover_on_exit !== false,
         pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false,
         pushover_on_sec: settings.pushover_on_sec !== 0 && settings.pushover_on_sec !== false
       });
@@ -651,6 +652,14 @@ export default function Settings() {
                     <Switch
                       checked={formData.pushover_on_execution}
                       onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_execution: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                    <span className="text-xs text-slate-400">Exit signal received</span>
+                    <Switch
+                      checked={formData.pushover_on_exit}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_exit: checked }))}
                     />
                   </div>
 

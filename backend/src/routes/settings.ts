@@ -108,6 +108,7 @@ router.put('/', async (req: Request, res: Response) => {
       pushover_on_order,
       pushover_on_approval,
       pushover_on_execution,
+      pushover_on_exit,
       pushover_on_close
     } = req.body;
 
@@ -151,6 +152,7 @@ router.put('/', async (req: Request, res: Response) => {
     if (pushover_on_order !== undefined) updateData.pushover_on_order = pushover_on_order;
     if (pushover_on_approval !== undefined) updateData.pushover_on_approval = pushover_on_approval;
     if (pushover_on_execution !== undefined) updateData.pushover_on_execution = pushover_on_execution;
+    if (pushover_on_exit !== undefined) updateData.pushover_on_exit = pushover_on_exit;
     if (pushover_on_close !== undefined) updateData.pushover_on_close = pushover_on_close;
 
     console.log('Updating settings with:', updateData);
