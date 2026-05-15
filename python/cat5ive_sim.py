@@ -3004,6 +3004,11 @@ Examples:
             print(f"\n{BOLD}S1/S2 Flip Timeline â {ticker_arg} {date_arg}{RESET}")
             session = ReplaySession(ticker_arg, date_arg, args.csv, api_key)
 
+            if not session.timeline:
+                print(f"{chr(27)}[93m[!] No bar data -- cannot build flip timeline for {ticker_arg} {date_arg}{chr(27)}[0m")
+                print(f"  Check TRADIER_API_KEY is set and the date has trading data.")
+                continue
+
             # Build flip list
             prev_sec = session.timeline[0].result.section
             flips = []
