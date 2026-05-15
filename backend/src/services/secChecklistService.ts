@@ -265,7 +265,7 @@ function computeCompletion(
 
 // ─── runChecklist ─────────────────────────────────────────────────────────────
 
-export async function runChecklist(ticker: string, existing?: SecChecklist | null): Promise<SecChecklist> {
+export async function runChecklist(ticker: string, existing?: SecChecklist | null, date?: string): Promise<SecChecklist> {
   const upper = ticker.toUpperCase();
 
   // Preserve only the manual field
@@ -349,7 +349,7 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
   const completion_pct = computeCompletion(phase1, phase1b, phase2, phase3, phase4);
 
   const partial = { ticker: upper, run_at: new Date().toISOString(), version: 4 as const, phase1, phase1b, phase2, phase3, phase4, overrides, bias, score, completion_pct };
-  const score_snapshot = computeScoreSnapshot(partial as SecChecklist);
+  const score_snapshot = await computeScoreSnapshot(partial as SecChecklist, upper, date ?? new Date().toISOString().slice(0, 10));
 
   return { ...partial, score_snapshot };
 }
@@ -430,7 +430,7 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
   const score = computeScore(merged.phase1, merged.phase2, phase3, merged.phase4, overrides);
   const completion_pct = computeCompletion(merged.phase1, phase1b, merged.phase2, phase3, merged.phase4);
   const withRecomputed = { ...merged, overrides, bias, score, completion_pct };
-  const score_snapshot = computeScoreSnapshot(withRecomputed);
+  const score_snapshot = await computeScoreSnapshot(withRecomputed, upper, new Date().toISOString().slice(0, 10));
   const final = { ...withRecomputed, score_snapshot };
 
   // Update all active intents for this ticker
@@ -446,7 +446,7 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
 
 // ─── applyManualOverride ──────────────────────────────────────────────────────
 
-export function applyManualOverride(
+export async function applyManualOverride(
   existing: SecChecklist,
   updates: {
     phase2?: { sympathy_trade?: boolean | null };
@@ -456,8 +456,9 @@ export function applyManualOverride(
       borrow?: 'EASY' | 'HARD' | 'HTB' | 'NO_LOCATE' | null;
       w1_imbalance?: number | null;
     };
-  }
-): SecChecklist {
+  },
+  ticker?: string
+): Promise<SecChecklist> {
   const phase2: SecChecklist['phase2'] = {
     ...existing.phase2,
     ...(updates.phase2 ?? {})
@@ -473,6 +474,7 @@ export function applyManualOverride(
   const score = computeScore(existing.phase1, phase2, phase3, existing.phase4, overrides);
   const completion_pct = computeCompletion(existing.phase1, existing.phase1b, phase2, phase3, existing.phase4);
   const updated = { ...existing, phase2, phase3, overrides, bias, score, completion_pct };
-  const score_snapshot = computeScoreSnapshot(updated);
+  const runDate = existing.run_at ? existing.run_at.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const score_snapshot = await computeScoreSnapshot(updated, ticker ?? existing.ticker, runDate);
   return { ...updated, score_snapshot };
 }

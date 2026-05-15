@@ -9,6 +9,7 @@
  */
 
 import type { SecChecklist } from './secChecklistService';
+import { runClassifier, ClassifierSignal } from './classifierService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -715,9 +716,98 @@ function scoreToPreFallTier(score: number): PreFallTier {
   return 'SKIP';
 }
 
+// ─── Classifier → ScoreSnapshot mapper ───────────────────────────────────────
+
+const _SIGNAL_BIAS: Record<string, TradeBias> = {
+  HIGH_VALUE: 'MAX_CONVICTION',
+  ENTER_E:    'HIGH_CONVICTION',
+  ENTER_A:    'HIGH_CONVICTION',
+  LONG_OPP:   'LONG_CANDIDATE',
+  WAIT:       'NEUTRAL',
+  SKIP:       'LONG_BIAS',
+};
+const _SIGNAL_OUTCOME: Record<string, CleanOutcome> = {
+  HIGH_VALUE: 'DUMP', ENTER_E: 'DUMP', ENTER_A: 'DUMP',
+  WAIT: 'VOLATILE_FADE', LONG_OPP: 'CHOP', SKIP: 'CHOP',
+};
+const _TIER1_SIGS = new Set([
+  'SUPPLY_OVERHANG','AH_REVERSAL_TRAP','LIVE_STRENGTH',
+  'DAY3_EXHAUSTION','LATE_PHASE','MEAN_REVERSION_GAP',
+]);
+
+function _parsePct(s: string): number {
+  return parseFloat((s ?? '0').replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
+  const bias    = _SIGNAL_BIAS[cls.signal]    ?? 'NEUTRAL';
+  const outcome = _SIGNAL_OUTCOME[cls.signal] ?? 'CHOP';
+  const conf    = cls.confidence;          // 0-100
+  const s1Pct   = cls.section === 'S1' ? conf : Math.max(0, 100 - conf);
+  const s2Pct   = 100 - s1Pct;
+
+  // Normalise probabilities to sum to 100
+  const dumpPct = cls.section === 'S1' ? Math.round(conf * 0.70) : Math.round((100 - conf) * 0.25);
+  const fadePct = Math.round(conf * 0.20);
+  const restPct = Math.max(0, 100 - dumpPct - fadePct);
+
+  return {
+    timestamp:       new Date().toISOString(),
+    score:           cls.score,
+    bias,
+    confidence:      conf / 100,
+    signals:         cls.active_signals as unknown as SignalTag[],
+    reason:          cls.reasons.slice(0, 3).join(' | '),
+    probabilities:   [
+      { path: 'dump',         pct: dumpPct },
+      { path: 'fade',         pct: fadePct },
+      { path: 'continuation', pct: restPct },
+    ],
+    section:         cls.section as TradeSection,
+    section_prob:    { s1_pct: s1Pct, s2_pct: s2Pct, basis: 'classifier' },
+    clean_score:     Math.round(cls.quality_score / 10),
+    clean_outcome:   outcome,
+    outcome_profile: {
+      d1_avg: _parsePct(cls.expected_ret),
+      d5_avg: _parsePct(cls.expected_mae),
+    },
+    overrides_fired:  cls.active_signals.filter(s => _TIER1_SIGS.has(s)),
+    regime:          {
+      regime:    cls.regime as RegimeId,
+      n:         0,
+      s1_pct:    s1Pct,
+      dump_pct:  0,
+      d5_avg:    0,
+    },
+    pattern_stats:   [],
+    pre_fall_score:  cls.score,
+    pre_fall_tier:   cls.tier as PreFallTier,
+    pre_fall_flags:  cls.active_signals,
+    disqualifiers:   cls.warnings as unknown as DisqualifierReason[],
+    bucket_dump_pct: null,
+  };
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export function computeScoreSnapshot(checklist: SecChecklist): ScoreSnapshot {
+export async function computeScoreSnapshot(
+  checklist: SecChecklist,
+  ticker?: string,
+  date?: string
+): Promise<ScoreSnapshot> {
+  // Try classifier first when ticker is available
+  if (ticker) {
+    try {
+      const cls = await runClassifier(ticker, date);
+      if (cls) return _mapClassifierToSnapshot(cls);
+    } catch {
+      // fall through to TS fallback
+    }
+  }
+  return _computeScoreSnapshotSync(checklist);
+}
+
+function _computeScoreSnapshotSync(checklist: SecChecklist): ScoreSnapshot {
   const { phase1, phase1b, phase2, phase3, phase4 } = checklist;
 
   // phase3 extended with manual fields (may be absent on older records)

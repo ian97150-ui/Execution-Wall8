@@ -499,7 +499,7 @@ router.patch('/:id/checklist-manual', async (req: Request, res: Response) => {
       };
     };
 
-    const updated = applyManualOverride(existing, updates);
+    const updated = await applyManualOverride(existing, updates, intent.ticker);
 
     const savedIntent = await prisma.tradeIntent.update({
       where: { id: intent.id },
