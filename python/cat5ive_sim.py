@@ -180,6 +180,25 @@ class ScoreResult:
     disqualifiers:      list = field(default_factory=list)
     delta_from_prev:    int  = 0
 
+# Lightweight signal wrapper — keeps .name and .contribution compatible with display/export code
+_CLS_TIER_PTS = {}
+try:
+    import collections as _col
+    _Signal = _col.namedtuple('_Signal', ['name', 'contribution'])
+    _CLS_TIER1 = {'SUPPLY_OVERHANG','AH_REVERSAL_TRAP','LIVE_STRENGTH',
+                  'DAY3_EXHAUSTION','LATE_PHASE','MEAN_REVERSION_GAP'}
+    _CLS_TIER2 = {'PM_SELL_PRESSURE','OVEREXTENDED_AH_S2','PM_FADE_CONFIRMED',
+                  '424B5_ACTIVE','PM_FADE_MOVE'}
+    _CLS_TIER3 = {'VWAP_FAIL_S1','DILUTION_DUMP_SIGNAL','SERIAL_HEAVY',
+                  'OVEREXTENDED_OPEN','HIGH_VOL_REJECTION'}
+    def _cls_sig_contribution(name):
+        if name in _CLS_TIER1: return 20
+        if name in _CLS_TIER2: return 12
+        if name in _CLS_TIER3: return 6
+        return 0
+except Exception:
+    pass
+
 @dataclass
 class BarState:
     bar:    Bar
@@ -1728,7 +1747,7 @@ class ReplaySession:
                     s2_score           = float(conf) if sect == 'S2' else 0.0,
                     section            = sect,
                     confidence_pct     = conf,
-                    active_signals     = list(sigs.keys()),
+                    active_signals     = [_Signal(name=s, contribution=_cls_sig_contribution(s)) for s in sigs.keys()],
                     suppressed_signals = [],
                     disqualifiers      = [],
                     delta_from_prev    = score - prev_score,
