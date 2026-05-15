@@ -226,8 +226,8 @@ router.get('/run', async (req: Request, res: Response) => {
       cleanup2(); finish(csvPath, 0); return;
   }
 
-  const polygonKey = process.env.POLYGON_API_KEY;
-  if (polygonKey) args.push('--polygon-key', polygonKey);
+  const tradierKey = process.env.TRADIER_API_KEY;
+  if (tradierKey) args.push('--tradier-key', tradierKey);
 
   // Log what we're running so errors are diagnosable
   res.write(`data: ${JSON.stringify(`> python3 ${args.slice(1).join(' ')}`)}\n\n`);

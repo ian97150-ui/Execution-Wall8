@@ -25,7 +25,7 @@ Usage:
 
 Requirements:
   pip install requests yfinance pandas
-  Set POLYGON_API_KEY env var (or pass --polygon-key)
+  Set TRADIER_API_KEY env var (or pass --tradier-key)
   market_conditions.csv in same directory
 """
 
@@ -49,6 +49,22 @@ except ImportError:
     def vpin_s1_signal(vpin_data): return 0.0, "FINRA_LOADER_MISSING"
     def enrich_static_fields(ticker, date, static, bars, **kw): return static
     def fetch_finra_short_data(*a, **kw): return {}
+
+# ── Classifier import (optional — falls back to legacy compute_score if missing) ──
+try:
+    import importlib.util as _ilu
+    _CLS_PATH = os.path.join(os.path.dirname(__file__), 'cat5ive_classifier.py')
+    _cls_spec = _ilu.spec_from_file_location('_cat5cls', _CLS_PATH)
+    _cls_mod  = _ilu.module_from_spec(_cls_spec)
+    _cls_spec.loader.exec_module(_cls_mod)
+    _cls_detect   = _cls_mod.detect_signals
+    _cls_section  = _cls_mod.classify_section
+    _cls_score    = _cls_mod.compute_score
+    _cls_vwap     = _cls_mod.compute_vwap
+    _ClsBar       = _cls_mod.Bar
+    HAS_CLASSIFIER = True
+except Exception:
+    HAS_CLASSIFIER = False
 
 # ââ Optional deps âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 try:
@@ -285,12 +301,12 @@ def cmd_list(path: str = DEFAULT_CSV, api_key: str = ""):
     cfg_path   = os.path.join(script_dir, "config.txt")
     if api_key:
         key_display = api_key[:4] + "****" + api_key[-4:] if len(api_key) > 8 else "****"
-        print(f"  {GRN}â Polygon key:{RESET} {key_display}")
+        print(f"  {GRN}â Tradier key:{RESET} {key_display}")
     elif os.path.exists(cfg_path):
-        print(f"  {GRN}â Polygon key:{RESET} loaded from config.txt")
+        print(f"  {GRN}â Tradier key:{RESET} loaded from config.txt")
     else:
-        print(f"  {YEL}â  No Polygon key.{RESET}  Run once to save it permanently:")
-        print(f"    python cat5ive_sim.py --set-key YOUR_POLYGON_KEY")
+        print(f"  {YEL}â  No Tradier key.{RESET}  Run once to save it permanently:")
+        print(f"    python cat5ive_sim.py --set-key YOUR_TRADIER_KEY")
     rows, _ = load_csv(path)
     if not rows:
         print(f"{YEL}No tickers in {path}{RESET}")
@@ -319,17 +335,24 @@ def _auto_fetch_ohlcv(ticker: str, spike_date: str, api_key: str = None) -> dict
             end_dt   = spike_dt + td(days=15)
             prev_dt  = spike_dt - td(days=6)
 
-            def _poly_daily(from_d, to_d):
-                url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/1/day/"
-                       f"{from_d}/{to_d}?adjusted=true&sort=asc&limit=50&apiKey={api_key}")
-                r = requests.get(url, timeout=10)
+            def _tradier_daily(from_d, to_d):
+                url = "https://api.tradier.com/v1/markets/history"
+                params = {"symbol": ticker.upper(), "interval": "daily", "start": from_d, "end": to_d}
+                headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+                r = requests.get(url, params=params, headers=headers, timeout=10)
                 if r.status_code == 200:
-                    res = r.json().get("results", [])
-                    return res
+                    history = r.json().get("history") or {}
+                    days = history.get("day") or []
+                    if isinstance(days, dict):
+                        days = [days]
+                    return [{"t": int(datetime.strptime(d["date"], "%Y-%m-%d").timestamp()*1000),
+                             "o": float(d["open"]), "h": float(d["high"]),
+                             "l": float(d["low"]),  "c": float(d["close"]),
+                             "v": int(d["volume"])} for d in days]
                 return []
 
-            bars     = _poly_daily(spike_date,          end_dt.isoformat())
-            pre_bars = _poly_daily(prev_dt.isoformat(), (spike_dt - td(days=1)).isoformat())
+            bars     = _tradier_daily(spike_date,          end_dt.isoformat())
+            pre_bars = _tradier_daily(prev_dt.isoformat(), (spike_dt - td(days=1)).isoformat())
 
             if bars:
                 def _b(i, key, default=""):
@@ -584,7 +607,7 @@ def _auto_fetch_context(ticker: str, spike_date: str, api_key: str = None) -> di
         print(f" {YEL}Finviz: {e}{RESET}")
 
     # ââ 3. Polygon 1-min bars â AH move, PM move, run_day ââââââââââââââââââââ
-    print(f"  Fetching Polygon bars ...", end="", flush=True)
+    print(f"  Fetching Tradier bars ...", end="", flush=True)
     ah_move = None; pm_move = None; pm_high_val = None; run_day = 1
     try:
         if api_key:
@@ -592,11 +615,7 @@ def _auto_fetch_context(ticker: str, spike_date: str, api_key: str = None) -> di
             prev2_date = (spike_dt - _td(days=2)).isoformat()
 
             def poly_bars(date_str):
-                r = requests.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/1/minute/"
-                    f"{date_str}/{date_str}?adjusted=true&sort=asc&limit=1000&apiKey={api_key}",
-                    timeout=12)
-                return r.json().get("results", []) if r.status_code == 200 else []
+                return _tradier_fetch_bars(ticker, date_str, api_key)
 
             # Prior day bars â AH move + detect if it was already elevated
             prev_bars = poly_bars(prev_date)
@@ -873,25 +892,50 @@ def cmd_update_field(ticker: str, date: str, field_name: str, value: str, path: 
 # BAR STREAM â fetch + cache Polygon 1-min bars
 # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-def _polygon_fetch_bars(ticker: str, date_str: str, api_key: str) -> list:
-    """Fetch 1-min bars from Polygon. Returns raw bar list."""
+def _tradier_fetch_bars(ticker: str, date_str: str, api_key: str) -> list:
+    """Fetch 1-min bars from Tradier timesales. Returns Polygon-compatible bar list."""
     if not HAS_REQUESTS:
         return []
-
-    date_dt = datetime.strptime(date_str, "%Y-%m-%d")
-    to_str  = (date_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-    url     = f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/1/minute/{date_str}/{to_str}"
-    params  = {"adjusted":"true","sort":"asc","limit":50000,
-                "extended_hours":"true","apiKey":api_key}
+    url = "https://api.tradier.com/v1/markets/timesales"
+    params = {
+        "symbol":         ticker.upper(),
+        "interval":       "1min",
+        "start":          f"{date_str} 00:00",
+        "end":            f"{date_str} 23:59",
+        "session_filter": "all",
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept":        "application/json",
+    }
     try:
         time.sleep(0.25)
-        r = requests.get(url, params=params, timeout=15)
+        r = requests.get(url, params=params, headers=headers, timeout=15)
         r.raise_for_status()
-        data = r.json()
-        if data.get("status") in ("OK","DELAYED"):
-            return data.get("results", [])
+        data   = r.json()
+        series = data.get("series") or {}
+        items  = series.get("data") or []
+        if isinstance(items, dict):   # single bar comes back as dict, not list
+            items = [items]
+        bars = []
+        for b in items:
+            # Convert Tradier timestamp string → epoch ms (Polygon uses ms)
+            try:
+                ts_ms = int(datetime.strptime(b["time"], "%Y-%m-%dT%H:%M:%S").timestamp() * 1000)
+            except Exception:
+                ts_ms = int(b.get("timestamp", 0)) * 1000
+            bars.append({
+                "t": ts_ms,
+                "o": float(b.get("open",  b.get("price", 0))),
+                "h": float(b.get("high",  b.get("price", 0))),
+                "l": float(b.get("low",   b.get("price", 0))),
+                "c": float(b.get("close", b.get("price", 0))),
+                "v": int(b.get("volume", 0)),
+                "vw": float(b.get("vwap", b.get("price", 0))),
+            })
+        return bars
     except Exception as e:
-        print(f"{YEL}Polygon error: {e}{RESET}")
+        print(f"{YEL}Tradier error: {e}{RESET}")
     return []
 
 def _yfinance_fallback_bars(ticker: str, date_str: str) -> list:
@@ -930,14 +974,14 @@ def load_bar_stream(ticker: str, date_str: str, api_key: str = None,
             raw = json.load(f)
         print(f"  {DIM}[bars] loaded {len(raw)} bars from cache{RESET}")
     else:
-        # Fetch from Polygon
-        key = api_key or os.environ.get("POLYGON_API_KEY")
+        # Fetch from Tradier
+        key = api_key or os.environ.get("TRADIER_API_KEY")
         if key:
-            print(f"  {DIM}[bars] fetching from Polygon ...{RESET}", end="", flush=True)
-            raw = _polygon_fetch_bars(ticker, date_str, key)
+            print(f"  {DIM}[bars] fetching from Tradier ...{RESET}", end="", flush=True)
+            raw = _tradier_fetch_bars(ticker, date_str, key)
             print(f" {len(raw)} bars")
         else:
-            print(f"  {YEL}[bars] no Polygon key â trying yfinance fallback ...{RESET}", end="", flush=True)
+            print(f"  {YEL}[bars] no Tradier key â trying yfinance fallback ...{RESET}", end="", flush=True)
             # Windows tip printed only once per session
             if not os.environ.get("_CAT5_KEY_TIP_SHOWN"):
                 os.environ["_CAT5_KEY_TIP_SHOWN"] = "1"
@@ -1606,6 +1650,16 @@ def detect_events(timeline: list[BarState]) -> list[TimelineEvent]:
     return events
 
 # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+
+def _to_cls_bar(b):
+    """Convert sim Bar -> classifier Bar for per-bar scoring slice."""
+    ts_full = getattr(b, 'ts_et_full', '') or ''
+    return _ClsBar(
+        ts=ts_full[:16],
+        open=b.open, high=b.high, low=b.low, close=b.close,
+        volume=b.volume, session=b.session,
+    )
 # REPLAY SESSION â orchestrator
 # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
@@ -1614,7 +1668,7 @@ class ReplaySession:
                  api_key: str = None):
         self.ticker     = ticker.upper()
         self.spike_date = spike_date
-        self.api_key    = api_key or os.environ.get("POLYGON_API_KEY")
+        self.api_key    = api_key or os.environ.get("TRADIER_API_KEY")
 
         # Load static fields from CSV
         rows, _ = load_csv(csv_path)
@@ -1641,7 +1695,7 @@ class ReplaySession:
         # Enrich static with VPIN + Kyle lambda + FINRA short vol (if available)
         if self.bars and HAS_FINRA:
             print(f"  Computing VPIN + Kyle lambda ...", end="", flush=True)
-            fetch_fin = bool(self.api_key or os.environ.get("POLYGON_API_KEY"))
+            fetch_fin = bool(self.api_key or os.environ.get("TRADIER_API_KEY"))
             self.static = enrich_static_fields(
                 ticker, spike_date, self.static, self.bars, fetch_finra=fetch_fin
             )
@@ -1659,9 +1713,28 @@ class ReplaySession:
     def _build_timeline(self) -> list[BarState]:
         states = []
         prev_score = 0
-        for bar in self.bars:
-            mask   = get_field_mask(bar, self.static)
-            result = compute_score(mask, prev_score)
+        for i, bar in enumerate(self.bars):
+            mask = get_field_mask(bar, self.static)   # kept for export/event compat
+            if HAS_CLASSIFIER:
+                cls_bars = [_to_cls_bar(b) for b in self.bars[:i + 1]]
+                vwaps    = _cls_vwap(cls_bars)
+                sigs     = _cls_detect(cls_bars, vwaps)
+                sect, conf = _cls_section(cls_bars, vwaps, sigs)
+                score, tier = _cls_score(sigs, sect, conf, cls_bars)
+                result = ScoreResult(
+                    pre_fall_score     = score,
+                    pre_fall_tier      = tier,
+                    s1_score           = float(conf) if sect == 'S1' else 0.0,
+                    s2_score           = float(conf) if sect == 'S2' else 0.0,
+                    section            = sect,
+                    confidence_pct     = conf,
+                    active_signals     = list(sigs.keys()),
+                    suppressed_signals = [],
+                    disqualifiers      = [],
+                    delta_from_prev    = score - prev_score,
+                )
+            else:
+                result = compute_score(mask, prev_score)
             states.append(BarState(bar=bar, result=result, mask=mask))
             prev_score = result.pre_fall_score
         return states
@@ -2790,10 +2863,10 @@ Examples:
     # Config
     parser.add_argument("--csv", default=DEFAULT_CSV,
                         help=f"CSV path (default: {DEFAULT_CSV})")
-    parser.add_argument("--polygon-key", default=None,
-                        help="Polygon API key (or set POLYGON_API_KEY env var)")
+    parser.add_argument("--tradier-key", default=None,
+                        help="Tradier API key (or set TRADIER_API_KEY env var)")
     parser.add_argument("--set-key", metavar="KEY",
-                        help="Save your Polygon API key to config.txt (Windows-friendly)")
+                        help="Save your Tradier API key to config.txt (Windows-friendly)")
 
     args = parser.parse_args()
 
@@ -2802,18 +2875,18 @@ Examples:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         cfg_path   = os.path.join(script_dir, "config.txt")
         with open(cfg_path, "w") as f:
-            f.write(f"# Cat5ive Polygon API key\n")
-            f.write(f"POLYGON_API_KEY={args.set_key.strip()}\n")
+            f.write(f"# Cat5ive Tradier API key\n")
+            f.write(f"TRADIER_API_KEY={args.set_key.strip()}\n")
         print(f"{GRN}â API key saved to {cfg_path}{RESET}")
-        print(f"  You can now run commands without --polygon-key")
+        print(f"  You can now run commands without --tradier-key")
         print(f"  To verify: python cat5ive_sim.py --list")
         return
 
 
     # ââ API key resolution (Windows-friendly) âââââââââââââââââââââââââââââââââââ
-    # Priority: --polygon-key flag > config.txt in script dir > POLYGON_API_KEY env var
+    # Priority: --tradier-key flag > config.txt in script dir > TRADIER_API_KEY env var
     def _load_key_from_config() -> str:
-        """Read Polygon API key from config.txt next to the script."""
+        """Read Tradier API key from config.txt next to the script."""
         script_dir = os.path.dirname(os.path.abspath(__file__))
         cfg_path   = os.path.join(script_dir, "config.txt")
         if not os.path.exists(cfg_path):
@@ -2825,14 +2898,14 @@ Examples:
                     continue
                 if "=" in line:
                     key, val = line.split("=", 1)
-                    if key.strip().upper() == "POLYGON_API_KEY":
+                    if key.strip().upper() == "TRADIER_API_KEY":
                         return val.strip()
                 else:
                     return line.strip()   # bare key value
         return ""
 
-    api_key = (args.polygon_key
-               or os.environ.get("POLYGON_API_KEY")
+    api_key = (args.tradier_key
+               or os.environ.get("TRADIER_API_KEY")
                or _load_key_from_config())
 
     # ââ Commands ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
