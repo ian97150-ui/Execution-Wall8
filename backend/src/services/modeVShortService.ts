@@ -2,11 +2,11 @@
  * Mode V Short — threshold check + notification / auto-approval service.
  *
  * Gates (all must pass):
- *   1. disqualifiers.length === 0   — no structural blockers
- *   2. pre_fall_tier === 'HIGH'     — classifier score ≥ 50 / 150
- *   3. bias MAX_CONVICTION or HIGH_CONVICTION — active entry signal
- *   4. section === 'S1'             — D+1 fast dump expected
- *   5. confidence >= 0.65           — ≥ 65% classifier confidence
+ *   1. disqualifiers.length === 0          — no structural blockers
+ *   2. pre_fall_tier HIGH or MEDIUM        — score ≥ 25 / 150 (MEDIUM wins 89%, HIGH 81%)
+ *   3. bias MAX_CONVICTION or HIGH_CONVICTION — active entry signal (Grade A or B)
+ *   4. section === 'S1'                    — D+1 fast dump expected (82.6% accuracy)
+ *   5. confidence >= 0.65                  — ≥ 65% classifier confidence (stored 0–1)
  *
  * Notification fires in both SAFE and FULL mode when gates pass.
  * Auto-approval only fires in FULL mode with auto_sub_mode === 'mode_v_short'.
@@ -24,7 +24,7 @@ const MODE_V_SHORT_BIAS = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION']);
 export function meetsModeVShortThreshold(snap: ScoreSnapshot | null | undefined): boolean {
   if (!snap) return false;
   if ((snap.disqualifiers ?? []).length > 0) return false;
-  if (snap.pre_fall_tier !== 'HIGH') return false;
+  if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM') return false;
   if (!MODE_V_SHORT_BIAS.has(snap.bias)) return false;
   if (snap.section !== 'S1') return false;
   if ((snap.confidence ?? 0) < 0.65) return false;
