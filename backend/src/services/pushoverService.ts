@@ -113,18 +113,20 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
  */
 function getTitle(eventType: PushoverEventType, ticker: string, details?: Record<string, any>): string {
   if (eventType === 'position_closed' && details?.is_signal) {
-    return `EXIT SIGNAL: ${ticker}`;
+    const strat = details?.strategy && details.strategy !== 'N/A' ? ` · ${details.strategy}` : '';
+    return `EXIT SIGNAL: ${ticker}${strat}`;
   }
+  const strat = details?.strategy && details.strategy !== 'N/A' ? ` · ${details.strategy}` : '';
   const titles: Record<PushoverEventType, string> = {
-    'wall_signal': `WALL: ${ticker}`,
-    'order_received': `ORDER: ${ticker}`,
-    'signal_approved': `APPROVED: ${ticker}`,
-    'order_executed': `EXECUTED: ${ticker}`,
-    'exit_received': `EXIT SIGNAL: ${ticker}`,
-    'position_closed': `CLOSED: ${ticker}`,
-    'sec_filing_found': `SEC FILING: ${ticker}`,
-    'spike_detected': `📡 SPIKE: ${ticker}`,
-    'mode_v_short_signal': `⚡ MODE V SHORT: ${ticker}`
+    'wall_signal':         `WALL: ${ticker}${strat}`,
+    'order_received':      `ORDER: ${ticker}${strat}`,
+    'signal_approved':     `APPROVED: ${ticker}${strat}`,
+    'order_executed':      `EXECUTED: ${ticker}${strat}`,
+    'exit_received':       `EXIT SIGNAL: ${ticker}${strat}`,
+    'position_closed':     `CLOSED: ${ticker}${strat}`,
+    'sec_filing_found':    `SEC FILING: ${ticker}`,
+    'spike_detected':      `📡 SPIKE: ${ticker}`,
+    'mode_v_short_signal': `⚡ MODE V SHORT: ${ticker}${strat}`
   };
   return titles[eventType];
 }

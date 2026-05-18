@@ -247,7 +247,8 @@ async function processWebhookAsync(body: any, logId: string) {
           quantity,
           order_action: normalizedAction,
           quality_tier,
-          quality_score
+          quality_score,
+          strategy_id
         });
         break;
 
@@ -709,6 +710,7 @@ async function handleOrderSignal(data: {
   order_action?: string;
   quality_tier?: string;
   quality_score?: number;
+  strategy_id?: string;
   raw_payload?: any;
 }) {
   const {
@@ -720,6 +722,7 @@ async function handleOrderSignal(data: {
     order_action,
     quality_tier,
     quality_score,
+    strategy_id,
     raw_payload
   } = data;
 
@@ -1035,7 +1038,8 @@ async function handleOrderSignal(data: {
       limit_price: finalLimitPrice,
       execution_mode: executionMode,
       auto_linked: linkedIntentId ? 'yes' : 'no',
-      broker_result: isFullMode ? (brokerResult.success ? 'forwarded' : 'failed') : 'pending'
+      broker_result: isFullMode ? (brokerResult.success ? 'forwarded' : 'failed') : 'pending',
+      strategy: strategy_id || 'N/A'
     };
     PushoverNotifications.orderReceived(tickerUpper, orderReceivedData).catch(err => console.error('Pushover notification error:', err));
 
@@ -1046,7 +1050,8 @@ async function handleOrderSignal(data: {
         side: finalDir,
         quantity: quantity || 1,
         limit_price: finalLimitPrice,
-        status: 'executed'
+        status: 'executed',
+        strategy: strategy_id || 'N/A'
       };
       PushoverNotifications.orderExecuted(tickerUpper, orderExecutedData).catch(err => console.error('Pushover notification error:', err));
     }

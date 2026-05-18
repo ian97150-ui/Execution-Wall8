@@ -4,7 +4,9 @@
  * Gates (all must pass):
  *   1. disqualifiers.length === 0          — no structural blockers
  *   2. pre_fall_tier HIGH or MEDIUM        — score ≥ 25 / 150 (MEDIUM wins 89%, HIGH 81%)
- *   3. bias MAX_CONVICTION or HIGH_CONVICTION — active entry signal (Grade A or B)
+ *   3. bias — strategy-dependent:
+ *        Strat A (LOW_FLOAT_PARABOLIC): MAX_CONVICTION only (Grade A, tighter setup)
+ *        Strat B (DILUTION_DUMP):       MAX_CONVICTION or HIGH_CONVICTION
  *   4. section === 'S1'                    — D+1 fast dump expected (82.6% accuracy)
  *   5. confidence >= 0.65                  — ≥ 65% classifier confidence (stored 0–1)
  *
@@ -20,12 +22,26 @@ import { activateScheduler } from './executionScheduler';
 
 const MODE_V_SHORT_BIAS = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION']);
 
-/** Returns true if score_snapshot meets the Mode V Short threshold. */
-export function meetsModeVShortThreshold(snap: ScoreSnapshot | null | undefined): boolean {
+/**
+ * Returns true if score_snapshot meets the Mode V Short threshold.
+ * strategyId should be the TradeIntent.strategy_id ('Strat A' | 'Strat B' | ...).
+ */
+export function meetsModeVShortThreshold(
+  snap: ScoreSnapshot | null | undefined,
+  strategyId?: string
+): boolean {
   if (!snap) return false;
   if ((snap.disqualifiers ?? []).length > 0) return false;
   if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM') return false;
-  if (!MODE_V_SHORT_BIAS.has(snap.bias)) return false;
+
+  // Gate 3: Strat A requires MAX_CONVICTION only (Grade A); Strat B accepts both
+  const isStratA = strategyId === 'Strat A';
+  if (isStratA) {
+    if (snap.bias !== 'MAX_CONVICTION') return false;
+  } else {
+    if (!MODE_V_SHORT_BIAS.has(snap.bias)) return false;
+  }
+
   if (snap.section !== 'S1') return false;
   if ((snap.confidence ?? 0) < 0.65) return false;
   return true;
@@ -54,10 +70,7 @@ export async function tryAutoApproveForModeVShort(
   const mode: string = settings.execution_mode;
   if (mode !== 'safe' && mode !== 'full') return false;
 
-  const snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
-  if (!meetsModeVShortThreshold(snap)) return false;
-
-  // Need intent for ticker regardless of auto-approve path
+  // Load intent early — needed for strategy_id and ticker
   let intent: any;
   try {
     intent = await prisma.tradeIntent.findUnique({ where: { id: intentId } });
@@ -66,6 +79,11 @@ export async function tryAutoApproveForModeVShort(
   }
   if (!intent) return false;
 
+  const strategyId: string = (intent as any).strategy_id ?? '';
+  const snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
+
+  if (!meetsModeVShortThreshold(snap, strategyId)) return false;
+
   const notifDetails = {
     score:      snap!.pre_fall_score,
     tier:       snap!.pre_fall_tier,
@@ -73,6 +91,7 @@ export async function tryAutoApproveForModeVShort(
     confidence: `${Math.round((snap!.confidence ?? 0) * 100)}%`,
     section:    snap!.section,
     signals:    (snap!.overrides_fired ?? []).slice(0, 3).join(', ') || 'none',
+    strategy:   strategyId || 'N/A',
   };
 
   // Always notify when threshold is met (safe or full)
@@ -91,6 +110,7 @@ export async function tryAutoApproveForModeVShort(
 
   console.log(
     `⚡ Mode V Short: auto-approved ${intent.ticker} ` +
+    `[${strategyId || 'unknown'}] ` +
     `(score ${snap!.pre_fall_score}, ${snap!.pre_fall_tier}, ${snap!.bias}, ` +
     `conf ${Math.round((snap!.confidence ?? 0) * 100)}%)`
   );
