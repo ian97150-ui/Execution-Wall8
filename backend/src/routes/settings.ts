@@ -109,7 +109,10 @@ router.put('/', async (req: Request, res: Response) => {
       pushover_on_approval,
       pushover_on_execution,
       pushover_on_exit,
-      pushover_on_close
+      pushover_on_close,
+      pushover_on_sec,
+      pushover_on_mode_v_short,
+      auto_sub_mode
     } = req.body;
 
     // Get existing settings or create new
@@ -154,6 +157,9 @@ router.put('/', async (req: Request, res: Response) => {
     if (pushover_on_execution !== undefined) updateData.pushover_on_execution = pushover_on_execution;
     if (pushover_on_exit !== undefined) updateData.pushover_on_exit = pushover_on_exit;
     if (pushover_on_close !== undefined) updateData.pushover_on_close = pushover_on_close;
+    if (pushover_on_sec !== undefined) updateData.pushover_on_sec = pushover_on_sec;
+    if (pushover_on_mode_v_short !== undefined) updateData.pushover_on_mode_v_short = pushover_on_mode_v_short;
+    if (auto_sub_mode !== undefined) updateData.auto_sub_mode = auto_sub_mode;
 
     console.log('Updating settings with:', updateData);
 

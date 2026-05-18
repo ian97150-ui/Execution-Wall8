@@ -1,13 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { cn } from "@/lib/utils";
-import { ShieldOff, ShieldCheck, Zap, Lock, X } from "lucide-react";
+import { ShieldOff, ShieldCheck, Zap, Lock, X, Bot } from "lucide-react";
 
 function generateCode() {
   // 4-digit code using only digits 1–8
   return Array.from({ length: 4 }, () => Math.floor(Math.random() * 8) + 1).join('');
 }
 
-export default function ExecutionModeToggle({ mode, onChange, disabled = false }) {
+export default function ExecutionModeToggle({
+  mode,
+  onChange,
+  disabled = false,
+  autoSubMode,
+  onAutoSubModeChange
+}) {
   const modes = [
     {
       value: "off",
@@ -29,6 +35,13 @@ export default function ExecutionModeToggle({ mode, onChange, disabled = false }
       icon: Zap,
       activeColor: "bg-emerald-500 text-emerald-950 shadow-emerald-500/40",
       description: "Immediate execution"
+    },
+    {
+      value: "auto",
+      label: "AUTO",
+      icon: Bot,
+      activeColor: "bg-violet-500 text-white shadow-violet-500/40",
+      description: "Score-gated auto-execution"
     }
   ];
 
@@ -53,6 +66,10 @@ export default function ExecutionModeToggle({ mode, onChange, disabled = false }
   function confirm() {
     if (input === code) {
       onChange(pending);
+      // When switching to AUTO, default sub-mode to mode_v_short
+      if (pending === 'auto' && !autoSubMode) {
+        onAutoSubModeChange?.('mode_v_short');
+      }
       cancel();
     } else {
       setError(true);
@@ -76,6 +93,7 @@ export default function ExecutionModeToggle({ mode, onChange, disabled = false }
   }
 
   const pendingModeObj = modes.find(m => m.value === pending);
+  const numModes = modes.length;
 
   return (
     <div className="space-y-2">
@@ -92,8 +110,8 @@ export default function ExecutionModeToggle({ mode, onChange, disabled = false }
             modes[currentIndex]?.activeColor
           )}
           style={{
-            width: `calc(${100 / 3}% - 4px)`,
-            left: `calc(${currentIndex * (100 / 3)}% + 4px)`
+            width: `calc(${100 / numModes}% - 4px)`,
+            left: `calc(${currentIndex * (100 / numModes)}% + 4px)`
           }}
         />
 
@@ -121,6 +139,29 @@ export default function ExecutionModeToggle({ mode, onChange, disabled = false }
       <p className="text-[10px] text-center text-slate-500 px-1">
         {modes.find(m => m.value === mode)?.description}
       </p>
+
+      {/* Mode V Short sub-mode selector (AUTO only) */}
+      {mode === 'auto' && (
+        <div className="flex items-center gap-1.5 px-1">
+          <span className="text-[9px] text-slate-500 uppercase tracking-wider">Sub-mode:</span>
+          <button
+            onClick={() => onAutoSubModeChange?.('mode_v_short')}
+            disabled={disabled}
+            className={cn(
+              "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md border transition-colors font-semibold",
+              autoSubMode === 'mode_v_short'
+                ? "border-violet-500 bg-violet-500/20 text-violet-300"
+                : "border-slate-600 text-slate-500 hover:text-slate-300",
+              disabled && "cursor-not-allowed opacity-50"
+            )}
+          >
+            <Zap className="w-2.5 h-2.5" /> MODE V SHORT
+          </button>
+          {autoSubMode === 'mode_v_short' && (
+            <span className="text-[9px] text-violet-400 ml-auto">active</span>
+          )}
+        </div>
+      )}
 
       {/* Confirmation dialog */}
       {pending && (

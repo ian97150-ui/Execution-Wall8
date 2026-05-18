@@ -112,8 +112,8 @@ async function processExpiredDelays() {
     // Get settings to check execution mode
     const settings = await getSettingsSafe();
 
-    // Only auto-execute in 'safe' mode (which has delays)
-    if (!settings || settings.execution_mode !== 'safe') {
+    // Process delays in 'safe' mode and 'auto' mode (Mode V Short auto-approvals)
+    if (!settings || (settings.execution_mode !== 'safe' && settings.execution_mode !== 'auto')) {
       return;
     }
 

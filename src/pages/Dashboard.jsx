@@ -914,6 +914,8 @@ export default function Dashboard() {
             <ExecutionModeToggle
               mode={settings?.execution_mode || 'safe'}
               onChange={(mode) => updateSettingsMutation.mutate({ execution_mode: mode })}
+              autoSubMode={settings?.auto_sub_mode}
+              onAutoSubModeChange={(sub) => updateSettingsMutation.mutate({ auto_sub_mode: sub })}
             />
           </div>
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">

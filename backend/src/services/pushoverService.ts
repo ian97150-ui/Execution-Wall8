@@ -9,7 +9,8 @@ export type PushoverEventType =
   | 'exit_received'
   | 'position_closed'
   | 'sec_filing_found'
-  | 'spike_detected';
+  | 'spike_detected'
+  | 'mode_v_short_signal';
 
 // Pushover priority levels
 // -2 = no notification, -1 = quiet, 0 = normal, 1 = high, 2 = emergency (requires ack)
@@ -94,7 +95,8 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
     'exit_received': 'pushover_on_exit',
     'position_closed': 'pushover_on_close',
     'sec_filing_found': 'pushover_on_sec',
-    'spike_detected': 'pushover_on_sec'
+    'spike_detected': 'pushover_on_sec',
+    'mode_v_short_signal': 'pushover_on_mode_v_short'
   };
 
   const settingKey = eventSettingMap[eventType];
@@ -121,7 +123,8 @@ function getTitle(eventType: PushoverEventType, ticker: string, details?: Record
     'exit_received': `EXIT SIGNAL: ${ticker}`,
     'position_closed': `CLOSED: ${ticker}`,
     'sec_filing_found': `SEC FILING: ${ticker}`,
-    'spike_detected': `📡 SPIKE: ${ticker}`
+    'spike_detected': `📡 SPIKE: ${ticker}`,
+    'mode_v_short_signal': `⚡ MODE V SHORT: ${ticker}`
   };
   return titles[eventType];
 }
@@ -144,6 +147,11 @@ function getMessage(eventType: PushoverEventType, ticker: string, details: Recor
   if (details.status) parts.push(`Status: ${details.status}`);
   if (details.broker_result) parts.push(`Broker: ${details.broker_result}`);
   if (details.trigger) parts.push(`Trigger: ${details.trigger}`);
+  // Mode V Short specific fields
+  if (details.score !== undefined) parts.push(`Score: ${details.score}`);
+  if (details.tier) parts.push(details.tier);
+  if (details.bias) parts.push(details.bias);
+  if (details.signals) parts.push(`Signals: ${details.signals}`);
 
   return parts.join(' | ') || eventType.replace(/_/g, ' ');
 }
@@ -160,7 +168,8 @@ function getDefaultPriority(eventType: PushoverEventType): PushoverPriority {
     'exit_received': 1,      // High - position about to close
     'position_closed': 0,
     'sec_filing_found': 1,
-    'spike_detected': 0
+    'spike_detected': 0,
+    'mode_v_short_signal': 1
   };
   return priorities[eventType];
 }
@@ -177,7 +186,8 @@ function getSound(eventType: PushoverEventType): string {
     'exit_received': 'bugle',
     'position_closed': 'bugle',
     'sec_filing_found': 'magic',
-    'spike_detected': 'pushover'
+    'spike_detected': 'pushover',
+    'mode_v_short_signal': 'siren'
   };
   return sounds[eventType];
 }
@@ -311,5 +321,8 @@ export const PushoverNotifications = {
     sendPushoverNotification({ eventType: 'sec_filing_found', ticker, details, priority: 1 }),
 
   spikeDetected: (ticker: string, details: Record<string, any>) =>
-    sendPushoverNotification({ eventType: 'spike_detected', ticker, details })
+    sendPushoverNotification({ eventType: 'spike_detected', ticker, details }),
+
+  modeVShortSignal: (ticker: string, details: Record<string, any>) =>
+    sendPushoverNotification({ eventType: 'mode_v_short_signal', ticker, details, priority: 1 })
 };

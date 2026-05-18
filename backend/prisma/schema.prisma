@@ -90,7 +90,8 @@ model TickerConfig {
 
 model ExecutionSettings {
   id                   String  @id @default(uuid())
-  execution_mode       String  @default("safe") // off, safe, full
+  execution_mode       String  @default("safe") // off, safe, full, auto
+  auto_sub_mode        String?                  // 'mode_v_short' | null
   default_delay_bars   Int     @default(2)
   bar_duration_minutes Int     @default(1) // minutes per bar for delay calculation
   gate_threshold       Int     @default(3)
@@ -125,7 +126,8 @@ model ExecutionSettings {
   pushover_on_execution Boolean @default(true) // Push when order executed
   pushover_on_exit     Boolean @default(true)  // Push when EXIT signal received
   pushover_on_close    Boolean @default(true)  // Push when position closed
-  pushover_on_sec      Boolean @default(true)  // Push when SEC filing found (sent by SEC scanner)
+  pushover_on_sec           Boolean @default(true)  // Push when SEC filing found (sent by SEC scanner)
+  pushover_on_mode_v_short  Boolean @default(false) // Push only for Mode V Short verified trades
 
   // Time-based mode scheduling
   use_time_schedules   Boolean @default(false)

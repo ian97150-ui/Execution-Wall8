@@ -83,7 +83,9 @@ export default function Settings() {
         pushover_on_execution: settings.pushover_on_execution !== 0 && settings.pushover_on_execution !== false,
         pushover_on_exit: settings.pushover_on_exit !== 0 && settings.pushover_on_exit !== false,
         pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false,
-        pushover_on_sec: settings.pushover_on_sec !== 0 && settings.pushover_on_sec !== false
+        pushover_on_sec: settings.pushover_on_sec !== 0 && settings.pushover_on_sec !== false,
+        pushover_on_mode_v_short: settings.pushover_on_mode_v_short !== 0 && settings.pushover_on_mode_v_short !== false,
+        auto_sub_mode: settings.auto_sub_mode || null
       });
     }
   }, [settings]);
@@ -211,6 +213,8 @@ export default function Settings() {
               mode={formData.use_time_schedules ? settings?.execution_mode : formData.execution_mode}
               onChange={(mode) => setFormData(f => ({ ...f, execution_mode: mode }))}
               disabled={formData.use_time_schedules}
+              autoSubMode={formData.auto_sub_mode}
+              onAutoSubModeChange={(sub) => setFormData(f => ({ ...f, auto_sub_mode: sub }))}
             />
             {formData.use_time_schedules && (
               <p className="text-xs text-slate-500 mt-3 text-center">
@@ -676,6 +680,18 @@ export default function Settings() {
                     <Switch
                       checked={formData.pushover_on_sec}
                       onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_sec: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30 border border-violet-500/20">
+                    <div>
+                      <span className="text-xs text-slate-300 font-medium">Mode V Short verified</span>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Auto-approved trades meeting all 5 qualifier gates</p>
+                    </div>
+                    <Switch
+                      checked={!!formData.pushover_on_mode_v_short}
+                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_mode_v_short: checked }))}
+                      disabled={!formData.pushover_enabled}
                     />
                   </div>
                 </div>

@@ -6,6 +6,7 @@ import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runChecklist } from '../services/secChecklistService';
 import { captureGradeSnapshot } from '../services/gradeSnapshotService';
+import { tryAutoApproveForModeVShort } from '../services/modeVShortService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -583,10 +584,13 @@ async function handleWallSignal(data: {
   // Fire-and-forget: run full SEC checklist in background (EDGAR + Finnhub + Yahoo Finance)
   const intentIdForChecklist = tradeIntent.id;
   runChecklist(tickerUpper)
-    .then(c => prisma.tradeIntent.update({
-      where: { id: intentIdForChecklist },
-      data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
-    }))
+    .then(async (c) => {
+      await prisma.tradeIntent.update({
+        where: { id: intentIdForChecklist },
+        data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
+      });
+      await tryAutoApproveForModeVShort(intentIdForChecklist, c);
+    })
     .catch(err => console.warn(`⚠️ SEC checklist failed for ${tickerUpper}: ${err.message}`));
 
   // Check if execution already exists for this ticker (ORDER arrived before WALL)

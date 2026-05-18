@@ -15,6 +15,7 @@
 import { prisma } from '../index';
 import { runChecklist } from './secChecklistService';
 import { PushoverNotifications } from './pushoverService';
+import { fetchQuote } from './tradierService';
 
 // Detection thresholds (from requirements doc)
 const MIN_MOVE_PCT = 40;
@@ -135,8 +136,23 @@ async function fetchYahooGainers(): Promise<SpikeCandidate[]> {
 // ─── Seed ticker into watchlist ───────────────────────────────────────────────
 
 async function seedWatchlist(candidate: SpikeCandidate): Promise<void> {
-  const { ticker, intraday_move_pct, vol_ratio } = candidate;
+  const ticker = candidate.ticker;
   if (seededToday.has(ticker)) return;
+
+  // If Tradier key is available, verify the candidate is still meeting thresholds
+  // (Polygon/Yahoo data may be delayed; Tradier gives a fresher read)
+  if (process.env.TRADIER_API_KEY) {
+    const q = await fetchQuote(ticker).catch(() => null);
+    if (q && q.volume > 0 && q.average_volume > 0) {
+      const verifiedMove = Math.abs(q.change_percentage ?? 0);
+      const verifiedRatio = q.volume / q.average_volume;
+      if (verifiedMove < MIN_MOVE_PCT || verifiedRatio < MIN_VOL_RATIO) return;
+      candidate.intraday_move_pct = parseFloat(verifiedMove.toFixed(2));
+      candidate.vol_ratio = parseFloat(verifiedRatio.toFixed(1));
+    }
+  }
+
+  const { intraday_move_pct, vol_ratio } = candidate;
 
   // Skip if ticker config blocks it
   const config = await prisma.tickerConfig.findUnique({ where: { ticker } }).catch(() => null);
@@ -193,7 +209,7 @@ async function seedWatchlist(candidate: SpikeCandidate): Promise<void> {
   PushoverNotifications.spikeDetected(ticker, {
     move: `+${intraday_move_pct}%`,
     vol_ratio: `${vol_ratio}x`,
-    source: process.env.POLYGON_API_KEY ? 'polygon' : 'yahoo'
+    source: process.env.POLYGON_API_KEY ? 'polygon' : (process.env.TRADIER_API_KEY ? 'tradier-verified/yahoo' : 'yahoo')
   }).catch(() => {});
 }
 

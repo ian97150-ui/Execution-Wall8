@@ -1,12 +1,13 @@
 /**
- * Yahoo Finance unofficial API — price action signals for short-selling analysis.
- * All functions return typed results with optional `error` field; never throws.
- * Works for low-frequency use (~5-20 calls/day per ticker).
+ * Price action signals sourced from the Tradier official API.
+ * Replaces the previous Yahoo Finance unofficial API implementation.
+ * Requires TRADIER_API_KEY env var; returns null fields + error when missing.
  */
 
-const TIMEOUT_MS = 8000;
+import { fetchTimesales, fetchDailyBars, fetchQuote } from './tradierService';
 
-// ET timezone offset helpers
+// ─── ET helpers ──────────────────────────────────────────────────────────────
+
 function isRTHOpen(): boolean {
   const now = new Date();
   const day = now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short' });
@@ -14,52 +15,39 @@ function isRTHOpen(): boolean {
   const etHour = parseInt(
     now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
   );
-  const etMin = now.getMinutes();
-  const totalMin = etHour * 60 + etMin;
-  return totalMin >= 570 && totalMin < 960; // 9:30=570, 16:00=960
+  const totalMin = etHour * 60 + now.getMinutes();
+  return totalMin >= 570 && totalMin < 960; // 9:30–16:00
 }
 
-function getETOffsetMs(date: Date): number {
-  const utcStr = date.toLocaleString('en-US', { timeZone: 'America/New_York' });
-  const etDate = new Date(utcStr);
-  return date.getTime() - etDate.getTime();
+function fmtDate(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
 }
 
-function getRTHBoundaryUnix(dateInET: Date): { open: number; close: number } {
-  const open = new Date(dateInET);
-  open.setHours(9, 30, 0, 0);
-  const close = new Date(dateInET);
-  close.setHours(16, 0, 0, 0);
-  const etOffset = getETOffsetMs(open);
-  return {
-    open: Math.floor((open.getTime() + etOffset) / 1000),
-    close: Math.floor((close.getTime() + etOffset) / 1000)
-  };
+function fmtDateTime(d: Date, h: number, m: number): string {
+  return `${fmtDate(d)} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function getAHBoundaryUnix(dateInET: Date): { open: number; close: number } {
-  // Prior day AH: 16:00–20:00 ET
-  const open = new Date(dateInET);
-  open.setHours(16, 0, 0, 0);
-  const close = new Date(dateInET);
-  close.setHours(20, 0, 0, 0);
-  const etOffset = getETOffsetMs(open);
-  return {
-    open: Math.floor((open.getTime() + etOffset) / 1000),
-    close: Math.floor((close.getTime() + etOffset) / 1000)
-  };
+function getPriorTradingDay(nowET: Date): Date {
+  const d = new Date(nowET);
+  d.setDate(d.getDate() - 1);
+  while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() - 1);
+  return d;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface PriceActionResult {
   market_open: boolean;
-  // AH (prior day after-hours)
+  // AH (prior day after-hours 16:00–20:00 ET)
   ah_high: number | null;
   ah_low: number | null;
   ah_move_pct: number | null;         // ((ah_high - prior_close) / prior_close) * 100
   ah_vol_ratio: number | null;        // AH volume / prior RTH volume
-  ah_classification: 'THIN_AH_SPIKE' | 'HEALTHY_AH_BUILD' | null;  // >= 0.20 = HEALTHY
+  ah_classification: 'THIN_AH_SPIKE' | 'HEALTHY_AH_BUILD' | null;
   ah_reversal_pct: number | null;     // ((pm_high - ah_high) / ah_high) * 100; negative = faded
   // PM + gap
   prior_close: number | null;
@@ -75,7 +63,7 @@ export interface PriceActionResult {
   day_of_run: number | null;
   current_price: number | null;
   intraday_move_pct: number | null;   // (max_high_since_rth_open - rth_open) / rth_open * 100
-  efficiency: number | null;          // intraday_move_pct / vol_ratio — demand vs supply quality
+  efficiency: number | null;          // intraday_move_pct / vol_ratio
   structure: 'BLOW_OFF_TOP' | 'WEAK_HOLD' | 'STRONG_HOLD' | 'RANGE' | null;
   error?: string;
 }
@@ -85,246 +73,214 @@ export interface PriceActionResult {
 export async function getPriceActionSignals(ticker: string): Promise<PriceActionResult> {
   const base: PriceActionResult = {
     market_open: false,
-    ah_high: null,
-    ah_low: null,
-    ah_move_pct: null,
-    ah_vol_ratio: null,
-    ah_classification: null,
-    ah_reversal_pct: null,
-    prior_close: null,
-    gap_pct: null,
-    pm_high: null,
-    rth_open: null,
-    pm_high_reclaimed: null,
-    vwap: null,
-    vwap_failed: null,
-    wick_ratio: null,
-    volume_ratio: null,
-    day_of_run: null,
-    current_price: null,
-    intraday_move_pct: null,
-    efficiency: null,
-    structure: null
+    ah_high: null, ah_low: null, ah_move_pct: null,
+    ah_vol_ratio: null, ah_classification: null, ah_reversal_pct: null,
+    prior_close: null, gap_pct: null, pm_high: null,
+    rth_open: null, pm_high_reclaimed: null,
+    vwap: null, vwap_failed: null, wick_ratio: null,
+    volume_ratio: null, day_of_run: null,
+    current_price: null, intraday_move_pct: null, efficiency: null, structure: null,
   };
 
-  let todayRthVol = 0;
+  if (!process.env.TRADIER_API_KEY) {
+    return { ...base, error: 'TRADIER_API_KEY not configured' };
+  }
 
   try {
-    // Parallel fetch: 2d intraday 1m (captures prior AH) + quoteSummary + 10d daily
-    const [intradayRes, quoteRes, dailyRes] = await Promise.all([
-      fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1m&range=2d&includePrePost=true`,
-        { signal: AbortSignal.timeout(TIMEOUT_MS) }
-      ),
-      fetch(
-        `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=price`,
-        { signal: AbortSignal.timeout(TIMEOUT_MS) }
-      ),
-      fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=10d`,
-        { signal: AbortSignal.timeout(TIMEOUT_MS) }
-      )
+    // Current ET date/time and prior trading day
+    const nowET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const priorDay = getPriorTradingDay(nowET);
+    const priorDateStr = fmtDate(priorDay);
+    const todayDateStr = fmtDate(nowET);
+
+    // Timesales range: prior day 09:00 ET → today 16:05 ET (captures prior RTH + AH + PM + today)
+    const tsStart = fmtDateTime(priorDay, 9, 0);
+    const tsEnd   = fmtDateTime(nowET, 16, 5);
+
+    // Daily bars range: 35 calendar days back → today
+    const dailyStart = fmtDate(new Date(Date.now() - 35 * 86_400_000));
+
+    const [bars, dailyBars, quote] = await Promise.all([
+      fetchTimesales(ticker, tsStart, tsEnd, 'all'),
+      fetchDailyBars(ticker, dailyStart, todayDateStr),
+      fetchQuote(ticker),
     ]);
 
-    // ── Intraday processing ──────────────────────────────────────────────────
-    if (intradayRes.ok) {
-      const intradayData = await intradayRes.json() as any;
-      const result = intradayData?.chart?.result?.[0];
-      if (result) {
-        const timestamps: number[] = result.timestamp || [];
-        const quotes = result.indicators?.quote?.[0];
-        const highs: number[] = quotes?.high || [];
-        const lows: number[] = quotes?.low || [];
-        const closes: number[] = quotes?.close || [];
-        const opens: number[] = quotes?.open || [];
-        const volumes: number[] = quotes?.volume || [];
+    base.market_open = isRTHOpen();
 
-        const nowET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    // ── Bucket 1-min bars ────────────────────────────────────────────────────
+    let priorClose: number | null = null;
+    let priorRthVol = 0;
+    let ahHigh: number | null = null;
+    let ahLow: number | null = null;
+    let ahVol = 0;
+    let pmHigh: number | null = null;
+    let rthOpenPrice: number | null = null;
+    let currentPrice: number | null = null;
+    let maxHighSinceOpen: number | null = null;
+    const rthCandles: { h: number; l: number; c: number; v: number; o: number }[] = [];
 
-        // Prior trading day (skip weekends back to Friday)
-        const priorDay = new Date(nowET);
-        priorDay.setDate(priorDay.getDate() - 1);
-        while ([0, 6].includes(priorDay.getDay())) priorDay.setDate(priorDay.getDate() - 1);
+    for (const bar of bars) {
+      // Tradier time field is 'YYYY-MM-DDTHH:MM:SS' in ET — no timezone math needed
+      const barDate = bar.time.substring(0, 10); // 'YYYY-MM-DD'
+      const barTime = bar.time.substring(11, 16); // 'HH:MM'
+      const { high: h, low: l, close: c, open: o, volume: v } = bar;
+      if (!h || !l || !c) continue;
 
-        const priorRTH = getRTHBoundaryUnix(priorDay);
-        const priorAH = getAHBoundaryUnix(priorDay);
-        const todayRTH = getRTHBoundaryUnix(nowET);
+      if (barDate === priorDateStr && barTime >= '09:30' && barTime < '16:00') {
+        // Prior day RTH — last close is prior_close
+        priorClose = c;
+        priorRthVol += v;
+      } else if (barDate === priorDateStr && barTime >= '16:00' && barTime < '20:00') {
+        // Prior day AH
+        if (ahHigh === null || h > ahHigh) ahHigh = h;
+        if (ahLow === null || l < ahLow) ahLow = l;
+        ahVol += v;
+      } else if (
+        (barDate === priorDateStr && barTime >= '20:00') ||
+        (barDate === todayDateStr && barTime < '09:30')
+      ) {
+        // Today pre-market (prior 20:00 → today 9:30)
+        if (pmHigh === null || h > pmHigh) pmHigh = h;
+      } else if (barDate === todayDateStr && barTime >= '09:30') {
+        // Today RTH
+        if (rthOpenPrice === null) rthOpenPrice = o || c;
+        rthCandles.push({ h, l, c, v, o: o || c });
+        currentPrice = c;
+        if (maxHighSinceOpen === null || h > maxHighSinceOpen) maxHighSinceOpen = h;
+      }
+    }
 
-        base.market_open = isRTHOpen();
+    base.prior_close  = priorClose;
+    base.pm_high      = pmHigh;
+    base.rth_open     = rthOpenPrice;
+    base.current_price = currentPrice;
 
-        // Four-bucket accumulators
-        let priorClose: number | null = null;
-        let priorRthVol = 0;
-        let ahHigh: number | null = null;
-        let ahLow: number | null = null;
-        let ahVol = 0;
-        let pmHigh: number | null = null;
-        let rthOpenPrice: number | null = null;
-        let currentPrice: number | null = null;
-        let maxHighSinceOpen: number | null = null;
-        const rthCandles: { h: number; l: number; c: number; v: number; o: number }[] = [];
+    // Intraday move %
+    if (maxHighSinceOpen !== null && rthOpenPrice !== null && rthOpenPrice > 0) {
+      base.intraday_move_pct = parseFloat(
+        (((maxHighSinceOpen - rthOpenPrice) / rthOpenPrice) * 100).toFixed(2)
+      );
+    }
 
-        for (let i = 0; i < timestamps.length; i++) {
-          const ts = timestamps[i];
-          const h = highs[i], l = lows[i], c = closes[i], o = opens[i], v = volumes[i];
-          if (h == null || l == null || c == null) continue;
+    const todayRthVol = rthCandles.reduce((s, cd) => s + cd.v, 0);
 
-          if (ts >= priorRTH.open && ts < priorRTH.close) {
-            // Prior day RTH — last close = prior_close, accumulate vol
-            priorClose = c;
-            priorRthVol += v || 0;
-          } else if (ts >= priorAH.open && ts < priorAH.close) {
-            // Prior day AH (16:00–20:00 ET)
-            if (ahHigh === null || h > ahHigh) ahHigh = h;
-            if (ahLow === null || l < ahLow) ahLow = l;
-            ahVol += v || 0;
-          } else if (ts >= priorAH.close && ts < todayRTH.open) {
-            // Today's pre-market (20:00 prior → 9:30 today)
-            if (pmHigh === null || h > pmHigh) pmHigh = h;
-          } else if (ts >= todayRTH.open) {
-            // Today RTH
-            if (rthOpenPrice === null) rthOpenPrice = o || c;
-            rthCandles.push({ h, l, c, v: v || 0, o: o || c });
-            currentPrice = c;
-            if (maxHighSinceOpen === null || h > maxHighSinceOpen) maxHighSinceOpen = h;
-          }
-        }
+    // AH derived fields
+    if (ahHigh !== null) {
+      base.ah_high = ahHigh;
+      base.ah_low  = ahLow;
+      base.ah_vol_ratio = priorRthVol > 0
+        ? parseFloat((ahVol / priorRthVol).toFixed(3)) : null;
+      base.ah_classification = base.ah_vol_ratio !== null
+        ? (base.ah_vol_ratio >= 0.20 ? 'HEALTHY_AH_BUILD' : 'THIN_AH_SPIKE') : null;
+      if (priorClose !== null) {
+        base.ah_move_pct = parseFloat(
+          (((ahHigh - priorClose) / priorClose) * 100).toFixed(2)
+        );
+      }
+      if (pmHigh !== null) {
+        base.ah_reversal_pct = parseFloat(
+          (((pmHigh - ahHigh) / ahHigh) * 100).toFixed(2)
+        );
+      }
+    }
 
-        base.prior_close = priorClose;
-        base.pm_high = pmHigh;
-        base.rth_open = rthOpenPrice;
-        base.current_price = currentPrice;
+    // Gap %
+    if (pmHigh !== null && priorClose !== null) {
+      base.gap_pct = parseFloat(
+        (((pmHigh - priorClose) / priorClose) * 100).toFixed(2)
+      );
+    }
 
-        // Intraday move %
-        if (maxHighSinceOpen !== null && rthOpenPrice !== null && rthOpenPrice > 0) {
-          base.intraday_move_pct = parseFloat(
-            (((maxHighSinceOpen - rthOpenPrice) / rthOpenPrice) * 100).toFixed(2)
-          );
-        }
+    // PM high reclaimed at open
+    if (pmHigh !== null && rthOpenPrice !== null) {
+      base.pm_high_reclaimed = rthOpenPrice >= pmHigh;
+    }
 
-        // Today's RTH volume (sum of intraday candles)
-        todayRthVol = rthCandles.reduce((s, cd) => s + cd.v, 0);
+    // VWAP (RTH candles only)
+    if (rthCandles.length > 0) {
+      let sumTPV = 0, sumV = 0;
+      for (const cd of rthCandles) {
+        const tp = (cd.h + cd.l + cd.c) / 3;
+        sumTPV += tp * cd.v;
+        sumV += cd.v;
+      }
+      base.vwap = sumV > 0 ? parseFloat((sumTPV / sumV).toFixed(4)) : null;
 
-        // AH derived fields
-        if (ahHigh !== null) {
-          base.ah_high = ahHigh;
-          base.ah_low = ahLow;
-          base.ah_vol_ratio = priorRthVol > 0
-            ? parseFloat((ahVol / priorRthVol).toFixed(3)) : null;
-          base.ah_classification = base.ah_vol_ratio !== null
-            ? (base.ah_vol_ratio >= 0.20 ? 'HEALTHY_AH_BUILD' : 'THIN_AH_SPIKE') : null;
-          if (priorClose !== null) {
-            base.ah_move_pct = parseFloat(
-              (((ahHigh - priorClose) / priorClose) * 100).toFixed(2)
-            );
-          }
-          if (pmHigh !== null) {
-            base.ah_reversal_pct = parseFloat(
-              (((pmHigh - ahHigh) / ahHigh) * 100).toFixed(2)
-            );
-          }
-        }
+      if (base.vwap !== null && currentPrice !== null) {
+        const first30 = rthCandles.slice(0, 30);
+        const reclaimedVwap = first30.some(cd => cd.c >= base.vwap!);
+        base.vwap_failed = currentPrice < base.vwap && !reclaimedVwap;
+      }
+    }
 
-        // Gap %
-        if (pmHigh !== null && priorClose !== null) {
+    // Wick ratio (first 12 RTH candles) — > 0.65 = distribution
+    const first12 = rthCandles.slice(0, 12);
+    if (first12.length >= 3) {
+      let sumUpperWick = 0, sumRange = 0;
+      for (const cd of first12) {
+        sumUpperWick += cd.h - cd.c;
+        sumRange += cd.h - cd.l;
+      }
+      base.wick_ratio = sumRange > 0
+        ? parseFloat((sumUpperWick / sumRange).toFixed(3)) : null;
+    }
+
+    // ── Daily bars: volume_ratio + day_of_run + prior_close fallback ─────────
+    const validDaily = dailyBars.filter(b => b.close != null && b.volume != null && b.volume > 0);
+    if (validDaily.length >= 2) {
+      const priorBars = validDaily.filter(b => b.date < todayDateStr);
+      const priorVols = priorBars.map(b => b.volume).filter(v => v > 0);
+      if (priorVols.length > 0 && todayRthVol > 0) {
+        const avgVol = priorVols.reduce((s, v) => s + v, 0) / priorVols.length;
+        if (avgVol > 0) base.volume_ratio = parseFloat((todayRthVol / avgVol).toFixed(2));
+      }
+
+      // Fallback prior_close from daily if intraday didn't capture it
+      if (base.prior_close === null && priorBars.length > 0) {
+        base.prior_close = priorBars[priorBars.length - 1].close;
+        if (base.pm_high !== null && base.prior_close !== null) {
           base.gap_pct = parseFloat(
-            (((pmHigh - priorClose) / priorClose) * 100).toFixed(2)
+            (((base.pm_high - base.prior_close) / base.prior_close) * 100).toFixed(2)
           );
         }
+      }
 
-        // PM high reclaimed at RTH open
-        if (pmHigh !== null && rthOpenPrice !== null) {
-          base.pm_high_reclaimed = rthOpenPrice >= pmHigh;
-        }
+      // day_of_run: consecutive days where close >= 70% of most recent close
+      const closes = validDaily.map(b => b.close);
+      const threshold = closes[closes.length - 1] * 0.7;
+      let runDays = 0;
+      for (let i = closes.length - 1; i >= 0; i--) {
+        if (closes[i] >= threshold) runDays++;
+        else break;
+      }
+      base.day_of_run = runDays;
+    }
 
-        // VWAP (RTH candles only)
-        if (rthCandles.length > 0) {
-          let sumTPV = 0, sumV = 0;
-          for (const cd of rthCandles) {
-            const tp = (cd.h + cd.l + cd.c) / 3;
-            sumTPV += tp * cd.v;
-            sumV += cd.v;
-          }
-          base.vwap = sumV > 0 ? parseFloat((sumTPV / sumV).toFixed(4)) : null;
-
-          if (base.vwap !== null && currentPrice !== null) {
-            const first30 = rthCandles.slice(0, 30);
-            const reclaimedVwap = first30.some(cd => cd.c >= base.vwap!);
-            base.vwap_failed = currentPrice < base.vwap && !reclaimedVwap;
-          }
-        }
-
-        // Wick ratio (first 12 RTH candles) — > 0.65 = distribution
-        const first12 = rthCandles.slice(0, 12);
-        if (first12.length >= 3) {
-          let sumUpperWick = 0, sumRange = 0;
-          for (const cd of first12) {
-            sumUpperWick += cd.h - cd.c;
-            sumRange += cd.h - cd.l;
-          }
-          base.wick_ratio = sumRange > 0
-            ? parseFloat((sumUpperWick / sumRange).toFixed(3))
-            : null;
+    // ── Tradier quote: current_price + volume_ratio + prior_close fallbacks ──
+    if (quote) {
+      if (!base.current_price && quote.last) base.current_price = quote.last;
+      if (!base.volume_ratio && quote.volume > 0 && quote.average_volume > 0) {
+        base.volume_ratio = parseFloat((quote.volume / quote.average_volume).toFixed(2));
+      }
+      if (!base.prior_close && quote.prevclose) {
+        base.prior_close = quote.prevclose;
+        if (base.pm_high !== null) {
+          base.gap_pct = parseFloat(
+            (((base.pm_high - base.prior_close) / base.prior_close) * 100).toFixed(2)
+          );
         }
       }
     }
 
-    // ── Current price fallback from quoteSummary ─────────────────────────────
-    if (!base.current_price && quoteRes.ok) {
-      const quoteData = await quoteRes.json() as any;
-      const price = quoteData?.quoteSummary?.result?.[0]?.price;
-      if (price?.regularMarketPrice?.raw) {
-        base.current_price = price.regularMarketPrice.raw;
-      }
-    }
-
-    // ── Day of run + prior_close fallback + avg volume (10d daily) ──────────
-    if (dailyRes.ok) {
-      const dailyData = await dailyRes.json() as any;
-      const result = dailyData?.chart?.result?.[0];
-      if (result) {
-        const closes: number[] = result.indicators?.quote?.[0]?.close || [];
-        const dailyVols: number[] = result.indicators?.quote?.[0]?.volume || [];
-        const validCloses = closes.filter((c: any) => c != null);
-
-        // Avg daily volume from prior bars (exclude today's partial bar)
-        const priorVols = dailyVols.slice(0, -1).filter((v: any) => v != null && v > 0);
-        if (priorVols.length > 0 && todayRthVol > 0) {
-          const avgVol = priorVols.reduce((s: number, v: number) => s + v, 0) / priorVols.length;
-          if (avgVol > 0) {
-            base.volume_ratio = parseFloat((todayRthVol / avgVol).toFixed(2));
-          }
-        }
-        if (validCloses.length >= 2) {
-          // Fallback prior_close from daily if intraday didn't capture prior RTH
-          if (base.prior_close === null) {
-            base.prior_close = validCloses[validCloses.length - 2];
-            // Recompute gap_pct with fallback prior_close
-            if (base.pm_high !== null) {
-              base.gap_pct = parseFloat(
-                (((base.pm_high - base.prior_close) / base.prior_close) * 100).toFixed(2)
-              );
-            }
-          }
-          const currentClose = validCloses[validCloses.length - 1];
-          const threshold = currentClose * 0.7;
-          let runDays = 0;
-          for (let i = validCloses.length - 1; i >= 0; i--) {
-            if (validCloses[i] >= threshold) runDays++;
-            else break;
-          }
-          base.day_of_run = runDays;
-        }
-      }
-    }
-
-    // Efficiency = intraday_move_pct / volume_ratio (price gain per unit of volume)
-    // < 0.50 means huge vol needed to move price → distribution / PM_SELL_PRESSURE
+    // Efficiency = intraday_move_pct / volume_ratio
     if (base.intraday_move_pct !== null && base.volume_ratio !== null && base.volume_ratio > 0) {
-      base.efficiency = parseFloat((base.intraday_move_pct / Math.max(base.volume_ratio, 0.01)).toFixed(3));
+      base.efficiency = parseFloat(
+        (base.intraday_move_pct / Math.max(base.volume_ratio, 0.01)).toFixed(3)
+      );
     }
 
-    // Auto-classify structure from computed price action fields
+    // Auto-classify structure
     if (base.wick_ratio !== null && base.vwap_failed === true && base.wick_ratio > 0.70) {
       base.structure = 'BLOW_OFF_TOP';
     } else if (base.pm_high_reclaimed === true && base.vwap_failed === false) {
