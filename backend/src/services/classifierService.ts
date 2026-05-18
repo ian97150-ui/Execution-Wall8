@@ -59,6 +59,13 @@ export interface ClassifierSignal {
   sec_offerings_12m:  number;
   sec_score_boost:    number;
   sec_regime_changed: boolean;
+  // App integration fields — populated by evaluate_gates() in the classifier
+  disqualifiers:   string[];   // structural gate blockers, e.g. ['CHOP_EXTREME:93pct']
+  bias:            string;     // MAX_CONVICTION | HIGH_CONVICTION | LOW_CONVICTION | NO_CONVICTION
+  confidence_norm: number;     // confidence / 100, 0.0–1.0
+  pre_fall_tier:   string;     // alias for tier: HIGH | MEDIUM | LOW | SKIP
+  gates_passed:    number;     // 0–5
+  gate_detail:     string[];   // per-gate pass/fail strings
 }
 
 /**

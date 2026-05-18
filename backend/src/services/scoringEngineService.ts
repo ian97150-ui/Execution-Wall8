@@ -43,9 +43,11 @@ export type SignalTag =
   | 'ATM_TERMINATED';
 
 export type TradeBias =
-  | 'MAX_CONVICTION'    // score >= 15 · 94% dump
-  | 'HIGH_CONVICTION'   // score >= 12 · 93% dump
+  | 'MAX_CONVICTION'    // score >= 15 · 94% dump  /  classifier Grade A
+  | 'HIGH_CONVICTION'   // score >= 12 · 93% dump  /  classifier Grade B
   | 'CONFIRMED_SHORT'   // score >= 8  · 86% dump
+  | 'LOW_CONVICTION'    // classifier: WAIT + score >= 25
+  | 'NO_CONVICTION'     // classifier: WAIT/SKIP — does not qualify
   | 'NEUTRAL'           // score 2–7
   | 'LONG_BIAS'         // score <= 1
   | 'LONG_CANDIDATE';   // score <= -3 · EQ_CONTINUATION setup
@@ -134,8 +136,15 @@ export interface ScoreSnapshot {
   pre_fall_score: number;                     // 0–150 integer — headline conviction number
   pre_fall_tier: PreFallTier;                 // HIGH/MEDIUM/LOW/SKIP display tier
   pre_fall_flags: string[];                   // which weights fired in pre-fall formula
-  disqualifiers: DisqualifierReason[];        // gate failures (empty = eligible)
+  disqualifiers: string[];                    // gate failures (empty = eligible); string codes from classifier
   bucket_dump_pct: number | null;             // empirical dump% for predicted bucket
+  // Classifier strategy fields (undefined on legacy non-classifier path)
+  strategy:       string;    // 'E' | 'A' | 'LONG' | 'NONE'
+  grade:          string;    // 'A' | 'B' | 'C' | 'NONE'
+  suggested_size: string;    // position size from classifier, e.g. '80%'
+  stop_pct:       string;    // stop distance, e.g. '+25%'
+  gates_passed:   number;    // 0–5
+  gate_detail:    string[];  // per-gate pass/fail strings
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -743,7 +752,8 @@ function _parsePct(s: string): number {
 }
 
 function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
-  const bias    = _SIGNAL_BIAS[cls.signal]    ?? 'NEUTRAL';
+  // Use classifier's bias from evaluate_gates(); fall back to signal-based mapping
+  const bias    = (cls.bias as TradeBias) ?? _SIGNAL_BIAS[cls.signal] ?? 'NEUTRAL';
   const outcome = _SIGNAL_OUTCOME[cls.signal] ?? 'CHOP';
   const conf    = cls.confidence;          // 0-100
   const s1Pct   = cls.section === 'S1' ? conf : Math.max(0, 100 - conf);
@@ -790,8 +800,14 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     pre_fall_score:  cls.score,
     pre_fall_tier:   cls.tier as PreFallTier,
     pre_fall_flags:  cls.active_signals,
-    disqualifiers:   cls.warnings as unknown as DisqualifierReason[],
+    disqualifiers:   cls.disqualifiers ?? [],
     bucket_dump_pct: null,
+    strategy:        cls.strategy       ?? 'E',
+    grade:           cls.grade          ?? 'B',
+    suggested_size:  cls.suggested_size ?? '100%',
+    stop_pct:        cls.stop_pct       ?? '+25%',
+    gates_passed:    cls.gates_passed   ?? 0,
+    gate_detail:     cls.gate_detail    ?? [],
   };
 }
 
@@ -860,6 +876,12 @@ function _computeScoreSnapshotSync(checklist: SecChecklist): ScoreSnapshot {
       pre_fall_flags: [],
       disqualifiers,
       bucket_dump_pct: null,
+      strategy: 'NONE',
+      grade: 'NONE',
+      suggested_size: '0%',
+      stop_pct: 'n/a',
+      gates_passed: 0,
+      gate_detail: [],
     };
   }
 
@@ -1016,5 +1038,11 @@ function _computeScoreSnapshotSync(checklist: SecChecklist): ScoreSnapshot {
     pre_fall_flags: preFallFlags,
     disqualifiers,
     bucket_dump_pct: bucketDumpPct,
+    strategy: 'E',
+    grade: 'B',
+    suggested_size: '100%',
+    stop_pct: '+25%',
+    gates_passed: 0,
+    gate_detail: [],
   };
 }
