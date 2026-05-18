@@ -731,8 +731,11 @@ const _SIGNAL_OUTCOME: Record<string, CleanOutcome> = {
   WAIT: 'VOLATILE_FADE', LONG_OPP: 'CHOP', SKIP: 'CHOP',
 };
 const _TIER1_SIGS = new Set([
+  // Bar-pattern tier-1
   'SUPPLY_OVERHANG','AH_REVERSAL_TRAP','LIVE_STRENGTH',
   'DAY3_EXHAUSTION','LATE_PHASE','MEAN_REVERSION_GAP',
+  // SEC filing tier-1 signals injected by classifier
+  '424B5_ACTIVE','SERIAL_HEAVY','PRIOR3_DILUTION',
 ]);
 
 function _parsePct(s: string): number {
@@ -757,7 +760,11 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     bias,
     confidence:      conf / 100,
     signals:         cls.active_signals as unknown as SignalTag[],
-    reason:          cls.reasons.slice(0, 3).join(' | '),
+    reason:          [
+                       ...cls.reasons.slice(0, 3),
+                       ...(cls.sec_available && cls.sec_score_boost > 0
+                         ? [`SEC+${cls.sec_score_boost}pts`] : []),
+                     ].join(' | '),
     probabilities:   [
       { path: 'dump',         pct: dumpPct },
       { path: 'fade',         pct: fadePct },

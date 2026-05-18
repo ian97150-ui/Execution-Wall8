@@ -7,10 +7,11 @@ import os from 'os';
 
 const router = Router();
 
-const PYTHON_DIR   = path.join(__dirname, '../../..', 'python');
-const SCRIPT_PATH  = path.join(PYTHON_DIR, 'cat5ive_sim.py');
-const MERGER_PATH  = path.join(PYTHON_DIR, 'csv_merger.py');
-const LOCAL_CSV    = path.join(PYTHON_DIR, 'market_conditions.csv');
+const PYTHON_DIR        = path.join(__dirname, '../../..', 'python');
+const SCRIPT_PATH       = path.join(PYTHON_DIR, 'cat5ive_sim.py');
+const CLASSIFIER_PATH   = path.join(PYTHON_DIR, 'cat5ive_classifier.py');
+const MERGER_PATH       = path.join(PYTHON_DIR, 'csv_merger.py');
+const LOCAL_CSV         = path.join(PYTHON_DIR, 'market_conditions.csv');
 
 // Resolve python binary: try python3, fall back to python
 function getPythonBin(): string {
@@ -196,6 +197,28 @@ router.get('/run', async (req: Request, res: Response) => {
   // Merge app CSV with market_conditions.csv to supply all W1 scoring fields
   const simCsvPath = mergeCSV(csvPath);
   const cleanup2 = () => { if (simCsvPath !== csvPath) try { fs.unlinkSync(simCsvPath); } catch {} };
+
+  // classify command runs cat5ive_classifier.py directly (not cat5ive_sim.py)
+  if (cmd === 'classify') {
+    if (!ticker || !date) {
+      res.write(`data: ${JSON.stringify('[error] ticker and date required for classify')}\n\n`);
+      finish(csvPath, 1); return;
+    }
+    const classArgs = [CLASSIFIER_PATH, ticker.toUpperCase(), '--date', date, '--once'];
+    const tradierKey2 = process.env.TRADIER_API_KEY;
+    res.write(`data: ${JSON.stringify(`> python3 cat5ive_classifier.py ${ticker.toUpperCase()} --date ${date} --once`)}\n\n`);
+    const proc2 = spawn(PYTHON_BIN, classArgs, {
+      cwd: path.join(__dirname, '../../..'),
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+             ...(tradierKey2 ? { TRADIER_API_KEY: tradierKey2 } : {}) },
+    });
+    proc2.stdout?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(c.toString('utf8')))}\n\n`); });
+    proc2.stderr?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(c.toString('utf8')))}\n\n`); });
+    proc2.on('close', (code) => finish(csvPath, code ?? 0));
+    proc2.on('error', (err) => { res.write(`data: ${JSON.stringify(`[error] ${err.message}`)}\n\n`); finish(csvPath, -1); });
+    req.on('close', () => { if (!streamDone) { proc2.kill(); cleanup(csvPath); } });
+    return;
+  }
 
   let args: string[] = [SCRIPT_PATH];
   switch (cmd) {

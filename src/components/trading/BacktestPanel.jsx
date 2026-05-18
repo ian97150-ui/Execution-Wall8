@@ -134,7 +134,7 @@ export function BacktestPanel() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-border">
         <div className="flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-semibold tracking-wide">BACKTEST SIMULATION</span>
+          <span className="text-sm font-semibold tracking-wide">CLASSIFIER / BACKTEST</span>
         </div>
         <button
           onClick={() => { setShowAdd(s => !s); setAddStatus(''); }}
@@ -251,28 +251,15 @@ export function BacktestPanel() {
           {/* Command buttons */}
           <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 flex-wrap">
             <CmdButton
-              label="Health Check"
-              disabled={running}
-              onClick={() => {
-                setLines([`[fetch] GET ${API}/health ...`]);
-                fetch(`${API}/health`)
-                  .then(r => {
-                    setLines(prev => [...prev, `[http] status ${r.status}`]);
-                    return r.text();
-                  })
-                  .then(t => setLines(prev => [...prev, t]))
-                  .catch(e => setLines(prev => [...prev, `[error] ${e.message}`]));
-              }}
-            />
-            <CmdButton
-              label="Test SSE"
-              disabled={running}
-              onClick={() => runCmd('test')}
+              label="Classify"
+              icon={<Play className="w-3 h-3" />}
+              disabled={running || !selected}
+              onClick={() => runCmd('classify')}
+              primary
             />
             <span className="text-border">|</span>
             <CmdButton
               label="Flip Analysis"
-              icon={<Play className="w-3 h-3" />}
               disabled={running || !selected}
               onClick={() => runCmd('flips')}
             />
@@ -296,6 +283,18 @@ export function BacktestPanel() {
               disabled={running}
               onClick={() => runCmd('backtest')}
             />
+            <span className="text-border">|</span>
+            <CmdButton
+              label="Health"
+              disabled={running}
+              onClick={() => {
+                setLines([`[fetch] GET ${API}/health ...`]);
+                fetch(`${API}/health`)
+                  .then(r => { setLines(prev => [...prev, `[http] status ${r.status}`]); return r.text(); })
+                  .then(t => setLines(prev => [...prev, t]))
+                  .catch(e => setLines(prev => [...prev, `[error] ${e.message}`]));
+              }}
+            />
             {lines.length > 0 && !running && (
               <button
                 onClick={() => setLines([])}
@@ -311,12 +310,16 @@ export function BacktestPanel() {
   );
 }
 
-function CmdButton({ label, icon, disabled, onClick }) {
+function CmdButton({ label, icon, disabled, onClick, primary = false }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1 text-xs px-3 py-1 rounded border border-border hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+        primary
+          ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+          : 'border-border hover:bg-accent'
+      }`}
     >
       {icon}
       {label}

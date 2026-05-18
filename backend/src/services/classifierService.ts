@@ -53,6 +53,12 @@ export interface ClassifierSignal {
   all_signals:   string[];
   suggested_size: string;
   next_watch:    string;
+  // SEC filing fields (from EDGAR lookup inside the classifier)
+  sec_available:      boolean;
+  sec_days_424b5:     number;
+  sec_offerings_12m:  number;
+  sec_score_boost:    number;
+  sec_regime_changed: boolean;
 }
 
 /**
