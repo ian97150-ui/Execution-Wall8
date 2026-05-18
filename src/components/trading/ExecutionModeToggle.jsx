@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { cn } from "@/lib/utils";
-import { ShieldOff, ShieldCheck, Zap, Lock, X, Bot } from "lucide-react";
+import { ShieldOff, ShieldCheck, Zap, Lock, X } from "lucide-react";
 
 function generateCode() {
   // 4-digit code using only digits 1–8
@@ -35,13 +35,6 @@ export default function ExecutionModeToggle({
       icon: Zap,
       activeColor: "bg-emerald-500 text-emerald-950 shadow-emerald-500/40",
       description: "Immediate execution"
-    },
-    {
-      value: "auto",
-      label: "AUTO",
-      icon: Bot,
-      activeColor: "bg-violet-500 text-white shadow-violet-500/40",
-      description: "Score-gated auto-execution"
     }
   ];
 
@@ -66,8 +59,8 @@ export default function ExecutionModeToggle({
   function confirm() {
     if (input === code) {
       onChange(pending);
-      // When switching to AUTO, default sub-mode to mode_v_short
-      if (pending === 'auto' && !autoSubMode) {
+      // When switching to FULL, default sub-mode to mode_v_short
+      if (pending === 'full' && !autoSubMode) {
         onAutoSubModeChange?.('mode_v_short');
       }
       cancel();
@@ -140,8 +133,8 @@ export default function ExecutionModeToggle({
         {modes.find(m => m.value === mode)?.description}
       </p>
 
-      {/* Mode V Short sub-mode selector (AUTO only) */}
-      {mode === 'auto' && (
+      {/* Mode V Short sub-mode selector (FULL only) */}
+      {mode === 'full' && (
         <div className="flex items-center gap-1.5 px-1">
           <span className="text-[9px] text-slate-500 uppercase tracking-wider">Sub-mode:</span>
           <button

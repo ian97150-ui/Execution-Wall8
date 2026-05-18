@@ -1,9 +1,5 @@
 /**
- * Mode V Short — auto-approval service.
- *
- * Defines the 5-gate threshold for a "verified high-conviction short" and
- * auto-approves TradeIntent cards when execution_mode is 'auto' + auto_sub_mode
- * is 'mode_v_short' and the classifier score_snapshot passes all gates.
+ * Mode V Short — threshold check + notification / auto-approval service.
  *
  * Gates (all must pass):
  *   1. disqualifiers.length === 0   — no structural blockers
@@ -11,6 +7,9 @@
  *   3. bias MAX_CONVICTION or HIGH_CONVICTION — active entry signal
  *   4. section === 'S1'             — D+1 fast dump expected
  *   5. confidence >= 0.65           — ≥ 65% classifier confidence
+ *
+ * Notification fires in both SAFE and FULL mode when gates pass.
+ * Auto-approval only fires in FULL mode with auto_sub_mode === 'mode_v_short'.
  */
 
 import { prisma } from '../index';
@@ -33,9 +32,11 @@ export function meetsModeVShortThreshold(snap: ScoreSnapshot | null | undefined)
 }
 
 /**
- * Called after runChecklist completes. If execution_mode is 'auto' with
- * auto_sub_mode 'mode_v_short' and the checklist score passes all gates,
- * auto-approves the intent and fires a Pushover notification.
+ * Called after runChecklist completes.
+ *
+ * - SAFE mode:  fires Mode V Short Pushover notification (no auto-approval)
+ * - FULL mode + auto_sub_mode 'mode_v_short':  fires notification + auto-approves intent
+ *
  * Returns true if the intent was auto-approved.
  */
 export async function tryAutoApproveForModeVShort(
@@ -49,20 +50,37 @@ export async function tryAutoApproveForModeVShort(
     return false;
   }
   if (!settings) return false;
-  if (settings.execution_mode !== 'auto') return false;
-  if (settings.auto_sub_mode !== 'mode_v_short') return false;
+
+  const mode: string = settings.execution_mode;
+  if (mode !== 'safe' && mode !== 'full') return false;
 
   const snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
   if (!meetsModeVShortThreshold(snap)) return false;
 
-  // Only approve intents still pending — skip if already approved/denied
+  // Need intent for ticker regardless of auto-approve path
   let intent: any;
   try {
     intent = await prisma.tradeIntent.findUnique({ where: { id: intentId } });
   } catch {
     return false;
   }
-  if (!intent || intent.status !== 'pending') return false;
+  if (!intent) return false;
+
+  const notifDetails = {
+    score:      snap!.pre_fall_score,
+    tier:       snap!.pre_fall_tier,
+    bias:       snap!.bias,
+    confidence: `${Math.round((snap!.confidence ?? 0) * 100)}%`,
+    section:    snap!.section,
+    signals:    (snap!.overrides_fired ?? []).slice(0, 3).join(', ') || 'none',
+  };
+
+  // Always notify when threshold is met (safe or full)
+  PushoverNotifications.modeVShortSignal(intent.ticker, notifDetails).catch(() => {});
+
+  // Auto-approve only in FULL mode with mode_v_short sub-mode active
+  if (mode !== 'full' || settings.auto_sub_mode !== 'mode_v_short') return false;
+  if (intent.status !== 'pending') return false;
 
   await prisma.tradeIntent.update({
     where: { id: intentId },
@@ -70,15 +88,6 @@ export async function tryAutoApproveForModeVShort(
   });
 
   activateScheduler();
-
-  PushoverNotifications.modeVShortSignal(intent.ticker, {
-    score:      snap!.pre_fall_score,
-    tier:       snap!.pre_fall_tier,
-    bias:       snap!.bias,
-    confidence: `${Math.round((snap!.confidence ?? 0) * 100)}%`,
-    section:    snap!.section,
-    signals:    (snap!.overrides_fired ?? []).slice(0, 3).join(', ') || 'none',
-  }).catch(() => {});
 
   console.log(
     `⚡ Mode V Short: auto-approved ${intent.ticker} ` +

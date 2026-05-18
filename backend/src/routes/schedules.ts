@@ -69,7 +69,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Validate execution_mode
-    if (!['off', 'safe', 'full', 'auto'].includes(execution_mode)) {
+    if (!['off', 'safe', 'full'].includes(execution_mode)) {
       return res.status(400).json({
         error: 'Invalid execution_mode. Must be: off, safe, full, or auto'
       });
@@ -149,7 +149,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       updateData.end_time = end_time;
     }
     if (execution_mode !== undefined) {
-      if (!['off', 'safe', 'full', 'auto'].includes(execution_mode)) {
+      if (!['off', 'safe', 'full'].includes(execution_mode)) {
         return res.status(400).json({ error: 'Invalid execution_mode. Must be: off, safe, full, or auto' });
       }
       updateData.execution_mode = execution_mode;
