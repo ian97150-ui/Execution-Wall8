@@ -61,7 +61,7 @@ export function BacktestPanel() {
     setRunning(true);
 
     const params = new URLSearchParams({ cmd });
-    if (selected && (cmd === 'flips' || cmd === 'replay')) {
+    if (selected && (cmd === 'flips' || cmd === 'replay' || cmd === 'classify')) {
       params.set('ticker', selected.ticker);
       params.set('date',   selected.spike_date);
     }
