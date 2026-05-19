@@ -81,11 +81,13 @@ export async function runClassifier(
     if (date) args.push('--date', date);
 
     const tradierKey = process.env.TRADIER_API_KEY;
+    const polygonKey = process.env.POLYGON_API_KEY;
     const env = {
       ...process.env,
       PYTHONIOENCODING: 'utf-8',
       PYTHONUTF8: '1',
       ...(tradierKey ? { TRADIER_API_KEY: tradierKey } : {}),
+      ...(polygonKey ? { POLYGON_API_KEY: polygonKey } : {}),
     };
 
     let output = '';

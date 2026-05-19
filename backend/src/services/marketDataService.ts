@@ -5,6 +5,7 @@
  */
 
 import { fetchTimesales, fetchDailyBars, fetchQuote } from './tradierService';
+import { fetchPolygonTimesales, fetchPolygonDailyBars, fetchPolygonQuote } from './polygonService';
 
 // ─── ET helpers ──────────────────────────────────────────────────────────────
 
@@ -82,8 +83,8 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
     current_price: null, intraday_move_pct: null, efficiency: null, structure: null,
   };
 
-  if (!process.env.TRADIER_API_KEY) {
-    return { ...base, error: 'TRADIER_API_KEY not configured' };
+  if (!process.env.TRADIER_API_KEY && !process.env.POLYGON_API_KEY) {
+    return { ...base, error: 'No price API key configured (TRADIER_API_KEY or POLYGON_API_KEY)' };
   }
 
   try {
@@ -100,11 +101,21 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
     // Daily bars range: 35 calendar days back → today
     const dailyStart = fmtDate(new Date(Date.now() - 35 * 86_400_000));
 
-    const [bars, dailyBars, quote] = await Promise.all([
+    // Fetch price data — Tradier first, Polygon fallback
+    let [bars, dailyBars, quote] = await Promise.all([
       fetchTimesales(ticker, tsStart, tsEnd, 'all'),
       fetchDailyBars(ticker, dailyStart, todayDateStr),
       fetchQuote(ticker),
     ]);
+
+    if (bars.length === 0 && process.env.POLYGON_API_KEY) {
+      console.warn(`⚠️ Tradier returned no bars for ${ticker} — falling back to Polygon`);
+      [bars, dailyBars, quote] = await Promise.all([
+        fetchPolygonTimesales(ticker, priorDateStr, todayDateStr),
+        dailyBars.length === 0 ? fetchPolygonDailyBars(ticker, dailyStart, todayDateStr) : Promise.resolve(dailyBars),
+        quote ?? fetchPolygonQuote(ticker),
+      ]);
+    }
 
     base.market_open = isRTHOpen();
 
