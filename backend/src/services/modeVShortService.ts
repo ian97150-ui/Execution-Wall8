@@ -1,17 +1,24 @@
 /**
  * Mode V Short — threshold check + notification / auto-approval service.
  *
- * Gates (all must pass):
- *   1. disqualifiers.length === 0          — no structural blockers
- *   2. pre_fall_tier HIGH or MEDIUM        — score ≥ 25 / 150 (MEDIUM wins 89%, HIGH 81%)
- *   3. bias — strategy-dependent:
- *        Strat A (LOW_FLOAT_PARABOLIC): MAX_CONVICTION only (Grade A, tighter setup)
- *        Strat B (DILUTION_DUMP):       MAX_CONVICTION or HIGH_CONVICTION
- *   4. section === 'S1'                    — D+1 fast dump expected (82.6% accuracy)
- *   5. confidence >= 0.65                  — ≥ 65% classifier confidence (stored 0–1)
+ * TWO threshold levels:
  *
- * Notification fires in both SAFE and FULL mode when gates pass.
- * Auto-approval only fires in FULL mode with auto_sub_mode === 'mode_v_short'.
+ * AUTO-EXEC (strict) — all 5 gates:
+ *   1. disqualifiers.length === 0
+ *   2. pre_fall_tier HIGH or MEDIUM  (score >= 25)
+ *   3. bias MAX_CONVICTION (Strat A) or MAX/HIGH_CONVICTION (Strat B)
+ *   4. section === 'S1'
+ *   5. confidence >= 0.65
+ *
+ * NOTIFICATION (loose) — same gates, wider windows:
+ *   1. disqualifiers.length === 0       (unchanged — structural blockers always disqualify)
+ *   2. pre_fall_tier HIGH, MEDIUM or LOW (score >= 10)
+ *   3. bias MAX, HIGH, or LOW_CONVICTION (NO_CONVICTION excluded)
+ *   4. section S1 or S2                 (includes D+2-D+5 setups, avg 65.9% move)
+ *   5. confidence >= 0.50
+ *
+ * Notification fires in SAFE and FULL mode when loose gates pass.
+ * Auto-approval only fires in FULL + auto_sub_mode=mode_v_short when strict gates pass.
  */
 
 import { prisma } from '../index';
@@ -20,11 +27,12 @@ import { SecChecklist } from './secChecklistService';
 import { PushoverNotifications } from './pushoverService';
 import { activateScheduler } from './executionScheduler';
 
-const MODE_V_SHORT_BIAS = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION']);
+const EXEC_BIAS   = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION']);
+const NOTIFY_BIAS = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION', 'LOW_CONVICTION']);
 
 /**
- * Returns true if score_snapshot meets the Mode V Short threshold.
- * strategyId should be the TradeIntent.strategy_id ('Strat A' | 'Strat B' | ...).
+ * Strict threshold for auto-execution.
+ * strategyId: 'Strat A' | 'Strat B' | ...
  */
 export function meetsModeVShortThreshold(
   snap: ScoreSnapshot | null | undefined,
@@ -34,16 +42,31 @@ export function meetsModeVShortThreshold(
   if ((snap.disqualifiers ?? []).length > 0) return false;
   if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM') return false;
 
-  // Gate 3: Strat A requires MAX_CONVICTION only (Grade A); Strat B accepts both
   const isStratA = strategyId === 'Strat A';
   if (isStratA) {
     if (snap.bias !== 'MAX_CONVICTION') return false;
   } else {
-    if (!MODE_V_SHORT_BIAS.has(snap.bias)) return false;
+    if (!EXEC_BIAS.has(snap.bias)) return false;
   }
 
   if (snap.section !== 'S1') return false;
   if ((snap.confidence ?? 0) < 0.65) return false;
+  return true;
+}
+
+/**
+ * Loose threshold for push notifications only.
+ * Catches borderline setups worth manual review — does NOT trigger auto-execution.
+ */
+export function meetsModeVShortNotifyThreshold(
+  snap: ScoreSnapshot | null | undefined
+): boolean {
+  if (!snap) return false;
+  if ((snap.disqualifiers ?? []).length > 0) return false;
+  if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM' && snap.pre_fall_tier !== 'LOW') return false;
+  if (!NOTIFY_BIAS.has(snap.bias)) return false;
+  if (snap.section !== 'S1' && snap.section !== 'S2') return false;
+  if ((snap.confidence ?? 0) < 0.50) return false;
   return true;
 }
 
@@ -82,7 +105,10 @@ export async function tryAutoApproveForModeVShort(
   const strategyId: string = (intent as any).strategy_id ?? '';
   const snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
 
-  if (!meetsModeVShortThreshold(snap, strategyId)) return false;
+  // Check loose threshold first — fires notification in both SAFE and FULL mode
+  if (!meetsModeVShortNotifyThreshold(snap)) return false;
+
+  const strictPass = meetsModeVShortThreshold(snap, strategyId);
 
   const notifDetails = {
     score:      snap!.pre_fall_score,
@@ -92,12 +118,14 @@ export async function tryAutoApproveForModeVShort(
     section:    snap!.section,
     signals:    (snap!.overrides_fired ?? []).slice(0, 3).join(', ') || 'none',
     strategy:   strategyId || 'N/A',
+    // Flag whether this also met the strict (auto-exec) bar
+    verified:   strictPass ? 'AUTO-EXEC GRADE' : 'REVIEW NEEDED',
   };
 
-  // Always notify when threshold is met (safe or full)
   PushoverNotifications.modeVShortSignal(intent.ticker, notifDetails).catch(() => {});
 
-  // Auto-approve only in FULL mode with mode_v_short sub-mode active
+  // Auto-approve only when strict gates pass + FULL mode + mode_v_short sub-mode
+  if (!strictPass) return false;
   if (mode !== 'full' || settings.auto_sub_mode !== 'mode_v_short') return false;
   if (intent.status !== 'pending') return false;
 

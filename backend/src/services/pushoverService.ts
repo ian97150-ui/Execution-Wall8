@@ -153,7 +153,9 @@ function getMessage(eventType: PushoverEventType, ticker: string, details: Recor
   if (details.score !== undefined) parts.push(`Score: ${details.score}`);
   if (details.tier) parts.push(details.tier);
   if (details.bias) parts.push(details.bias);
+  if (details.section) parts.push(details.section);
   if (details.signals) parts.push(`Signals: ${details.signals}`);
+  if (details.verified) parts.push(details.verified);
 
   return parts.join(' | ') || eventType.replace(/_/g, ' ');
 }
