@@ -108,8 +108,9 @@ export async function getPriceActionSignals(ticker: string): Promise<PriceAction
       fetchQuote(ticker),
     ]);
 
+    // Tradier exhausted all 3 retries — fall back to Polygon (yfinance is Python-only)
     if (bars.length === 0 && process.env.POLYGON_API_KEY) {
-      console.warn(`⚠️ Tradier returned no bars for ${ticker} — falling back to Polygon`);
+      console.warn(`⚠️ Tradier returned no bars for ${ticker} after 3 retries — falling back to Polygon`);
       [bars, dailyBars, quote] = await Promise.all([
         fetchPolygonTimesales(ticker, priorDateStr, todayDateStr),
         dailyBars.length === 0 ? fetchPolygonDailyBars(ticker, dailyStart, todayDateStr) : Promise.resolve(dailyBars),

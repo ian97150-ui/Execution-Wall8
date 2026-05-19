@@ -6,6 +6,19 @@
 
 const BASE = 'https://api.tradier.com/v1';
 const TIMEOUT_MS = 8000;
+const MAX_RETRIES = 3;
+
+async function withRetry<T>(fn: () => Promise<T>, empty: T): Promise<T> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const result = await fn();
+    // Check if we got a non-empty result
+    if (Array.isArray(result) ? (result as any[]).length > 0 : result !== null) return result;
+    if (attempt < MAX_RETRIES - 1) {
+      await new Promise(r => setTimeout(r, (attempt + 1) * 1000));
+    }
+  }
+  return empty;
+}
 
 function authHeaders(): Record<string, string> | null {
   const key = process.env.TRADIER_API_KEY;
@@ -52,7 +65,7 @@ export interface TradierQuote {
 
 // ─── Intraday 1-min bars ─────────────────────────────────────────────────────
 
-/** Fetch 1-minute bars. start/end must be 'YYYY-MM-DD HH:mm' in ET. */
+/** Fetch 1-minute bars. start/end must be 'YYYY-MM-DD HH:mm' in ET. Retries up to 3 times. */
 export async function fetchTimesales(
   ticker: string,
   start: string,
@@ -61,31 +74,33 @@ export async function fetchTimesales(
 ): Promise<TradierBar[]> {
   const hdrs = authHeaders();
   if (!hdrs) return [];
-  try {
-    const params = new URLSearchParams({
-      symbol: ticker.toUpperCase(),
-      interval: '1min',
-      start,
-      end,
-      session_filter: sessionFilter,
-    });
-    const res = await fetch(`${BASE}/markets/timesales?${params}`, {
-      headers: hdrs,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) return [];
-    const data = await res.json() as any;
-    const raw = data?.series?.data;
-    if (!raw) return [];
-    return (Array.isArray(raw) ? raw : [raw]) as TradierBar[];
-  } catch {
-    return [];
-  }
+  return withRetry(async () => {
+    try {
+      const params = new URLSearchParams({
+        symbol: ticker.toUpperCase(),
+        interval: '1min',
+        start,
+        end,
+        session_filter: sessionFilter,
+      });
+      const res = await fetch(`${BASE}/markets/timesales?${params}`, {
+        headers: hdrs!,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as any;
+      const raw = data?.series?.data;
+      if (!raw) return [];
+      return (Array.isArray(raw) ? raw : [raw]) as TradierBar[];
+    } catch {
+      return [];
+    }
+  }, []);
 }
 
 // ─── Daily OHLCV bars ────────────────────────────────────────────────────────
 
-/** Fetch daily bars. start/end must be 'YYYY-MM-DD'. */
+/** Fetch daily bars. start/end must be 'YYYY-MM-DD'. Retries up to 3 times. */
 export async function fetchDailyBars(
   ticker: string,
   start: string,
@@ -93,46 +108,50 @@ export async function fetchDailyBars(
 ): Promise<TradierDailyBar[]> {
   const hdrs = authHeaders();
   if (!hdrs) return [];
-  try {
-    const params = new URLSearchParams({
-      symbol: ticker.toUpperCase(),
-      interval: 'daily',
-      start,
-      end,
-    });
-    const res = await fetch(`${BASE}/markets/history?${params}`, {
-      headers: hdrs,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) return [];
-    const data = await res.json() as any;
-    const raw = data?.history?.day;
-    if (!raw) return [];
-    return (Array.isArray(raw) ? raw : [raw]) as TradierDailyBar[];
-  } catch {
-    return [];
-  }
+  return withRetry(async () => {
+    try {
+      const params = new URLSearchParams({
+        symbol: ticker.toUpperCase(),
+        interval: 'daily',
+        start,
+        end,
+      });
+      const res = await fetch(`${BASE}/markets/history?${params}`, {
+        headers: hdrs!,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as any;
+      const raw = data?.history?.day;
+      if (!raw) return [];
+      return (Array.isArray(raw) ? raw : [raw]) as TradierDailyBar[];
+    } catch {
+      return [];
+    }
+  }, []);
 }
 
 // ─── Real-time quotes ────────────────────────────────────────────────────────
 
-/** Fetch real-time quote for a single ticker. */
+/** Fetch real-time quote for a single ticker. Retries up to 3 times. */
 export async function fetchQuote(ticker: string): Promise<TradierQuote | null> {
   const hdrs = authHeaders();
   if (!hdrs) return null;
-  try {
-    const res = await fetch(
-      `${BASE}/markets/quotes?symbols=${encodeURIComponent(ticker.toUpperCase())}`,
-      { headers: hdrs, signal: AbortSignal.timeout(TIMEOUT_MS) }
-    );
-    if (!res.ok) return null;
-    const data = await res.json() as any;
-    const q = data?.quotes?.quote;
-    if (!q) return null;
-    return (Array.isArray(q) ? q[0] : q) as TradierQuote;
-  } catch {
-    return null;
-  }
+  return withRetry(async () => {
+    try {
+      const res = await fetch(
+        `${BASE}/markets/quotes?symbols=${encodeURIComponent(ticker.toUpperCase())}`,
+        { headers: hdrs!, signal: AbortSignal.timeout(TIMEOUT_MS) }
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as any;
+      const q = data?.quotes?.quote;
+      if (!q) return null;
+      return (Array.isArray(q) ? q[0] : q) as TradierQuote;
+    } catch {
+      return null;
+    }
+  }, null);
 }
 
 /** Fetch real-time quotes for multiple tickers in one request. */

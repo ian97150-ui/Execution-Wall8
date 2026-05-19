@@ -112,35 +112,39 @@ def _ts_to_hhmm(ts_str: str) -> str:
 
 def fetch_tradier(ticker: str, date_str: str, key: str) -> List[Bar]:
     if not HAS_REQUESTS or not key: return []
-    try:
-        url = 'https://api.tradier.com/v1/markets/timesales'
-        r   = requests.get(url, headers={
-            'Authorization': f'Bearer {key}',
-            'Accept': 'application/json',
-        }, params={
-            'symbol':   ticker,
-            'interval': '1min',
-            'start':    f'{date_str} 04:00',
-            'end':      f'{date_str} 20:00',
-            'session_filter': 'all',
-        }, timeout=15)
-        data = r.json()
-        series = data.get('series') or {}
-        raw    = series.get('data') or []
-        if isinstance(raw, dict): raw = [raw]
-        bars = []
-        for b in raw:
-            ts = str(b.get('time',''))
-            bars.append(Bar(
-                ts=_ts_to_hhmm(ts), open=float(b.get('open',0)),
-                high=float(b.get('high',0)), low=float(b.get('low',0)),
-                close=float(b.get('close',0) or b.get('last',0)),
-                volume=int(b.get('volume',0)),
-                session=_et_session(ts),
-            ))
-        return bars
-    except Exception:
-        return []
+    url = 'https://api.tradier.com/v1/markets/timesales'
+    for attempt in range(3):
+        try:
+            r = requests.get(url, headers={
+                'Authorization': f'Bearer {key}',
+                'Accept': 'application/json',
+            }, params={
+                'symbol':   ticker,
+                'interval': '1min',
+                'start':    f'{date_str} 04:00',
+                'end':      f'{date_str} 20:00',
+                'session_filter': 'all',
+            }, timeout=15)
+            data = r.json()
+            series = data.get('series') or {}
+            raw    = series.get('data') or []
+            if isinstance(raw, dict): raw = [raw]
+            bars = []
+            for b in raw:
+                ts = str(b.get('time',''))
+                bars.append(Bar(
+                    ts=_ts_to_hhmm(ts), open=float(b.get('open',0)),
+                    high=float(b.get('high',0)), low=float(b.get('low',0)),
+                    close=float(b.get('close',0) or b.get('last',0)),
+                    volume=int(b.get('volume',0)),
+                    session=_et_session(ts),
+                ))
+            if bars: return bars
+        except Exception:
+            pass
+        if attempt < 2:
+            time.sleep(attempt + 1)  # 1s, 2s backoff
+    return []
 
 
 def fetch_polygon(ticker: str, date_str: str, key: str) -> List[Bar]:
@@ -196,12 +200,12 @@ def fetch_yfinance(ticker: str, date_str: str) -> List[Bar]:
 
 def get_bars(ticker: str, date_str: str,
              tradier_key: str, polygon_key: str) -> List[Bar]:
-    """Fetch bars: Tradier -> Polygon -> yfinance."""
+    """Fetch bars: Tradier (3 retries) -> yfinance -> Polygon (last resort)."""
     bars = fetch_tradier(ticker, date_str, tradier_key)
     if bars: return bars
-    bars = fetch_polygon(ticker, date_str, polygon_key)
+    bars = fetch_yfinance(ticker, date_str)
     if bars: return bars
-    return fetch_yfinance(ticker, date_str)
+    return fetch_polygon(ticker, date_str, polygon_key)
 
 
 # =============================================================================
