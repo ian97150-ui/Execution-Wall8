@@ -99,13 +99,15 @@ async function getSettingsSafe() {
 }
 
 /**
- * Check for pending executions with expired delays and auto-execute them
+ * Check for pending executions with expired delays.
  *
  * Safe Mode Behavior:
- * - ENTRY orders: Auto-execute when delay expires (user can cancel during delay)
- * - EXIT orders: Also auto-execute when delay expires (fail-safe: always close positions)
+ * - ENTRY orders: CANCELLED when delay expires without swiped_on approval — never auto-executed
+ * - EXIT orders: Auto-execute when delay expires (fail-safe: always close positions)
  *
- * This ensures positions are never left open indefinitely if user doesn't respond.
+ * Full Mode Behavior:
+ * - ENTRY orders: Forwarded to broker immediately in handleOrderSignal (never reaches scheduler)
+ * - EXIT orders: Same auto-execute as safe mode
  */
 async function processExpiredDelays() {
   try {
