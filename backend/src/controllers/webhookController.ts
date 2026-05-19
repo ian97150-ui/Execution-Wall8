@@ -1006,6 +1006,30 @@ async function handleOrderSignal(data: {
     }
 
     linkedIntentId = pendingIntent.id;
+  } else {
+    // No prior WALL intent — create a synthetic wall card so the order shows in the UI
+    const syntheticIntent = await prisma.tradeIntent.create({
+      data: {
+        ticker: tickerUpper,
+        dir: finalDir,
+        price: finalLimitPrice ? finalLimitPrice.toString() : '0',
+        strategy_id: strategy_id || null,
+        quality_tier: quality_tier || 'D',
+        quality_score: quality_score || 0,
+        status: isFullMode ? 'swiped_on' : 'pending',
+        card_state: 'ORDER_ONLY',
+        gates_hit: 0,
+        gates_total: 0,
+        confidence: 0,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }
+    });
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: { intent_id: syntheticIntent.id }
+    });
+    linkedIntentId = syntheticIntent.id;
+    console.log(`📋 ORDER-only: created synthetic wall card for ${tickerUpper} (id: ${syntheticIntent.id})`);
   }
 
     // Create audit log
