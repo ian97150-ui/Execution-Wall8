@@ -36,6 +36,7 @@ function computeFlags(cls: ClassifierSignal, capturedAt: Date) {
     cls.sec_days_424b5 != null &&
     cls.sec_days_424b5 <= 30;
   const chop_override           = cls.chop >= 80 && cls.chop < 90 && cls.score >= 75 && cls.flips_rth <= 3;
+  const velocity_unknown        = cls.velocity === 'UNKNOWN';
 
   const warnings: string[] = [];
   if (dead_zone_entry && sec_heavy)          warnings.push('DEAD_ZONE_SEC_HEAVY');
@@ -45,10 +46,11 @@ function computeFlags(cls: ClassifierSignal, capturedAt: Date) {
   if (sec_cache_stale)                       warnings.push('SEC_CACHE_STALE');
   if (pre_market_early)                      warnings.push('EARLY_SESSION');
   if (chop_override)                         warnings.push('CHOP_OVERRIDE');
+  if (velocity_unknown)                      warnings.push('VELOCITY_UNKNOWN');
 
   return {
     data_lag, sec_cache_stale, sec_heavy, pre_market_early,
-    regime_likely_changing, dead_zone_entry, chop_override, warnings,
+    regime_likely_changing, dead_zone_entry, chop_override, velocity_unknown, warnings,
   };
 }
 
@@ -68,6 +70,7 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
     time:        timeHHMM,
     strategy,
     signal:      cls.signal,
+    t2_entry_type: cls.t2_entry_type ?? null,
     price:       cls.price,
     captured_at,
     gates: {
@@ -97,7 +100,6 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
       sec_cache_age_hours: cls.sec_cache_age_hrs  ?? null,
       signal_tier:         cls.signal_tier         ?? null,
       hod_bars_ago:        cls.hod_bars_ago         ?? null,
-      t2_entry_type:       cls.t2_entry_type        ?? null,
     },
     flags: computeFlags(cls, capturedAt),
     backtest_entry: {

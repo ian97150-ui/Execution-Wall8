@@ -613,6 +613,7 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
         **{s: False for s in ['424B5_ACTIVE', 'SERIAL_HEAVY',
                                'PRIOR3_DILUTION', 'SUPPLY_OVERHANG', 'LATE_PHASE']},
         score_boost=0, regime_override=None,
+        cache_age_hrs=None,
     )
     try:
         session_dt = datetime.strptime(session_date, '%Y-%m-%d')
@@ -657,6 +658,10 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
 
         boost = 15*s424 + 20*s_ser + 20*s_p3 + 20*s_sup + 10*s_lat
 
+        ts_key = f'filings_ts_{ticker.upper()}'
+        now_ts = datetime.now().timestamp()
+        cache_age_hrs = round((now_ts - cache[ts_key]) / 3600, 1) if ts_key in cache else 0.0
+
         return dict(
             available=True, days_since_424b5=d424,
             offering_count_3m=n3, offering_count_12m=n12,
@@ -666,6 +671,7 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
                'LATE_PHASE': s_lat},
             score_boost=boost,
             regime_override='DILUTION_DUMP' if s424 else None,
+            cache_age_hrs=cache_age_hrs,
         )
     except Exception:
         return empty
@@ -731,7 +737,9 @@ class ClassifierSignal:
     sec_days_424b5:     int   = 0
     sec_offerings_12m:  int   = 0
     sec_score_boost:    int   = 0
-    sec_regime_changed: bool  = False
+    sec_regime_changed: bool           = False
+    last_bar_time:      str            = ''     # HH:MM of newest bar processed
+    sec_cache_age_hrs:  Optional[float] = None  # hours since EDGAR cache last refreshed
     # -- App integration fields (v2.1) — populated by evaluate_gates() --------
     disqualifiers:   List[str] = field(default_factory=list)
     bias:            str       = 'NO_CONVICTION'
@@ -1062,6 +1070,8 @@ def run_classification(ticker: str, bars: List[Bar],
             sec_offerings_12m=sec.get('offering_count_12m', 0),
             sec_score_boost=sec.get('score_boost', 0),
             sec_regime_changed=bool(sec.get('regime_override')),
+            last_bar_time=bars[-1].time[11:16] if bars else '',
+            sec_cache_age_hrs=sec.get('cache_age_hrs'),
         )
         sig.quality_score = calc_quality(sig)
         return sig
@@ -1176,6 +1186,8 @@ def run_classification(ticker: str, bars: List[Bar],
         sec_offerings_12m=sec.get('offering_count_12m', 0),
         sec_score_boost=sec.get('score_boost', 0),
         sec_regime_changed=bool(sec.get('regime_override')),
+        last_bar_time=bars[-1].time[11:16] if bars else '',
+        sec_cache_age_hrs=sec.get('cache_age_hrs'),
     )
     sig.quality_score = calc_quality(sig)
     evaluate_gates(sig)
