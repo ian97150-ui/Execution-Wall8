@@ -7,6 +7,7 @@ import { checkSecFilings } from '../services/secCallbackService';
 import { runChecklist } from '../services/secChecklistService';
 import { captureGradeSnapshot } from '../services/gradeSnapshotService';
 import { tryAutoApproveForModeVShort } from '../services/modeVShortService';
+import { captureSignal } from '../services/liveTradeExportService';
 
 /**
  * Helper to safely get settings without failing on missing columns
@@ -584,7 +585,10 @@ async function handleWallSignal(data: {
 
   // Fire-and-forget: run full SEC checklist in background (EDGAR + Finnhub + Yahoo Finance)
   const intentIdForChecklist = tradeIntent.id;
-  runChecklist(tickerUpper)
+  runChecklist(tickerUpper, undefined, undefined, (cls) => {
+    captureSignal(cls, intentIdForChecklist)
+      .catch(err => console.warn(`[LiveTrade] capture failed for ${tickerUpper}:`, err?.message));
+  })
     .then(async (c) => {
       await prisma.tradeIntent.update({
         where: { id: intentIdForChecklist },

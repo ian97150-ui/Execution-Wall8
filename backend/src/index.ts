@@ -18,6 +18,7 @@ import authRoutes from './routes/auth';
 import databaseRoutes from './routes/database';
 import schedulesRoutes from './routes/schedules';
 import simRoutes from './routes/sim';
+import liveTradesRoutes from './routes/liveTrades';
 
 // Import services
 import { startCleanupScheduler } from './services/databaseCleanup';
@@ -70,6 +71,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/schedules', schedulesRoutes);
 app.use('/api/sim', simRoutes);
+app.use('/api/live-trades', liveTradesRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

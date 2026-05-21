@@ -66,6 +66,11 @@ export interface ClassifierSignal {
   pre_fall_tier:   string;     // alias for tier: HIGH | MEDIUM | LOW | SKIP
   gates_passed:    number;     // 0–5
   gate_detail:     string[];   // per-gate pass/fail strings
+  // Optional fields used by live trade capture (may be absent on older classifier versions)
+  score_raw?:         number;   // pre-SEC-boost score; falls back to score if absent
+  last_bar_time?:     string;   // HH:MM of newest bar processed
+  sec_cache_age_hrs?: number;   // hours since EDGAR cache last refreshed
+  t2_entry_type?:     string;   // ON_TIME | SLIGHTLY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
 }
 
 /**

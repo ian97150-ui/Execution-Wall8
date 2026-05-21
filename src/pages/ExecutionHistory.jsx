@@ -54,6 +54,16 @@ export default function ExecutionHistory() {
     link.remove();
   };
 
+  const handleExportLiveTrades = () => {
+    const link = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    link.href = `${apiUrl}/live-trades/export?date=${date}`;
+    link.setAttribute('download', `live_trades_${date}.json`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   const { data: executions = [], isLoading } = useQuery({
     queryKey: ['executionHistory', statusFilter],
     queryFn: async () => {
@@ -119,6 +129,15 @@ export default function ExecutionHistory() {
             <p className="text-xs text-slate-500">{executions.length} total records</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              onClick={handleExportLiveTrades}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+            >
+              <Download className="w-4 h-4" />
+              Live Trades
+            </Button>
             <Button
               onClick={handleExportGrades}
               variant="outline"

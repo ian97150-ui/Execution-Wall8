@@ -255,3 +255,18 @@ model SimTicker {
   @@unique([ticker, spike_date])
   @@map("sim_tickers")
 }
+
+model LiveTrade {
+  id          String   @id @default(cuid())
+  record_id   String   @unique
+  ticker      String
+  date        String
+  signal      String
+  strategy    String
+  intent_id   String?
+  record_json String
+  captured_at DateTime
+
+  @@index([ticker, date])
+  @@map("live_trades")
+}

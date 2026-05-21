@@ -361,7 +361,7 @@ export function startLiveScorePoller(): void {
 
     for (const { ticker } of active) {
       refreshLiveScore(ticker).catch(err =>
-        console.warn(`[LiveScorePoller] ${ticker} refresh failed: ${err?.message}`)
+        console.warn(`[LiveScorePoller] ${ticker} refresh failed:`, err instanceof Error ? err.message : err)
       );
     }
   }, 60_000);

@@ -40,7 +40,7 @@ APP INTEGRATION (subprocess):
 
 import os, sys, time, json, argparse, math
 from datetime import datetime, date, timedelta
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from typing import Optional, List
 
 # -- Optional imports (graceful fallback) -------------------------------------
@@ -732,6 +732,14 @@ class ClassifierSignal:
     sec_offerings_12m:  int   = 0
     sec_score_boost:    int   = 0
     sec_regime_changed: bool  = False
+    # -- App integration fields (v2.1) — populated by evaluate_gates() --------
+    disqualifiers:   List[str] = field(default_factory=list)
+    bias:            str       = 'NO_CONVICTION'
+    confidence_norm: float     = 0.0
+    pre_fall_tier:   str       = 'SKIP'
+    t2_entry_type:   str       = 'NOT_QUALIFIED'
+    gates_passed:    int       = 0
+    gate_detail:     List[str] = field(default_factory=list)
 
 
 SIG_COLOR = {'HIGH_VALUE':GRN+BOLD,'ENTER_E':GRN,'ENTER_A':CYN,
@@ -754,6 +762,79 @@ def get_power_combo(sigs: List[str]) -> tuple:
         if combo.issubset(s) and lift > best_lift:
             best_lift, best_label = lift, label
     return best_label, best_lift
+
+
+def evaluate_gates(sig: 'ClassifierSignal') -> None:
+    """Compute disqualifiers, bias, t2_entry_type, gates_passed, gate_detail.
+    Mutates sig in-place. Called after sig is fully built."""
+    dqs: List[str] = []
+
+    if sig.chop >= 90:
+        dqs.append(f'CHOP_EXTREME:{sig.chop:.0f}pct')
+    if sig.entry_zone == 'DEAD_ZONE':
+        dqs.append(f'DEAD_ZONE:{abs(sig.pct_from_hod):.0f}%_below_HOD')
+    if sig.regime == 'DEAD_CAT_BOUNCE':
+        dqs.append('REGIME_DEAD_CAT')
+    if sig.velocity == 'FALLING_FAST' and sig.flips_rth > 10:
+        dqs.append(f'VELOCITY_COLLAPSE:flips={sig.flips_rth}')
+    if sig.bar_count < 5:
+        dqs.append(f'INSUFFICIENT_DATA:{sig.bar_count}_bars')
+    if sig.vol_spike < 0.3 and sig.rth_bars > 30:
+        dqs.append(f'LOW_VOLUME:spike={sig.vol_spike:.1f}x')
+    if (sig.hod_bars_ago < 15
+            and sig.confidence < 40
+            and sig.pct_from_hod >= -5):
+        dqs.append(f'PREMATURE_RISK:HOD_only_{sig.hod_bars_ago}_bars_ago')
+
+    conf_norm = sig.confidence / 100.0
+
+    g2 = sig.tier in ('HIGH', 'MEDIUM')
+
+    if sig.signal == 'HIGH_VALUE' or sig.grade == 'A':
+        bias = 'MAX_CONVICTION'
+    elif sig.signal in ('ENTER_E', 'ENTER_A') or sig.grade == 'B':
+        bias = 'HIGH_CONVICTION'
+    elif sig.tier in ('HIGH', 'MEDIUM', 'LOW') and sig.score >= 10:
+        bias = 'LOW_CONVICTION'
+    else:
+        bias = 'NO_CONVICTION'
+    g3 = bias in ('MAX_CONVICTION', 'HIGH_CONVICTION')
+
+    g4 = (sig.section == 'S2') if sig.signal == 'LONG_OPP' else (sig.section == 'S1')
+
+    g5_standard       = conf_norm >= 0.65
+    g5_slightly_early = (0.55 <= conf_norm < 0.65
+                         and sig.signal_tier in ('TIER_1', 'TIER_2')
+                         and sig.section == 'S1')
+    g5 = g5_standard or g5_slightly_early
+
+    if any('PREMATURE_RISK' in d for d in dqs):
+        t2 = 'PREMATURE_RISK'
+    elif g5_standard:
+        t2 = 'ON_TIME'
+    elif g5_slightly_early:
+        t2 = 'SLIGHTLY_EARLY'
+    else:
+        t2 = 'NOT_QUALIFIED'
+
+    g1 = len(dqs) == 0
+    passed = sum([g1, g2, g3, g4, g5])
+
+    detail = [
+        f"G1:disqualifiers={'PASS' if g1 else 'FAIL(' + ','.join(dqs) + ')'}",
+        f"G2:tier={sig.tier}={'PASS' if g2 else 'FAIL'}",
+        f"G3:bias={bias}={'PASS' if g3 else 'FAIL'}",
+        f"G4:section={sig.section}={'PASS' if g4 else 'FAIL'}",
+        f"G5:conf={conf_norm:.2f}={'PASS(' + t2 + ')' if g5 else 'FAIL'}",
+    ]
+
+    sig.disqualifiers   = dqs
+    sig.bias            = bias
+    sig.confidence_norm = conf_norm
+    sig.pre_fall_tier   = sig.tier
+    sig.t2_entry_type   = t2
+    sig.gates_passed    = passed
+    sig.gate_detail     = detail
 
 
 def entry_zone(pct: float) -> str:
@@ -1050,6 +1131,16 @@ def run_classification(ticker: str, bars: List[Bar],
             reasons.append("GRADE B -- standard qualifying entry")
 
     ext = compute_extended(bars, vwaps, signals, section, score=score)
+
+    # PREMATURE_RISK: block entry if HOD just formed + confidence too low
+    hba = ext['hod_bars_ago']
+    if (out_signal not in ('WAIT', 'SKIP')
+            and hba < 15 and conf < 40 and pct_hod >= -5):
+        out_signal = 'WAIT'
+        out_grade  = 'C'
+        warnings.append(
+            f"PREMATURE_RISK: HOD only {hba} bars ago + conf {conf}% < 40% -- wait for spike to peak")
+
     sig = ClassifierSignal(
         ticker=ticker, timestamp=now_str, signal=out_signal, grade=out_grade,
         strategy=strategy, regime=regime, tier=tier, score=score,
@@ -1078,6 +1169,7 @@ def run_classification(ticker: str, bars: List[Bar],
         sec_regime_changed=bool(sec.get('regime_override')),
     )
     sig.quality_score = calc_quality(sig)
+    evaluate_gates(sig)
     return sig
 
 

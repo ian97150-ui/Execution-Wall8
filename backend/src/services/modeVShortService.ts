@@ -50,7 +50,12 @@ export function meetsModeVShortThreshold(
   }
 
   if (snap.section !== 'S1') return false;
-  if ((snap.confidence ?? 0) < 0.65) return false;
+  const conf = snap.confidence ?? 0;
+  const tier = snap.signal_tier as string | undefined;
+  const SLIGHTLY_EARLY_TIERS = new Set(['TIER_1', 'TIER_2']);
+  const g5Standard      = conf >= 0.65;
+  const g5SlightlyEarly = conf >= 0.55 && conf < 0.65 && !!tier && SLIGHTLY_EARLY_TIERS.has(tier);
+  if (!g5Standard && !g5SlightlyEarly) return false;
   return true;
 }
 

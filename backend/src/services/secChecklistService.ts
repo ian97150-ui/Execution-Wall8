@@ -7,6 +7,7 @@ import { getShelfAndFilingHistory, getRecentEightKText, getInsiderSignals, Eight
 import { getAnalystCoverage, getShortInterest, getRecentNews, AnalystCoverage, NewsItem } from './finnhubService';
 import { getPriceActionSignals } from './marketDataService';
 import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
+import type { ClassifierSignal } from './classifierService';
 import { fetchAlpacaPhase3Fields } from './alpacaFlowService';
 import { prisma } from '../index';
 
@@ -265,7 +266,7 @@ function computeCompletion(
 
 // ─── runChecklist ─────────────────────────────────────────────────────────────
 
-export async function runChecklist(ticker: string, existing?: SecChecklist | null, date?: string): Promise<SecChecklist> {
+export async function runChecklist(ticker: string, existing?: SecChecklist | null, date?: string, onCapture?: (cls: ClassifierSignal) => void): Promise<SecChecklist> {
   const upper = ticker.toUpperCase();
 
   // Preserve only the manual field
@@ -349,7 +350,7 @@ export async function runChecklist(ticker: string, existing?: SecChecklist | nul
   const completion_pct = computeCompletion(phase1, phase1b, phase2, phase3, phase4);
 
   const partial = { ticker: upper, run_at: new Date().toISOString(), version: 4 as const, phase1, phase1b, phase2, phase3, phase4, overrides, bias, score, completion_pct };
-  const score_snapshot = await computeScoreSnapshot(partial as SecChecklist, upper, date ?? new Date().toISOString().slice(0, 10));
+  const score_snapshot = await computeScoreSnapshot(partial as SecChecklist, upper, date ?? new Date().toISOString().slice(0, 10), onCapture);
 
   return { ...partial, score_snapshot };
 }
@@ -369,6 +370,9 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
       sec_checklist: { not: null },
     },
     orderBy: { created_date: 'desc' },
+  }).catch((err: any) => {
+    console.warn(`[LiveScorePoller] DB lookup failed for ${upper}:`, err?.message ?? err);
+    return null;
   });
   if (!intent?.sec_checklist) return;
 
@@ -441,6 +445,8 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
       sec_checklist: { not: null },
     },
     data: { sec_checklist: JSON.stringify(final), sec_bias: final.bias },
+  }).catch((err: any) => {
+    console.warn(`[LiveScorePoller] DB update failed for ${upper}:`, err?.message ?? err);
   });
 }
 

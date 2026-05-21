@@ -145,6 +145,8 @@ export interface ScoreSnapshot {
   stop_pct:       string;    // stop distance, e.g. '+25%'
   gates_passed:   number;    // 0–5
   gate_detail:    string[];  // per-gate pass/fail strings
+  signal_tier?:   string;    // TIER_1 | TIER_2 | TIER_3 | NONE — from classifier
+  t2_entry_type?: string;    // ON_TIME | SLIGHTLY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -808,21 +810,29 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     stop_pct:        cls.stop_pct       ?? '+25%',
     gates_passed:    cls.gates_passed   ?? 0,
     gate_detail:     cls.gate_detail    ?? [],
+    signal_tier:     cls.signal_tier    ?? undefined,
+    t2_entry_type:   cls.t2_entry_type  ?? undefined,
   };
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
+const ENTRY_SIGNALS = new Set(['ENTER_E', 'ENTER_A', 'HIGH_VALUE', 'LONG_OPP']);
+
 export async function computeScoreSnapshot(
   checklist: SecChecklist,
   ticker?: string,
-  date?: string
+  date?: string,
+  onCapture?: (cls: ClassifierSignal) => void
 ): Promise<ScoreSnapshot> {
   // Try classifier first when ticker is available
   if (ticker) {
     try {
       const cls = await runClassifier(ticker, date);
-      if (cls) return _mapClassifierToSnapshot(cls);
+      if (cls) {
+        if (onCapture && ENTRY_SIGNALS.has(cls.signal)) onCapture(cls);
+        return _mapClassifierToSnapshot(cls);
+      }
     } catch {
       // fall through to TS fallback
     }
