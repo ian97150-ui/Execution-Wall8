@@ -23,7 +23,9 @@
 
 import { prisma } from '../index';
 import { ScoreSnapshot } from './scoringEngineService';
-import { SecChecklist } from './secChecklistService';
+import type { SecChecklist } from './secChecklistService';
+import type { ClassifierSignal } from './classifierService';
+import { captureSignal } from './liveTradeExportService';
 import { PushoverNotifications } from './pushoverService';
 import { activateScheduler } from './executionScheduler';
 
@@ -148,4 +150,105 @@ export async function tryAutoApproveForModeVShort(
     `conf ${Math.round((snap!.confidence ?? 0) * 100)}%)`
   );
   return true;
+}
+
+// ─── WAIT Upgrade Watcher ─────────────────────────────────────────────────────
+
+const WAIT_WATCH_WINDOWS_MS: Record<string, number> = {
+  EARLY:      20 * 60_000,   // 20 min — confirms 6–15 min after entry
+  VERY_EARLY: 40 * 60_000,   // 40 min — confirms 16–30 min after entry
+};
+const WATCHABLE_T2 = new Set(['EARLY', 'VERY_EARLY']);
+
+/**
+ * Called after runChecklist completes when signal is WAIT.
+ * Writes wait_watch_until when eligibility conditions are met.
+ */
+export async function registerWaitWatch(
+  intentId: string,
+  checklist: SecChecklist
+): Promise<void> {
+  const snap = (checklist as any).score_snapshot;
+  if (!snap) return;
+
+  const rawSignal     = snap.raw_signal    as string   | undefined;
+  const t2Type        = snap.t2_entry_type as string   | undefined;
+  const disqualifiers = snap.disqualifiers as string[] | undefined;
+  const gatesPassed   = snap.gates_passed  as number   | undefined;
+
+  if (rawSignal !== 'WAIT' && rawSignal !== 'SKIP')  return;
+  if (!WATCHABLE_T2.has(t2Type ?? ''))                return;
+  if ((disqualifiers ?? []).length > 0)               return;  // Gate 1 must be clean
+  if ((gatesPassed ?? 0) < 3)                         return;  // only Gate 5 should be failing
+
+  const windowMs   = WAIT_WATCH_WINDOWS_MS[t2Type!] ?? WAIT_WATCH_WINDOWS_MS.EARLY;
+  const watchUntil = new Date(Date.now() + windowMs);
+
+  await prisma.tradeIntent.update({
+    where: { id: intentId },
+    data:  { wait_watch_until: watchUntil },
+  });
+
+  console.log(`[WaitWatch] ${t2Type} registered intent ${intentId} — watching until ${watchUntil.toISOString()}`);
+}
+
+/**
+ * Called from refreshLiveScore when a WAIT ticker upgrades to an entry signal.
+ * Updates price, captures live trade, sends notification, optionally auto-approves.
+ */
+export async function handleWaitUpgrade(
+  intentId: string,
+  cls: ClassifierSignal,
+  prevT2Type: string
+): Promise<void> {
+  const reducedSize = prevT2Type === 'VERY_EARLY';
+
+  await prisma.tradeIntent.update({
+    where: { id: intentId },
+    data:  { price: String(cls.price) },
+  });
+
+  await captureSignal(cls, intentId).catch(err =>
+    console.warn(`[WaitUpgrade] capture failed for ${cls.ticker}:`,
+      err instanceof Error ? err.message : err));
+
+  PushoverNotifications.waitUpgradeSignal(cls.ticker, {
+    signal:    cls.signal,
+    score:     cls.score,
+    tier:      cls.tier,
+    bias:      cls.bias,
+    confidence:`${cls.confidence}%`,
+    price:     cls.price,
+    gates:     cls.gates_passed ?? 0,
+    was_t2:    prevT2Type,
+    size_note: reducedSize ? 'REDUCED SIZE (VERY_EARLY)' : 'FULL SIZE',
+  }).catch(() => {});
+
+  let settings: any = null;
+  try { settings = await prisma.executionSettings.findFirst(); } catch {}
+
+  if (settings?.execution_mode === 'full' && settings?.auto_sub_mode === 'mode_v_short') {
+    const fakeSnap = {
+      disqualifiers: cls.disqualifiers ?? [],
+      pre_fall_tier: cls.tier,
+      bias:          cls.bias,
+      section:       cls.section,
+      confidence:    cls.confidence / 100,
+      signal_tier:   cls.signal_tier,
+    };
+    if (meetsModeVShortThreshold(fakeSnap as any)) {
+      const intent = await prisma.tradeIntent
+        .findUnique({ where: { id: intentId } }).catch(() => null);
+      if (intent?.status === 'pending') {
+        await prisma.tradeIntent.update({
+          where: { id: intentId },
+          data:  { status: 'swiped_on', card_state: 'ELIGIBLE' },
+        });
+        activateScheduler();
+        console.log(`⚡ WaitUpgrade: auto-approved ${cls.ticker} [was ${prevT2Type}] (${cls.signal}, score ${cls.score})`);
+      }
+    }
+  }
+
+  console.log(`[WaitUpgrade] ${cls.ticker} WAIT→${cls.signal} (was ${prevT2Type}, score ${cls.score}, gates ${cls.gates_passed ?? 0}/5, $${cls.price})`);
 }

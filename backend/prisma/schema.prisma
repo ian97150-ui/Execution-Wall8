@@ -59,6 +59,7 @@ model TradeIntent {
   sec_scan_history  String?                   // JSON: array of { at, found, filings?, error? } — periodic watch scan log
   sec_checklist     String?                   // JSON: full SecChecklist object (phases 1-4 automated data)
   sec_bias          String?                   // Plain string: OFFERING_LIVE | ATM_LIVE | PRIME_SHORT | TRAP_SETUP | CLEAN_TAPE | NO_DATA
+  wait_watch_until  DateTime?                 // set when WAIT classified as EARLY/VERY_EARLY; watcher ignores after this time
 
   expires_at     DateTime
   created_date   DateTime @default(now())
@@ -128,6 +129,7 @@ model ExecutionSettings {
   pushover_on_close    Boolean @default(true)  // Push when position closed
   pushover_on_sec           Boolean @default(true)  // Push when SEC filing found (sent by SEC scanner)
   pushover_on_mode_v_short  Boolean @default(false) // Push only for Mode V Short verified trades
+  pushover_on_wait_upgrade  Boolean @default(true)  // Push when WAIT ticker upgrades to entry signal
 
   // Time-based mode scheduling
   use_time_schedules   Boolean @default(false)

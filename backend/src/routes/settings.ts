@@ -112,6 +112,7 @@ router.put('/', async (req: Request, res: Response) => {
       pushover_on_close,
       pushover_on_sec,
       pushover_on_mode_v_short,
+      pushover_on_wait_upgrade,
       auto_sub_mode
     } = req.body;
 
@@ -159,6 +160,7 @@ router.put('/', async (req: Request, res: Response) => {
     if (pushover_on_close !== undefined) updateData.pushover_on_close = pushover_on_close;
     if (pushover_on_sec !== undefined) updateData.pushover_on_sec = pushover_on_sec;
     if (pushover_on_mode_v_short !== undefined) updateData.pushover_on_mode_v_short = pushover_on_mode_v_short;
+    if (pushover_on_wait_upgrade !== undefined) updateData.pushover_on_wait_upgrade = pushover_on_wait_upgrade;
     if (auto_sub_mode !== undefined) updateData.auto_sub_mode = auto_sub_mode;
 
     console.log('Updating settings with:', updateData);

@@ -9,6 +9,7 @@ import { getPriceActionSignals } from './marketDataService';
 import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
 import type { ClassifierSignal } from './classifierService';
 import { fetchAlpacaPhase3Fields } from './alpacaFlowService';
+import { handleWaitUpgrade } from './modeVShortService';
 import { prisma } from '../index';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -370,6 +371,7 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
       sec_checklist: { not: null },
     },
     orderBy: { created_date: 'desc' },
+    select: { id: true, ticker: true, sec_checklist: true, status: true, wait_watch_until: true },
   }).catch((err: any) => {
     console.warn(`[LiveScorePoller] DB lookup failed for ${upper}:`, err?.message ?? err);
     return null;
@@ -382,6 +384,14 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
   } catch {
     return;
   }
+
+  // Capture previous signal state for WAIT upgrade detection
+  const prevRawSignal = (cached as any)?.score_snapshot?.raw_signal as string | undefined;
+  const prevT2Type    = (cached as any)?.score_snapshot?.t2_entry_type as string | undefined;
+  const intentId      = intent.id;
+  const watchUntil    = intent.wait_watch_until as Date | null;
+  const WATCHABLE_T2  = new Set(['EARLY', 'VERY_EARLY']);
+  const watchWindowOpen = watchUntil != null && new Date() <= watchUntil;
 
   // Fetch only the fast-changing data in parallel (skip EDGAR/Finnhub)
   const [freshPriceAction, freshAlpaca] = await Promise.all([
@@ -434,7 +444,20 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
   const score = computeScore(merged.phase1, merged.phase2, phase3, merged.phase4, overrides);
   const completion_pct = computeCompletion(merged.phase1, phase1b, merged.phase2, phase3, merged.phase4);
   const withRecomputed = { ...merged, overrides, bias, score, completion_pct };
-  const score_snapshot = await computeScoreSnapshot(withRecomputed, upper, new Date().toISOString().slice(0, 10));
+  const score_snapshot = await computeScoreSnapshot(
+    withRecomputed,
+    upper,
+    new Date().toISOString().slice(0, 10),
+    (cls: ClassifierSignal) => {
+      if ((prevRawSignal === 'WAIT' || prevRawSignal === 'SKIP')
+          && WATCHABLE_T2.has(prevT2Type ?? '')
+          && watchWindowOpen) {
+        handleWaitUpgrade(intentId, cls, prevT2Type ?? 'EARLY')
+          .catch(err => console.warn(`[WaitUpgrade] ${upper} failed:`,
+            err instanceof Error ? err.message : err));
+      }
+    }
+  );
   const final = { ...withRecomputed, score_snapshot };
 
   // Update all active intents for this ticker

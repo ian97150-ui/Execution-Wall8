@@ -146,7 +146,8 @@ export interface ScoreSnapshot {
   gates_passed:   number;    // 0–5
   gate_detail:    string[];  // per-gate pass/fail strings
   signal_tier?:   string;    // TIER_1 | TIER_2 | TIER_3 | NONE — from classifier
-  t2_entry_type?: string;    // ON_TIME | SLIGHTLY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
+  t2_entry_type?: string;    // ON_TIME | SLIGHTLY_EARLY | EARLY | VERY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
+  raw_signal?:    string;    // direct classifier output: ENTER_E | ENTER_A | HIGH_VALUE | WAIT | SKIP
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -812,6 +813,7 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     gate_detail:     cls.gate_detail    ?? [],
     signal_tier:     cls.signal_tier    ?? undefined,
     t2_entry_type:   cls.t2_entry_type  ?? undefined,
+    raw_signal:      cls.signal,
   };
 }
 

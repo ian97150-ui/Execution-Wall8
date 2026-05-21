@@ -6,7 +6,7 @@ import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runChecklist } from '../services/secChecklistService';
 import { captureGradeSnapshot } from '../services/gradeSnapshotService';
-import { tryAutoApproveForModeVShort } from '../services/modeVShortService';
+import { tryAutoApproveForModeVShort, registerWaitWatch } from '../services/modeVShortService';
 import { captureSignal } from '../services/liveTradeExportService';
 
 /**
@@ -595,6 +595,8 @@ async function handleWallSignal(data: {
         data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
       });
       await tryAutoApproveForModeVShort(intentIdForChecklist, c);
+      await registerWaitWatch(intentIdForChecklist, c)
+        .catch(err => console.warn(`[WaitWatch] register failed for ${tickerUpper}:`, err?.message));
     })
     .catch(err => console.warn(`⚠️ SEC checklist failed for ${tickerUpper}: ${err.message}`));
 

@@ -806,6 +806,11 @@ def evaluate_gates(sig: 'ClassifierSignal') -> None:
     g5_slightly_early = (0.55 <= conf_norm < 0.65
                          and sig.signal_tier in ('TIER_1', 'TIER_2')
                          and sig.section == 'S1')
+    g5_early          = (0.50 <= conf_norm < 0.55 and sig.section == 'S1')
+    g5_very_early     = (0.45 <= conf_norm < 0.50
+                         and sig.signal_tier == 'TIER_1'
+                         and sig.section == 'S1')
+    # EARLY and VERY_EARLY do NOT pass Gate 5 — they are watchable WAITs
     g5 = g5_standard or g5_slightly_early
 
     if any('PREMATURE_RISK' in d for d in dqs):
@@ -814,6 +819,10 @@ def evaluate_gates(sig: 'ClassifierSignal') -> None:
         t2 = 'ON_TIME'
     elif g5_slightly_early:
         t2 = 'SLIGHTLY_EARLY'
+    elif g5_early:
+        t2 = 'EARLY'
+    elif g5_very_early:
+        t2 = 'VERY_EARLY'
     else:
         t2 = 'NOT_QUALIFIED'
 
@@ -825,7 +834,7 @@ def evaluate_gates(sig: 'ClassifierSignal') -> None:
         f"G2:tier={sig.tier}={'PASS' if g2 else 'FAIL'}",
         f"G3:bias={bias}={'PASS' if g3 else 'FAIL'}",
         f"G4:section={sig.section}={'PASS' if g4 else 'FAIL'}",
-        f"G5:conf={conf_norm:.2f}={'PASS(' + t2 + ')' if g5 else 'FAIL'}",
+        f"G5:conf={conf_norm:.2f}={'PASS(' + t2 + ')' if g5 else 'WATCH(' + t2 + ')' if t2 in ('EARLY', 'VERY_EARLY') else 'FAIL'}",
     ]
 
     sig.disqualifiers   = dqs
