@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { getLiveTradesForDate } from '../services/liveTradeExportService';
+import { getLiveConsideredForDate } from '../services/liveConsideredService';
 
 const router = express.Router();
 
@@ -16,6 +17,21 @@ router.get('/export', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
   const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
   res.json(await getLiveTradesForDate(date).catch(() => []));
+});
+
+// GET /api/live-considered/export?date=YYYY-MM-DD
+router.get('/considered/export', async (req: Request, res: Response) => {
+  const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+  const records = await getLiveConsideredForDate(date).catch(() => []);
+  res.setHeader('Content-Disposition', `attachment; filename="live_considered_${date}.json"`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.send(JSON.stringify(records, null, 2));
+});
+
+// GET /api/live-considered?date=YYYY-MM-DD
+router.get('/considered', async (req: Request, res: Response) => {
+  const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+  res.json(await getLiveConsideredForDate(date).catch(() => []));
 });
 
 export default router;

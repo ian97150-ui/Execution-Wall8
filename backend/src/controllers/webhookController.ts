@@ -595,7 +595,7 @@ async function handleWallSignal(data: {
         data: { sec_checklist: JSON.stringify(c), sec_bias: c.bias }
       });
       await tryAutoApproveForModeVShort(intentIdForChecklist, c);
-      await registerWaitWatch(intentIdForChecklist, c)
+      await registerWaitWatch(intentIdForChecklist, tickerUpper, c)
         .catch(err => console.warn(`[WaitWatch] register failed for ${tickerUpper}:`, err?.message));
     })
     .catch(err => console.warn(`⚠️ SEC checklist failed for ${tickerUpper}: ${err.message}`));

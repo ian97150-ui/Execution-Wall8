@@ -10,6 +10,7 @@ import { computeScoreSnapshot, ScoreSnapshot } from './scoringEngineService';
 import type { ClassifierSignal } from './classifierService';
 import { fetchAlpacaPhase3Fields } from './alpacaFlowService';
 import { handleWaitUpgrade } from './modeVShortService';
+import { recordConsidered } from './liveConsideredService';
 import { prisma } from '../index';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -459,6 +460,22 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
     }
   );
   const final = { ...withRecomputed, score_snapshot };
+
+  // Detect expired watch window — WAIT ticker that never upgraded within its window
+  const windowExpired = watchUntil != null && new Date() > watchUntil;
+  if (windowExpired) {
+    const newRawSignal = (score_snapshot as any).raw_signal as string | undefined;
+    if (newRawSignal === 'WAIT' || newRawSignal === 'SKIP') {
+      recordConsidered(intentId, upper, score_snapshot, 'NEVER_UPGRADED')
+        .catch(err => console.warn(`[LiveConsidered] NEVER_UPGRADED ${upper}:`,
+          err instanceof Error ? err.message : err));
+      // Clear watch window so this only fires once
+      await prisma.tradeIntent.update({
+        where: { id: intentId },
+        data:  { wait_watch_until: null },
+      }).catch(() => {});
+    }
+  }
 
   // Update all active intents for this ticker
   await prisma.tradeIntent.updateMany({

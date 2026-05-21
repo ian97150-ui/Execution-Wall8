@@ -26,6 +26,7 @@ import { ScoreSnapshot } from './scoringEngineService';
 import type { SecChecklist } from './secChecklistService';
 import type { ClassifierSignal } from './classifierService';
 import { captureSignal } from './liveTradeExportService';
+import { recordConsidered } from './liveConsideredService';
 import { PushoverNotifications } from './pushoverService';
 import { activateScheduler } from './executionScheduler';
 
@@ -166,20 +167,29 @@ const WATCHABLE_T2 = new Set(['EARLY', 'VERY_EARLY']);
  */
 export async function registerWaitWatch(
   intentId: string,
+  ticker: string,
   checklist: SecChecklist
 ): Promise<void> {
-  const snap = (checklist as any).score_snapshot;
+  const snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
   if (!snap) return;
 
-  const rawSignal     = snap.raw_signal    as string   | undefined;
-  const t2Type        = snap.t2_entry_type as string   | undefined;
-  const disqualifiers = snap.disqualifiers as string[] | undefined;
-  const gatesPassed   = snap.gates_passed  as number   | undefined;
+  const rawSignal     = (snap as any).raw_signal as string   | undefined;
+  const t2Type        = snap.t2_entry_type       as string   | undefined;
+  const disqualifiers = snap.disqualifiers        as string[] | undefined;
+  const gatesPassed   = snap.gates_passed         as number   | undefined;
 
-  if (rawSignal !== 'WAIT' && rawSignal !== 'SKIP')  return;
-  if (!WATCHABLE_T2.has(t2Type ?? ''))                return;
-  if ((disqualifiers ?? []).length > 0)               return;  // Gate 1 must be clean
-  if ((gatesPassed ?? 0) < 3)                         return;  // only Gate 5 should be failing
+  if (rawSignal !== 'WAIT' && rawSignal !== 'SKIP') return;
+
+  const isWatchable = WATCHABLE_T2.has(t2Type ?? '')
+    && (disqualifiers ?? []).length === 0
+    && (gatesPassed ?? 0) >= 3;
+
+  if (!isWatchable) {
+    recordConsidered(intentId, ticker, snap, 'NOT_ELIGIBLE')
+      .catch(err => console.warn(`[LiveConsidered] NOT_ELIGIBLE ${ticker}:`,
+        err instanceof Error ? err.message : err));
+    return;
+  }
 
   const windowMs   = WAIT_WATCH_WINDOWS_MS[t2Type!] ?? WAIT_WATCH_WINDOWS_MS.EARLY;
   const watchUntil = new Date(Date.now() + windowMs);
