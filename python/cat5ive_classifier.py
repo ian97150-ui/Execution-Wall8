@@ -1070,7 +1070,7 @@ def run_classification(ticker: str, bars: List[Bar],
             sec_offerings_12m=sec.get('offering_count_12m', 0),
             sec_score_boost=sec.get('score_boost', 0),
             sec_regime_changed=bool(sec.get('regime_override')),
-            last_bar_time=bars[-1].time[11:16] if bars else '',
+            last_bar_time=bars[-1].ts[:5] if bars else '',
             sec_cache_age_hrs=sec.get('cache_age_hrs'),
         )
         sig.quality_score = calc_quality(sig)
@@ -1186,7 +1186,7 @@ def run_classification(ticker: str, bars: List[Bar],
         sec_offerings_12m=sec.get('offering_count_12m', 0),
         sec_score_boost=sec.get('score_boost', 0),
         sec_regime_changed=bool(sec.get('regime_override')),
-        last_bar_time=bars[-1].time[11:16] if bars else '',
+        last_bar_time=bars[-1].ts[:5] if bars else '',
         sec_cache_age_hrs=sec.get('cache_age_hrs'),
     )
     sig.quality_score = calc_quality(sig)
