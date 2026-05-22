@@ -1,5 +1,6 @@
 import { prisma } from '../index';
 import type { ClassifierSignal } from './classifierService';
+import type { ScoreSnapshot } from './scoringEngineService';
 
 const ET_OFFSET_MS = -4 * 60 * 60 * 1000; // EDT -4h (intraday market hours)
 
@@ -106,6 +107,86 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
       strategy_e_time:    strategy === 'E' ? timeHHMM : null,
       strategy_a_time:    strategy === 'A' ? timeHHMM : null,
       strategy_b_time:    strategy === 'B' ? timeHHMM : null,
+      manually_overridden: false,
+    },
+  };
+}
+
+export function buildRecordFromSnapshot(
+  snap: ScoreSnapshot,
+  ticker: string,
+  intentId: string,
+  intentPrice: string,
+  capturedAt: Date
+) {
+  const etDate   = new Date(capturedAt.getTime() + ET_OFFSET_MS);
+  const date     = etDate.toISOString().slice(0, 10);
+  const timeHHMM = etDate.toISOString().slice(11, 16);
+
+  const strategy = snap.strategy === 'LONG' ? 'LONG' : snap.strategy === 'A' ? 'A' : 'E';
+  const record_id = `${ticker}_${date.replace(/-/g, '')}_${strategy}_` +
+    capturedAt.toISOString().slice(11, 23).replace(/[:.]/g, '');
+
+  const rawSignal = (snap as any).raw_signal as string | undefined;
+  const signal = rawSignal ??
+    (snap.grade === 'A' ? 'HIGH_VALUE' :
+     snap.strategy === 'A' ? 'ENTER_A' :
+     snap.strategy === 'LONG' ? 'LONG_OPP' : 'ENTER_E');
+
+  return {
+    record_id,
+    ticker,
+    date,
+    time:          timeHHMM,
+    strategy,
+    signal,
+    t2_entry_type: snap.t2_entry_type ?? null,
+    price:         parseFloat(intentPrice) || 0,
+    captured_at:   capturedAt.toISOString().replace('Z', '-04:00'),
+    is_backfill:   true,
+    gates: {
+      passed:        snap.gates_passed   ?? 0,
+      bias:          snap.bias           ?? 'NO_CONVICTION',
+      disqualifiers: snap.disqualifiers  ?? [],
+      detail:        snap.gate_detail    ?? [],
+    },
+    snapshot: {
+      score_raw:           snap.pre_fall_score,
+      score_final:         snap.pre_fall_score,
+      sec_score_boost:     null,
+      tier:                snap.pre_fall_tier,
+      section:             snap.section          ?? null,
+      confidence_norm:     snap.confidence       ?? 0,
+      regime_at_capture:   (snap.regime as any)?.name ?? null,
+      velocity:            null,
+      flips:               null,
+      chop:                null,
+      hod:                 null,
+      pct_from_hod:        null,
+      entry_zone:          null,
+      active_signals:      snap.overrides_fired  ?? [],
+      last_bar_time:       null,
+      sec_available:       null,
+      sec_days_424b5:      null,
+      sec_cache_age_hours: null,
+      signal_tier:         snap.signal_tier      ?? null,
+      hod_bars_ago:        null,
+    },
+    flags: {
+      data_lag:              false,
+      sec_cache_stale:       false,
+      sec_heavy:             false,
+      pre_market_early:      false,
+      regime_likely_changing:false,
+      dead_zone_entry:       false,
+      chop_override:         false,
+      velocity_unknown:      false,
+      warnings:              [],
+    },
+    backtest_entry: {
+      strategy_e_time:    strategy === 'E' ? timeHHMM : null,
+      strategy_a_time:    strategy === 'A' ? timeHHMM : null,
+      strategy_b_time:    (strategy as string) === 'B' ? timeHHMM : null,
       manually_overridden: false,
     },
   };

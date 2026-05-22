@@ -7,9 +7,10 @@ export async function recordConsidered(
   intentId: string,
   ticker: string,
   snap: ScoreSnapshot,
-  outcome: 'NOT_ELIGIBLE' | 'NEVER_UPGRADED'
+  outcome: 'NOT_ELIGIBLE' | 'NEVER_UPGRADED',
+  capturedAt?: Date
 ): Promise<void> {
-  const now    = new Date();
+  const now    = capturedAt ?? new Date();
   const etDate = new Date(now.getTime() + ET_OFFSET_MS);
   const date   = etDate.toISOString().slice(0, 10);
   const time   = etDate.toISOString().slice(11, 16);

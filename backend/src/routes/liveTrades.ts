@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getLiveTradesForDate } from '../services/liveTradeExportService';
 import { getLiveConsideredForDate } from '../services/liveConsideredService';
+import { backfillAll } from '../services/backfillService';
 
 const router = express.Router();
 
@@ -32,6 +33,13 @@ router.get('/considered/export', async (req: Request, res: Response) => {
 router.get('/considered', async (req: Request, res: Response) => {
   const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
   res.json(await getLiveConsideredForDate(date).catch(() => []));
+});
+
+// POST /api/live-trades/backfill?dryRun=true
+router.post('/backfill', async (req: Request, res: Response) => {
+  const dryRun = req.query.dryRun === 'true';
+  const result = await backfillAll(dryRun).catch(err => ({ error: (err as Error).message }));
+  res.json({ dryRun, ...result });
 });
 
 export default router;
