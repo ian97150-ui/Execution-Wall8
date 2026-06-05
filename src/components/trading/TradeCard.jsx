@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, ExternalLink, Clock,
   Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText, ShieldOff,
-  BookMarked, BadgeCheck, Send, Loader2
+  BookMarked, BadgeCheck, Send, Loader2, Eye, EyeOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
@@ -36,6 +36,46 @@ export default function TradeCard({
   const [customOrder, setCustomOrder] = useState({ action: '', quantity: '', limit_price: '' });
   const [customOrderStatus, setCustomOrderStatus] = useState(null); // null | 'sending' | 'ok' | 'error'
   const [customOrderError, setCustomOrderError] = useState('');
+  const [showWatchPicker, setShowWatchPicker] = useState(false);
+  const [watchPending, setWatchPending] = useState(false); // optimistic loading state
+
+  // Derived watch state from server fields
+  const serverWatchActive = intent.manual_watch && intent.wait_watch_until && new Date() <= new Date(intent.wait_watch_until);
+  const watchExpiry = serverWatchActive ? new Date(intent.wait_watch_until) : null;
+  const [minutesLeft, setMinutesLeft] = React.useState(() =>
+    watchExpiry ? Math.max(0, Math.ceil((watchExpiry - new Date()) / 60_000)) : 0
+  );
+
+  React.useEffect(() => {
+    if (!watchExpiry) { setMinutesLeft(0); return; }
+    const tick = () => setMinutesLeft(Math.max(0, Math.ceil((watchExpiry - new Date()) / 60_000)));
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [intent.wait_watch_until, intent.manual_watch]);
+
+  const startWatch = async (minutes) => {
+    setWatchPending(true);
+    setShowWatchPicker(false);
+    try {
+      await api.post(`/trade-intents/${intent.id}/start-watch`, { minutes });
+    } catch (e) {
+      console.error('[ManualWatch] start failed', e);
+    } finally {
+      setWatchPending(false);
+    }
+  };
+
+  const stopWatch = async () => {
+    setWatchPending(true);
+    try {
+      await api.post(`/trade-intents/${intent.id}/stop-watch`);
+    } catch (e) {
+      console.error('[ManualWatch] stop failed', e);
+    } finally {
+      setWatchPending(false);
+    }
+  };
 
   const handleAction = async (action) => {
     // Show appropriate overlay based on action
@@ -738,6 +778,48 @@ export default function TradeCard({
               >
                 <BadgeCheck className="w-4 h-4 mr-2" />
                 SEC Confirmed — Undo
+              </Button>
+            )}
+
+            {/* Manual Watch — poll every 60s until entry signal */}
+            {!serverWatchActive && intent.status === 'pending' && (
+              <div className="relative">
+                <Button
+                  onClick={(e) => { e.stopPropagation(); setShowWatchPicker(s => !s); }}
+                  variant="outline"
+                  className="w-full h-12 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+                  disabled={showOverlay || watchPending}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  {watchPending ? 'Starting…' : 'Watch Until Entry'}
+                </Button>
+                {showWatchPicker && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-full mb-1 left-0 right-0 bg-slate-800 border border-cyan-500/40 rounded-lg p-2 z-10 flex gap-1"
+                  >
+                    {[15, 30, 60, 90].map(m => (
+                      <button
+                        key={m}
+                        onClick={() => startWatch(m)}
+                        className="flex-1 py-1.5 text-xs font-mono rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                      >
+                        {m}m
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {serverWatchActive && (
+              <Button
+                onClick={(e) => { e.stopPropagation(); stopWatch(); }}
+                variant="outline"
+                className="w-full h-12 border-cyan-400 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20"
+                disabled={showOverlay || watchPending}
+              >
+                <EyeOff className="w-4 h-4 mr-2" />
+                {watchPending ? 'Stopping…' : `Watching · ${minutesLeft}m left — Stop`}
               </Button>
             )}
 

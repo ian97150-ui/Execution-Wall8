@@ -372,7 +372,7 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
       sec_checklist: { not: null },
     },
     orderBy: { created_date: 'desc' },
-    select: { id: true, ticker: true, sec_checklist: true, status: true, wait_watch_until: true },
+    select: { id: true, ticker: true, sec_checklist: true, status: true, wait_watch_until: true, manual_watch: true },
   }).catch((err: any) => {
     console.warn(`[LiveScorePoller] DB lookup failed for ${upper}:`, err?.message ?? err);
     return null;
@@ -457,6 +457,14 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
           .catch(err => console.warn(`[WaitUpgrade] ${upper} failed:`,
             err instanceof Error ? err.message : err));
       }
+      // Manual watch: user-initiated, no T2 requirement — fires on any entry signal
+      const isManualWatch = (intent as any).manual_watch === true;
+      const ENTRY_SIGNALS = new Set(['ENTER_E', 'ENTER_A', 'HIGH_VALUE', 'LONG_OPP']);
+      if (isManualWatch && watchWindowOpen && ENTRY_SIGNALS.has(cls.signal)) {
+        handleWaitUpgrade(intentId, cls, 'MANUAL_WATCH')
+          .catch(err => console.warn(`[ManualWatch] ${upper} upgrade failed:`,
+            err instanceof Error ? err.message : err));
+      }
     }
   );
   const final = { ...withRecomputed, score_snapshot };
@@ -472,7 +480,7 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
       // Clear watch window so this only fires once
       await prisma.tradeIntent.update({
         where: { id: intentId },
-        data:  { wait_watch_until: null },
+        data:  { wait_watch_until: null, manual_watch: false },
       }).catch(() => {});
     }
   }

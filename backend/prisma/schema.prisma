@@ -60,6 +60,7 @@ model TradeIntent {
   sec_checklist     String?                   // JSON: full SecChecklist object (phases 1-4 automated data)
   sec_bias          String?                   // Plain string: OFFERING_LIVE | ATM_LIVE | PRIME_SHORT | TRAP_SETUP | CLEAN_TAPE | NO_DATA
   wait_watch_until  DateTime?                 // set when WAIT classified as EARLY/VERY_EARLY; watcher ignores after this time
+  manual_watch      Boolean   @default(false)  // user-initiated watch: bypasses T2 requirement in poller
 
   expires_at     DateTime
   created_date   DateTime @default(now())

@@ -211,11 +211,15 @@ export async function handleWaitUpgrade(
   cls: ClassifierSignal,
   prevT2Type: string
 ): Promise<void> {
-  const reducedSize = prevT2Type === 'VERY_EARLY';
+  const isManualWatch = prevT2Type === 'MANUAL_WATCH';
+  const reducedSize   = prevT2Type === 'VERY_EARLY'; // MANUAL_WATCH is always full size
 
   await prisma.tradeIntent.update({
     where: { id: intentId },
-    data:  { price: String(cls.price) },
+    data:  {
+      price: String(cls.price),
+      ...(isManualWatch && { manual_watch: false, wait_watch_until: null }),
+    },
   });
 
   await captureSignal(cls, intentId).catch(err =>
@@ -230,7 +234,7 @@ export async function handleWaitUpgrade(
     confidence:`${cls.confidence}%`,
     price:     cls.price,
     gates:     cls.gates_passed ?? 0,
-    was_t2:    prevT2Type,
+    was_t2:    isManualWatch ? 'MANUAL WATCH' : prevT2Type,
     size_note: reducedSize ? 'REDUCED SIZE (VERY_EARLY)' : 'FULL SIZE',
   }).catch(() => {});
 

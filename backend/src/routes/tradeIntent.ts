@@ -569,6 +569,50 @@ router.post('/manual-watch', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Manual score-watch — start/stop polling loop on a pending card ──────────
+
+router.post('/:id/start-watch', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const minutes = Math.min(Math.max(Number(req.body.minutes) || 60, 5), 240);
+
+    const intent = await prisma.tradeIntent.findUnique({ where: { id } });
+    if (!intent) return res.status(404).json({ error: 'Intent not found' });
+    if (intent.status === 'swiped_off') return res.status(400).json({ error: 'Cannot watch a blocked card' });
+
+    const watchUntil = new Date(Date.now() + minutes * 60_000);
+    const updated = await prisma.tradeIntent.update({
+      where: { id },
+      data: { manual_watch: true, wait_watch_until: watchUntil },
+    });
+
+    console.log(`[ManualWatch] ${intent.ticker} — watching for ${minutes}min until ${watchUntil.toISOString()}`);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error starting manual watch:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/stop-watch', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const intent = await prisma.tradeIntent.findUnique({ where: { id } });
+    if (!intent) return res.status(404).json({ error: 'Intent not found' });
+
+    const updated = await prisma.tradeIntent.update({
+      where: { id },
+      data: { manual_watch: false, wait_watch_until: null },
+    });
+
+    console.log(`[ManualWatch] ${intent.ticker} — watch cancelled`);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error stopping manual watch:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Delete a manual watchlist entry (only allowed for is_manual = true)
 router.delete('/:id/manual-watch', async (req: Request, res: Response) => {
   try {
