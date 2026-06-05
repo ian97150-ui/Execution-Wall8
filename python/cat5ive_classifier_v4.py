@@ -62,6 +62,10 @@ V3 Ã¢Â†Â’ V4 SCORE ADJUSTMENTS (tick features, applied on top of v3 scor
   proxy_vpin < 0.2           Ã¢Â†Â’ Ã¢ÂˆÂ’5    (benign order flow Ã¢Â€Â” setup unclear)
 """
 
+import sys
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import os, sys, time, json, argparse, math, statistics
 from datetime import datetime, date, timedelta
 from dataclasses import dataclass, field, asdict

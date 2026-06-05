@@ -59,6 +59,10 @@ APP INTEGRATION (subprocess):
   # signal['entry_c_fired']       Ã¢Â†Â’ True/False  (v3 new)
 """
 
+import sys
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import os, sys, time, json, argparse, math
 from collections import deque
 from datetime import datetime, date, timedelta
