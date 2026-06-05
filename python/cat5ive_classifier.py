@@ -1770,11 +1770,13 @@ def run_classification(ticker: str, bars: List[Bar],
     sig.quality_score    = calc_quality(sig)
     sig.confidence_norm  = round(sig.confidence / 100.0, 4)
     sig.pre_fall_tier    = sig.tier
-    gp, gd, dq, bv       = evaluate_gates(sig)
+    gp, gd, dq, bv, t2   = evaluate_gates(sig)
     sig.gates_passed     = gp
     sig.gate_detail      = gd
     sig.disqualifiers    = dq
     sig.bias             = bv
+    sig.t2_entry_type    = t2
+    sig.last_bar_time    = bars[-1].ts[:5] if bars else ''
     return sig
 
 
