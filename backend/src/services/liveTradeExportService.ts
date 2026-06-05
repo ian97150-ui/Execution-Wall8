@@ -101,6 +101,13 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
       sec_cache_age_hours: cls.sec_cache_age_hrs  ?? null,
       signal_tier:         cls.signal_tier         ?? null,
       hod_bars_ago:        cls.hod_bars_ago         ?? null,
+      vol_above_vwap_pct:  cls.vol_above_vwap_pct  ?? null,
+      intraday_gain_bucket:cls.intraday_gain_bucket ?? null,
+      quiet_dump_proxy:    cls.quiet_dump_proxy     ?? null,
+      score_trajectory:    cls.score_trajectory     ?? null,
+      float_turnover_pct:  cls.float_turnover_pct   ?? null,
+      hod_set_pct:         cls.hod_set_pct          ?? null,
+      v3_gate_notes:       cls.v3_gate_notes        ?? [],
     },
     flags: computeFlags(cls, capturedAt),
     backtest_entry: {

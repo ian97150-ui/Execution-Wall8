@@ -70,7 +70,21 @@ export interface ClassifierSignal {
   score_raw?:         number;   // pre-SEC-boost score; falls back to score if absent
   last_bar_time?:     string;   // HH:MM of newest bar processed
   sec_cache_age_hrs?: number;   // hours since EDGAR cache last refreshed
-  t2_entry_type?:     string;   // ON_TIME | SLIGHTLY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
+  t2_entry_type?:     string;   // ON_TIME | SLIGHTLY_EARLY | EARLY | VERY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
+  // v3 new fields
+  vol_above_vwap_pct:     number;
+  intraday_gain_pct:      number;
+  intraday_gain_bucket:   string;   // SUB10 | 10-20pct | 20-45pct | 45-70pct | SPIKE70+
+  session_low_vs_pm_open: number;
+  quiet_dump_proxy:       boolean;
+  score_trajectory:       string;   // RISING | FLAT | FALLING
+  pm_open_price:          number;
+  entry_c_fired:          boolean;
+  float_shares:           number;
+  float_turnover_pct:     number;
+  momentum_decay_rate:    number;
+  hod_set_pct:            number;
+  v3_gate_notes:          string[];
 }
 
 /**
@@ -82,7 +96,7 @@ export async function runClassifier(
   date?: string
 ): Promise<ClassifierSignal | null> {
   return new Promise((resolve) => {
-    const args: string[] = [SCRIPT, ticker.toUpperCase(), '--json', '--once'];
+    const args: string[] = [SCRIPT, ticker.toUpperCase(), '--json', '--once', '--no-float'];
     if (date) args.push('--date', date);
 
     const tradierKey = process.env.TRADIER_API_KEY;

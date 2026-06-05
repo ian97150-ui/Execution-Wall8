@@ -145,9 +145,11 @@ export interface ScoreSnapshot {
   stop_pct:       string;    // stop distance, e.g. '+25%'
   gates_passed:   number;    // 0–5
   gate_detail:    string[];  // per-gate pass/fail strings
-  signal_tier?:   string;    // TIER_1 | TIER_2 | TIER_3 | NONE — from classifier
-  t2_entry_type?: string;    // ON_TIME | SLIGHTLY_EARLY | EARLY | VERY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
-  raw_signal?:    string;    // direct classifier output: ENTER_E | ENTER_A | HIGH_VALUE | WAIT | SKIP
+  signal_tier?:       string;    // TIER_1 | TIER_2 | TIER_3 | NONE — from classifier
+  t2_entry_type?:     string;    // ON_TIME | SLIGHTLY_EARLY | EARLY | VERY_EARLY | PREMATURE_RISK | NOT_QUALIFIED
+  raw_signal?:        string;    // direct classifier output: ENTER_E | ENTER_A | HIGH_VALUE | WAIT | SKIP
+  score_trajectory?:  string;    // RISING | FLAT | FALLING
+  quiet_dump_proxy?:  boolean;
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -811,9 +813,11 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     stop_pct:        cls.stop_pct       ?? '+25%',
     gates_passed:    cls.gates_passed   ?? 0,
     gate_detail:     cls.gate_detail    ?? [],
-    signal_tier:     cls.signal_tier    ?? undefined,
-    t2_entry_type:   cls.t2_entry_type  ?? undefined,
-    raw_signal:      cls.signal,
+    signal_tier:       cls.signal_tier       ?? undefined,
+    t2_entry_type:     cls.t2_entry_type     ?? undefined,
+    raw_signal:        cls.signal,
+    score_trajectory:  cls.score_trajectory  ?? undefined,
+    quiet_dump_proxy:  cls.quiet_dump_proxy  ?? undefined,
   };
 }
 
