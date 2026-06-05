@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Plus, Trash2, Play, Square, ChevronRight } from 'lucide-react';
+import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X } from 'lucide-react';
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -26,6 +26,7 @@ export function BacktestPanel() {
   const [addTicker, setAddTicker]   = useState('');
   const [addDate, setAddDate]       = useState('');
   const [addStatus, setAddStatus]   = useState('');
+  const [showGuide, setShowGuide]   = useState(false);
   const esRef   = useRef(null);
   const termRef = useRef(null);
 
@@ -236,17 +237,26 @@ export function BacktestPanel() {
           </div>
 
           {/* Output pane */}
-          <pre
-            ref={termRef}
-            className="flex-1 overflow-y-auto px-3 py-2 text-xs font-mono leading-5 bg-black/80 text-green-400 whitespace-pre-wrap break-words"
-            style={{ minHeight: 0 }}
-          >
-            {lines.length === 0
-              ? <span className="text-muted-foreground">Ready. Select a command below.</span>
-              : lines.join('\n')
-            }
-            {running && <span className="animate-pulse">▋</span>}
-          </pre>
+          {showGuide ? (
+            <iframe
+              src="/classifier_guide.html"
+              className="flex-1 w-full border-0"
+              style={{ minHeight: 0 }}
+              title="Classifier Output Guide"
+            />
+          ) : (
+            <pre
+              ref={termRef}
+              className="flex-1 overflow-y-auto px-3 py-2 text-xs font-mono leading-5 bg-black/80 text-green-400 whitespace-pre-wrap break-words"
+              style={{ minHeight: 0 }}
+            >
+              {lines.length === 0
+                ? <span className="text-muted-foreground">Ready. Select a command below.</span>
+                : lines.join('\n')
+              }
+              {running && <span className="animate-pulse">▋</span>}
+            </pre>
+          )}
 
           {/* Command buttons */}
           <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 flex-wrap">
@@ -283,6 +293,18 @@ export function BacktestPanel() {
               disabled={running}
               onClick={() => runCmd('backtest')}
             />
+            <span className="text-border">|</span>
+            <button
+              onClick={() => setShowGuide(s => !s)}
+              className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors ${
+                showGuide
+                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
+                  : 'border-border hover:bg-accent'
+              }`}
+            >
+              {showGuide ? <X className="w-3 h-3" /> : <BookOpen className="w-3 h-3" />}
+              {showGuide ? 'Close Guide' : 'Guide'}
+            </button>
             <span className="text-border">|</span>
             <CmdButton
               label="Health"

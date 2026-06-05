@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cat5ive Classifier — Output Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0a0c0f;
+    --bg2:      #0f1218;
+    --bg3:      #141820;
+    --border:   #1e2530;
+    --border2:  #2a3340;
+    --text:     #c8d0dc;
+    --dim:      #4a5568;
+    --green:    #22c55e;
+    --green2:   #16a34a;
+    --yellow:   #eab308;
+    --red:      #ef4444;
+    --cyan:     #06b6d4;
+    --magenta:  #d946ef;
+    --blue:     #3b82f6;
+    --orange:   #f97316;
+    --accent:   #22c55e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+
+  /* ── Header ── */
+  .page-header {
+    background: var(--bg2);
+    border-bottom: 2px solid var(--green2);
+    padding: 28px 40px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+  }
+  .page-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.05em;
+  }
+  .page-sub {
+    font-size: 12px;
+    color: var(--dim);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .toc {
+    margin-left: auto;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .toc a {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    text-decoration: none;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .toc a:hover { color: var(--green); border-color: var(--green2); }
+
+  /* ── Layout ── */
+  .page-body {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+  .sidebar {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    position: sticky;
+    top: 73px;
+    height: calc(100vh - 73px);
+    overflow-y: auto;
+  }
+  .sidebar-section {
+    padding: 6px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dim);
+    margin-top: 16px;
+  }
+  .sidebar a {
+    display: block;
+    padding: 6px 20px;
+    font-size: 12px;
+    color: var(--text);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: all 0.12s;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .sidebar a:hover { color: var(--green); border-left-color: var(--green); background: rgba(34,197,94,0.04); }
+
+  .content { padding: 40px; max-width: 920px; }
+
+  /* ── Sections ── */
+  .section {
+    margin-bottom: 52px;
+    scroll-margin-top: 90px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.04em;
+  }
+  .section-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    margin-left: auto;
+  }
+  .badge-always  { background: rgba(34,197,94,0.15);  color: var(--green);   }
+  .badge-ticks   { background: rgba(6,182,212,0.15);  color: var(--cyan);    }
+  .badge-gate    { background: rgba(234,179,8,0.15);  color: var(--yellow);  }
+  .badge-new     { background: rgba(217,70,239,0.15); color: var(--magenta); }
+
+  /* ── Terminal block ── */
+  .terminal {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 16px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    margin-bottom: 16px;
+    overflow-x: auto;
+    position: relative;
+  }
+  .terminal::before {
+    content: '';
+    position: absolute;
+    top: 10px; left: 14px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green2);
+    box-shadow: 14px 0 0 var(--yellow), 28px 0 0 var(--red);
+  }
+  .terminal .code-line { padding-top: 2px; }
+
+  .g  { color: var(--green); }
+  .y  { color: var(--yellow); }
+  .r  { color: var(--red); }
+  .c  { color: var(--cyan); }
+  .m  { color: var(--magenta); }
+  .d  { color: var(--dim); }
+  .w  { color: #fff; font-weight: 600; }
+  .o  { color: var(--orange); }
+
+  /* ── Field table ── */
+  .field-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  .field-table th {
+    text-align: left;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .field-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    font-size: 13px;
+  }
+  .field-table tr:last-child td { border-bottom: none; }
+  .field-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .field-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--cyan);
+    white-space: nowrap;
+  }
+  .field-good  { color: var(--green);   font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .field-bad   { color: var(--red);     font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .field-warn  { color: var(--yellow);  font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .field-neutral { color: var(--dim);   font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+
+  /* ── Gate pills ── */
+  .gate-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .gate-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+  .gate-pass { background: rgba(34,197,94,0.1);  color: var(--green);  border-color: var(--green2); }
+  .gate-fail { background: rgba(239,68,68,0.1);  color: var(--red);    border-color: #7f1d1d; }
+  .gate-warn { background: rgba(234,179,8,0.1);  color: var(--yellow); border-color: #713f12; }
+
+  /* ── Tips / notes ── */
+  .note {
+    background: rgba(59,130,246,0.08);
+    border-left: 3px solid var(--blue);
+    padding: 10px 14px;
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+    margin: 12px 0;
+    color: #93c5fd;
+  }
+  .warn-box {
+    background: rgba(234,179,8,0.08);
+    border-left: 3px solid var(--yellow);
+    padding: 10px 14px;
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+    margin: 12px 0;
+    color: #fde68a;
+  }
+  .tip {
+    background: rgba(34,197,94,0.06);
+    border-left: 3px solid var(--green2);
+    padding: 10px 14px;
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+    margin: 12px 0;
+    color: #86efac;
+  }
+  p { margin-bottom: 10px; color: #a0adb8; font-size: 13px; }
+  h4 { font-size: 13px; font-weight: 500; color: var(--text); margin: 16px 0 8px; font-family: 'IBM Plex Mono', monospace; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">◆ CAT5IVE CLASSIFIER v4 — OUTPUT GUIDE</div>
+    <div class="page-sub">Quick reference: every section of the CLI output explained</div>
+  </div>
+  <nav class="toc">
+    <a href="#s1">Header</a>
+    <a href="#s2">Regime/Tier</a>
+    <a href="#s3">Price</a>
+    <a href="#s4">HOD/LOD</a>
+    <a href="#s5">S1/S2</a>
+    <a href="#s6">Momentum</a>
+    <a href="#s7">PM Stats</a>
+    <a href="#s8">v3 Fields</a>
+    <a href="#s9">Signals</a>
+    <a href="#s10">Score Adj</a>
+    <a href="#s11">SEC</a>
+    <a href="#s12">Gates</a>
+    <a href="#s13">Watch</a>
+    <a href="#s14">Winners Circle</a>
+    <a href="#s15">BLUEPR8NT</a>
+    <a href="#s16">Ticks</a>
+  </nav>
+</div>
+
+<div class="page-body">
+<nav class="sidebar">
+  <div class="sidebar-section">Sections</div>
+  <a href="#s1">① Header Bar</a>
+  <a href="#s2">② Regime / Tier / Score</a>
+  <a href="#s3">③ Price vs VWAP</a>
+  <a href="#s4">④ HOD / LOD / Entry</a>
+  <a href="#s5">⑤ S1/S2 State</a>
+  <a href="#s6">⑥ Momentum</a>
+  <a href="#s7">⑦ PM Stats</a>
+  <a href="#s8">⑧ v3 Data Fields</a>
+  <a href="#s9">⑨ Signals</a>
+  <a href="#s10">⑩ Score Adjustments</a>
+  <a href="#s11">⑪ SEC Filings</a>
+  <a href="#s12">⑫ Gate System</a>
+  <a href="#s13">⑬ Watch / Why</a>
+  <a href="#s14">⑭ Winners Circle</a>
+  <a href="#s15">⑮ BLUEPR8NT</a>
+  <a href="#s16">⑯ Tick Layer</a>
+  <div class="sidebar-section">Quick Ref</div>
+  <a href="#signals-list">All Signal Names</a>
+  <a href="#grade-key">Grade Key</a>
+  <a href="#disq-list">Disqualifiers</a>
+</nav>
+
+<div class="content">
+
+<!-- ───────────────────────────────────────────────────── SECTION 1 -->
+<div class="section" id="s1">
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <span class="section-title">HEADER BAR</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="w">SOAR</span>    $0.410  <span class="y">WAIT</span>  [<span class="y">Grade C</span>]  Q=<span class="g">93/100</span>  @23:21:12  <span class="d">v3</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Values</th></tr>
+    <tr>
+      <td class="field-name">SOAR</td>
+      <td>Ticker symbol</td>
+      <td class="field-neutral">—</td>
+    </tr>
+    <tr>
+      <td class="field-name">$0.410</td>
+      <td>Current price (last bar close)</td>
+      <td class="field-neutral">—</td>
+    </tr>
+    <tr>
+      <td class="field-name">Signal</td>
+      <td>Primary entry recommendation</td>
+      <td>
+        <span class="field-good">HIGH_VALUE</span> → Winners Circle setup, all gates pass<br>
+        <span class="field-good">ENTER_E</span> → Enter at HOD (Strategy E)<br>
+        <span class="field-good">ENTER_A</span> → Staggered entry (Strategy A)<br>
+        <span class="field-warn">WAIT</span> → Setup forming, not entry-ready<br>
+        <span class="field-bad">SKIP</span> → Do not trade<br>
+        <span class="field-neutral">LONG_OPP</span> → Bounce from LOD zone (counter)
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Grade A/B/C</td>
+      <td>Setup quality tier</td>
+      <td>
+        <span class="field-good">A</span> → All prime conditions. Expected A → −15 to −30%<br>
+        <span class="field-warn">B</span> → Qualifying setup. Expected A → −8 to −15%<br>
+        <span class="field-bad">C</span> → Monitoring only, not actionable yet<br>
+        <span class="field-bad">NONE</span> → No valid setup
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Q=93/100</td>
+      <td>Quality score — composite of all factors</td>
+      <td>
+        <span class="field-good">≥75</span> → High value<br>
+        <span class="field-warn">55-74</span> → Valid<br>
+        <span class="field-bad">&lt;55</span> → Weak
+      </td>
+    </tr>
+  </table>
+  <div class="note">Signal and Grade are independent. WAIT Grade C means the setup is developing but not yet ready to enter — quality score can still be high while you wait for the entry zone.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 2 -->
+<div class="section" id="s2">
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <span class="section-title">REGIME / TIER / SCORE / SECTION</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">Regime:  <span class="c">NEWS_CONTINUATION</span>     Tier:<span class="g">HIGH</span>    Score:<span class="w"> 150</span>  Section:<span class="g">S1</span>(90%)</div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Values / Thresholds</th></tr>
+    <tr>
+      <td class="field-name">Regime</td>
+      <td>Inferred market structure from bar patterns and SEC data</td>
+      <td>
+        <span class="field-good">DILUTION_DUMP</span> → 424B5 active, coordinated sell<br>
+        <span class="field-warn">NEWS_CONTINUATION</span> → Catalyst-driven move<br>
+        <span class="field-warn">LOW_FLOAT_PARABOLIC</span> → Thin float, spike likely to reverse<br>
+        <span class="field-bad">UNKNOWN</span> → No clear regime signal
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Tier</td>
+      <td>Score-based tier determining entry eligibility</td>
+      <td>
+        <span class="field-good">HIGH</span> → Score ≥ 50 → eligible for entry<br>
+        <span class="field-warn">MEDIUM</span> → Score 25-49 → eligible if other gates pass<br>
+        <span class="field-bad">LOW</span> → Score 10-24 → not eligible<br>
+        <span class="field-bad">SKIP</span> → Score &lt;10 → no setup
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Score</td>
+      <td>Pre-fall conviction score (0-150). Built from signals + data heist gates</td>
+      <td>
+        <span class="field-good">≥75</span> → Strong<br>
+        <span class="field-warn">40-74</span> → Moderate<br>
+        <span class="field-bad">&lt;25</span> → Weak
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Section</td>
+      <td>Current market section classification with confidence %</td>
+      <td>
+        <span class="field-good">S1(90%)</span> → Bearish section, 90% confident. SHORT SIGNAL<br>
+        <span class="field-bad">S2(80%)</span> → Bullish section. No short signal yet
+      </td>
+    </tr>
+  </table>
+  <div class="warn-box">Score ≥150 means the SEC filing data added a large boost (+70 pts for SERIAL_HEAVY). A raw 150 with multiple SEC flags is stronger than a 150 from bar signals alone.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 3 -->
+<div class="section" id="s3">
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <span class="section-title">PRICE vs VWAP / ATR / VOL SPIKE</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">VWAP:   $0.382 (<span class="r">+7.4%</span> from VWAP)  ATR:$0.012  VolSpike:<span class="d">0.3x</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>What to look for</th></tr>
+    <tr>
+      <td class="field-name">VWAP</td>
+      <td>Volume-weighted average price (running, from session start)</td>
+      <td><span class="field-good">Price below VWAP</span> = S1 confirmed (short bias)<br><span class="field-bad">Price above VWAP</span> = S2 territory (no short yet)</td>
+    </tr>
+    <tr>
+      <td class="field-name">% from VWAP</td>
+      <td>How far current price is from VWAP</td>
+      <td><span class="field-good">Negative %</span> = below VWAP (bearish)<br><span class="field-bad">Positive %</span> = above VWAP (bullish, red flag for shorts)</td>
+    </tr>
+    <tr>
+      <td class="field-name">ATR</td>
+      <td>14-period Average True Range — daily volatility in dollar terms</td>
+      <td>Use to size stops. ATR × 1.5 = suggested stop distance from entry</td>
+    </tr>
+    <tr>
+      <td class="field-name">VolSpike</td>
+      <td>Current bar volume vs 10-bar average (multiplier)</td>
+      <td><span class="field-good">≥2.0x</span> → elevated, confirms move<br><span class="field-bad">&lt;0.5x</span> → quiet, weak setup confirmation</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 4 -->
+<div class="section" id="s4">
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <span class="section-title">HOD / LOD / ENTRY ZONE / SIZE</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">HOD:    $0.520 @07:49 (57 bars ago)  LOD:$0.179 @04:00</div>
+    <div class="code-line">Entry:  <span class="y">-21.1% from HOD → Zone:ZONE_B</span>  Suggested size:<span class="g">40%</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Thresholds</th></tr>
+    <tr>
+      <td class="field-name">HOD @ time</td>
+      <td>High of day price and the time it was set</td>
+      <td>Earlier = better. PM HOD (before 9:30am) = strongest signal</td>
+    </tr>
+    <tr>
+      <td class="field-name">bars ago</td>
+      <td>How many 1-min bars since HOD was set</td>
+      <td><span class="field-good">≥30 bars</span> = HOD confirmed stable<br><span class="field-bad">&lt;10 bars</span> = HOD still forming, don't trust bucket signals yet</td>
+    </tr>
+    <tr>
+      <td class="field-name">LOD @ time</td>
+      <td>Low of day — how far the stock has already dumped</td>
+      <td>LOD early (at/near open) = stock couldn't hold its gap</td>
+    </tr>
+    <tr>
+      <td class="field-name">% from HOD</td>
+      <td>Current price distance from HOD. Determines entry zone</td>
+      <td>
+        <span class="field-good">0 to −5%</span> → ZONE_A (best E entry)<br>
+        <span class="field-warn">−5 to −15%</span> → DEAD_ZONE (avoid)<br>
+        <span class="field-warn">−15 to −30%</span> → ZONE_B (A entry)<br>
+        <span class="field-neutral">&lt;−30%</span> → ZONE_C (deep value)
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Suggested size</td>
+      <td>Recommended position size as % of normal. Reduced by flips/chop/velocity</td>
+      <td><span class="field-good">100%</span> = full<br><span class="field-warn">40-70%</span> = reduced due to noise<br><span class="field-bad">25%</span> = minimum (high risk conditions)</td>
+    </tr>
+  </table>
+  <div class="warn-box">At/above HOD (≥0%) = hard disqualifier. A return averages +1.0% (LOSING) when entering at or above the high. The classifier will DQ this automatically.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 5 -->
+<div class="section" id="s5">
+  <div class="section-header">
+    <span class="section-num">05</span>
+    <span class="section-title">S1 / S2 STATE</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">S1/S2:  Consec S1 bars:<span class="g"> 12</span>  S1% of RTH:<span class="g">68%</span>  RTH progress:<span class="d">45%</span>  Bars:<span class="d">180/287pm</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>What to look for</th></tr>
+    <tr>
+      <td class="field-name">Consec S1 bars</td>
+      <td>Consecutive bars closing below VWAP right now</td>
+      <td><span class="field-good">≥10</span> = strong persistent downtrend<br><span class="field-bad">0</span> = S2 (not shorting territory)</td>
+    </tr>
+    <tr>
+      <td class="field-name">S1% of RTH</td>
+      <td>% of regular trading hours bars that closed below VWAP</td>
+      <td><span class="field-good">≥70%</span> = dominant S1 session, clean fade<br><span class="field-warn">40-70%</span> = mixed<br><span class="field-bad">&lt;40%</span> = S2 dominant, don't short</td>
+    </tr>
+    <tr>
+      <td class="field-name">RTH progress</td>
+      <td>How much of the regular session has elapsed (0-100%)</td>
+      <td>Useful context for HOD timing. Combined with HOD age.</td>
+    </tr>
+    <tr>
+      <td class="field-name">Bars: X/Ypm</td>
+      <td>RTH bars elapsed / total PM bars loaded</td>
+      <td>Low RTH + high PM = stock did most of its action pre-market</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 6 -->
+<div class="section" id="s6">
+  <div class="section-header">
+    <span class="section-num">06</span>
+    <span class="section-title">MOMENTUM</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">Momentum: <span class="d">Velocity:FLAT</span>  Flips:<span class="g">  0</span>  Chop:<span class="r">95%</span>  Traj:<span class="d">FLAT</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Thresholds</th></tr>
+    <tr>
+      <td class="field-name">Velocity</td>
+      <td>Direction and speed of confidence change over last 20 bars</td>
+      <td>
+        <span class="field-good">RISING_FAST</span> = +10% size bonus<br>
+        <span class="field-good">RISING</span> = setup strengthening<br>
+        <span class="field-neutral">FLAT</span> = stable (most common at entry)<br>
+        <span class="field-bad">FALLING</span> = −30% size, caution<br>
+        <span class="field-bad">FALLING_FAST</span> = reduce size significantly
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Flips</td>
+      <td>S1→S2 classification flips during RTH. Each flip = contested bar</td>
+      <td>
+        <span class="field-good">0</span> = cleanest setup (92.9% win rate)<br>
+        <span class="field-good">1-3</span> = clean<br>
+        <span class="field-warn">4-6</span> = reduce size 30%<br>
+        <span class="field-bad">7+</span> = choppy, high risk
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Chop</td>
+      <td>% of bars with contested direction (high = sideways/noisy)</td>
+      <td>
+        <span class="field-good">&lt;40%</span> = directional, clean<br>
+        <span class="field-warn">40-80%</span> = moderate noise<br>
+        <span class="field-bad">≥90%</span> = CHOP_EXTREME disqualifier
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Traj</td>
+      <td>Score trajectory across polls (session start vs current)</td>
+      <td>
+        <span class="field-good">RISING</span> = score built during session (+3 quality)<br>
+        <span class="field-neutral">FLAT</span> = normal (signals fired in PM, stable)<br>
+        <span class="field-bad">FALLING</span> = signals reversed (−5 quality, reduce size)
+      </td>
+    </tr>
+  </table>
+  <div class="tip">Chop 95% with Score 150 and 0 flips = the classifier will allow it with a warning. High chop from a static stock (no RTH bars yet) is different from high chop from a choppy stock.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 7 -->
+<div class="section" id="s7">
+  <div class="section-header">
+    <span class="section-num">07</span>
+    <span class="section-title">PM STATS</span>
+    <span class="section-badge badge-always">Available after 9:30am</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">PM:     Move:<span class="r">+110.8%</span>  PM High:$0.520  Gap:<span class="d">-52.6%</span>  PM Open:$0.195</div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Interpretation</th></tr>
+    <tr>
+      <td class="field-name">PM Move %</td>
+      <td>Pre-market price change from 4am open to 9:30am close</td>
+      <td><span class="field-good">+20 to +45%</span> = ideal Cat5ive PM spike<br><span class="field-bad">+100%+</span> = extreme, often SPIKE70+ bucket (mixed outcomes)</td>
+    </tr>
+    <tr>
+      <td class="field-name">PM High</td>
+      <td>Highest price reached in pre-market. Often the HOD.</td>
+      <td>If PM High = HOD, the stock peaked before RTH opened — strongest signal</td>
+    </tr>
+    <tr>
+      <td class="field-name">Gap %</td>
+      <td>RTH open price vs PM close (how the stock gapped at open)</td>
+      <td>Negative gap = RTH opened below PM close = early weakness</td>
+    </tr>
+    <tr>
+      <td class="field-name">PM Open</td>
+      <td>The 4am opening price. Used as baseline for all session proxies</td>
+      <td>All gain_pct and session_low_vs_pm_open calculations anchor to this</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 8 -->
+<div class="section" id="s8">
+  <div class="section-header">
+    <span class="section-num">08</span>
+    <span class="section-title">v3 DATA FIELDS (DATA HEIST GATES)</span>
+    <span class="section-badge badge-new">v3 new</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">v3:     QuietDump:<span class="d">no</span>  GainBucket:<span class="r">SPIKE70+</span>    VolAboveVWAP:<span class="r">97%</span></div>
+    <div class="code-line">        HOD@:<span class="r">80%</span> elapsed  SessionLow:<span class="y">8%</span> below open  FloatTurn:<span class="g">12648.9%</span>  EntryC:✓</div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Good / Bad</th></tr>
+    <tr>
+      <td class="field-name">QuietDump</td>
+      <td>Intraday proxy: stock gained &lt;45% AND is &gt;20% below PM open right now</td>
+      <td><span class="field-good">YES</span> = +15 score, strongest short signal (A avg −25.3%)<br><span class="field-neutral">no</span> = standard setup</td>
+    </tr>
+    <tr>
+      <td class="field-name">GainBucket</td>
+      <td>How much the stock ran from PM open to current HOD</td>
+      <td>
+        <span class="field-good">SUB10</span> = best (A −13.7%), +8 score when HOD stable<br>
+        <span class="field-good">10-20pct</span> = strong (A −11.0%)<br>
+        <span class="field-warn">20-45pct</span> = moderate (A −4.8%)<br>
+        <span class="field-bad">45-70pct</span> = LOSING (A +5.4%), −15 score<br>
+        <span class="field-neutral">SPIKE70+</span> = mixed (A −2.0%)
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">VolAboveVWAP</td>
+      <td>% of session volume traded in bars where close was above VWAP (running)</td>
+      <td>
+        <span class="field-good">&lt;40%</span> = confirmed dump, +12 score (A −14.1%)<br>
+        <span class="field-warn">40-80%</span> = mixed<br>
+        <span class="field-bad">&gt;80%</span> = HEAVY_VWAP_DIST, −18 score (A +4.1%)
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">HOD@ % elapsed</td>
+      <td>HOD set at X% of elapsed session bars</td>
+      <td>
+        <span class="field-good">&lt;30%</span> = early HOD, +15 score (best)<br>
+        <span class="field-warn">30-60%</span> = mid-session<br>
+        <span class="field-bad">&gt;60% with &gt;120 bars</span> = LATE_HOD, −20 score (A +16.2%)
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">SessionLow</td>
+      <td>How far the running LOD is below the 4am open price</td>
+      <td>
+        <span class="field-bad">&lt;10%</span> = LOW_SESSION_LOW, −10 score (A +4.7%)<br>
+        <span class="field-warn">10-20%</span> = moderate, +4 score<br>
+        <span class="field-good">&gt;20%</span> = deep dump confirmed, +8 score
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">FloatTurn</td>
+      <td>PM volume as % of float shares. How much of the float traded pre-market</td>
+      <td>
+        <span class="field-bad">&lt;10%</span> = LOW_FLOAT_TURNOVER disqualifier (A → 0%)<br>
+        <span class="field-warn">10-50%</span> = normal<br>
+        <span class="field-good">&gt;100%</span> = heavy rotation, strong conviction
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">EntryC</td>
+      <td>3 consecutive clean descending bars detected (no rally, closing lower)</td>
+      <td><span class="field-good">✓</span> = +10% size bonus, least-resistance entry window<br><span class="field-neutral">✗</span> = no clean window yet</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 9 -->
+<div class="section" id="s9">
+  <div class="section-header">
+    <span class="section-num">09</span>
+    <span class="section-title">SIGNALS</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line">Signals:  <span class="g">PM_SELL_PRESSURE | PM_FADE_CONFIRMED | OVEREXTENDED_AH_S2</span></div>
+    <div class="code-line">v3 Sigs:  <span class="c">LATE_HOD | HEAVY_VWAP_DIST | LOW_SESSION_LOW | ENTRY_C_WINDOW</span></div>
+    <div class="code-line">Also:     <span class="d">PRIOR3_DILUTION</span></div>
+    <div class="code-line"><span class="g">Power combo: FADE+SUPPLY  (lift 9.1)</span></div>
+  </div>
+  <h4 id="signals-list">Qualifying Signals (green row)</h4>
+  <table class="field-table">
+    <tr><th>Signal</th><th>Tier</th><th>Meaning</th></tr>
+    <tr><td class="field-name">PM_SELL_PRESSURE</td><td class="field-warn">T2</td><td>PM move was large but PM closed well below PM high — sellers fighting back in PM</td></tr>
+    <tr><td class="field-name">PM_FADE_CONFIRMED</td><td class="field-warn">T2</td><td>Current price &gt;15% below PM high AND PM move was large — clean fade in progress</td></tr>
+    <tr><td class="field-name">VWAP_FAIL_S1</td><td class="field-bad">T3</td><td>Price closed below VWAP for 5 consecutive bars — established S1</td></tr>
+    <tr><td class="field-name">SUPPLY_OVERHANG</td><td class="field-good">T1</td><td>HOD was set in first 20% of session, price down &gt;15% since — supply dominating</td></tr>
+    <tr><td class="field-name">OVEREXTENDED_AH_S2</td><td class="field-warn">T2</td><td>Total run (prior close to HOD) &gt;50% — extreme overextension, mean-reversion likely</td></tr>
+    <tr><td class="field-name">OVEREXTENDED_OPEN</td><td class="field-bad">T3</td><td>Total run &gt;30% — moderately overextended</td></tr>
+    <tr><td class="field-name">HIGH_VOL_REJECTION</td><td class="field-bad">T3</td><td>Large upper wick at HOD bar with volume spike — institutional rejection at peak</td></tr>
+    <tr><td class="field-name">MEAN_REVERSION_GAP</td><td class="field-good">T1</td><td>Gap up &gt;40%, now below HOD by &gt;20% AND below VWAP — full gap fill thesis</td></tr>
+    <tr><td class="field-name">LIVE_STRENGTH</td><td class="field-good">T1</td><td>Price above VWAP with 10+ RTH bars — stock is S2 (INVERSE signal — triggers warnings)</td></tr>
+    <tr><td class="field-name">PM_FADE_MOVE</td><td class="field-warn">T2</td><td>&gt;55% of PM bars were down candles — persistent PM selling</td></tr>
+  </table>
+  <h4>v3 Signals (cyan row) — Data heist gates</h4>
+  <table class="field-table">
+    <tr><th>Signal</th><th>Score Effect</th><th>Meaning</th></tr>
+    <tr><td class="field-name">LATE_HOD</td><td class="field-bad">−20</td><td>HOD set after 60% of session elapsed (with &gt;120 bars) — A historically losing</td></tr>
+    <tr><td class="field-name">HEAVY_VWAP_DIST</td><td class="field-bad">−18</td><td>&gt;80% of volume traded above VWAP — distribution hasn't materialized yet</td></tr>
+    <tr><td class="field-name">MEDIUM_SPIKE_ZONE</td><td class="field-bad">−15</td><td>Gain 45-70% — worst bucket for A (A +5.4% avg)</td></tr>
+    <tr><td class="field-name">QUIET_DUMP_PROXY</td><td class="field-good">+15</td><td>Gain &lt;45% AND already &gt;20% below PM open — quiet distribution in progress</td></tr>
+    <tr><td class="field-name">LOW_SESSION_LOW</td><td class="field-bad">−10</td><td>LOD &lt;10% below PM open — stock barely dipped</td></tr>
+    <tr><td class="field-name">ENTRY_C_WINDOW</td><td class="field-good">+size</td><td>3 consecutive clean descending bars — optimal entry timing</td></tr>
+  </table>
+  <h4>Power Combos</h4>
+  <table class="field-table">
+    <tr><th>Combo</th><th>Lift</th><th>Signals Required</th></tr>
+    <tr><td class="field-name">PM_SELL+VWAP</td><td class="field-good">19.4</td><td>PM_SELL_PRESSURE + VWAP_FAIL_S1</td></tr>
+    <tr><td class="field-name">QUIET_DUMP+VWAP</td><td class="field-good">16.5</td><td>QUIET_DUMP_PROXY + VWAP_FAIL_S1</td></tr>
+    <tr><td class="field-name">SUPPLY+VWAP</td><td class="field-good">14.2</td><td>SUPPLY_OVERHANG + VWAP_FAIL_S1</td></tr>
+    <tr><td class="field-name">QUIET_DUMP+SELL</td><td class="field-good">14.8</td><td>QUIET_DUMP_PROXY + PM_SELL_PRESSURE</td></tr>
+    <tr><td class="field-name">OVEREXT+VWAP</td><td class="field-good">12.8</td><td>OVEREXTENDED_AH_S2 + VWAP_FAIL_S1</td></tr>
+    <tr><td class="field-name">FADE+SUPPLY</td><td class="field-warn">9.1</td><td>PM_FADE_CONFIRMED + SUPPLY_OVERHANG</td></tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 10 -->
+<div class="section" id="s10">
+  <div class="section-header">
+    <span class="section-num">10</span>
+    <span class="section-title">v3 SCORE ADJUSTMENTS</span>
+    <span class="section-badge badge-new">v3 new</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="c">v3 score adj: LATE_HOD(80%): −20 pts | HEAVY_VWAP(97%): −18 pts | LOW_SESSION_LOW(8%): −10 pts</span></div>
+  </div>
+  <p>This line shows every data heist gate that fired and its exact score impact. The raw score before adjustments is built from signals; these adjustments then pull it up or down based on validated backtest findings.</p>
+  <table class="field-table">
+    <tr><th>Adjustment</th><th>Points</th><th>Data Backing</th></tr>
+    <tr><td class="field-name">LATE_HOD</td><td class="field-bad">−20</td><td>A return +16.2% avg in late HOD sessions = LOSING</td></tr>
+    <tr><td class="field-name">HEAVY_VWAP_DIST</td><td class="field-bad">−18</td><td>A return +12.5% avg when &gt;80% vol above VWAP = LOSING</td></tr>
+    <tr><td class="field-name">MEDIUM_SPIKE_ZONE</td><td class="field-bad">−15</td><td>A return +5.4% avg in 45-70% gain bucket = LOSING</td></tr>
+    <tr><td class="field-name">QUIET_DUMP</td><td class="field-good">+15</td><td>A return −25.3% avg = strongest single signal in dataset</td></tr>
+    <tr><td class="field-name">LOW_SESSION_LOW</td><td class="field-bad">−10</td><td>A return +4.7% avg when LOD &lt;10% below open = LOSING</td></tr>
+    <tr><td class="field-name">LOW_FLOAT_TURNOVER</td><td class="field-bad">−10</td><td>A return −0% when float turnover &lt;10% = no edge</td></tr>
+    <tr><td class="field-name">VOL_ABOVE_VWAP &lt;40%</td><td class="field-good">+12</td><td>A return −14.1% avg = confirmed dump setup</td></tr>
+    <tr><td class="field-name">SESSION_LOW &gt;20%</td><td class="field-good">+8</td><td>Stock proved it can dump — thesis confirmed intraday</td></tr>
+    <tr><td class="field-name">Confidence ≥85%</td><td class="field-good">+8</td><td>A return −10.3% avg at high confidence</td></tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 11 -->
+<div class="section" id="s11">
+  <div class="section-header">
+    <span class="section-num">11</span>
+    <span class="section-title">SEC FILING DATA</span>
+    <span class="section-badge badge-always">When available</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="g">SEC:      424B5:49d ago  offerings_12m:6  +70pts</span></div>
+    <div class="code-line"><span class="g">          SERIAL_HEAVY | PRIOR3_DILUTION | SUPPLY_OVERHANG | LATE_PHASE</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td class="field-name">424B5: Xd ago</td><td>Days since the last dilutive offering (prospectus). &lt;30 days = 424B5_ACTIVE signal (+15 score). 424B5 = share dilution = coordinated dump incoming.</td></tr>
+    <tr><td class="field-name">offerings_12m</td><td>Total dilutive offerings in the past 12 months. ≥3 = SERIAL_HEAVY.</td></tr>
+    <tr><td class="field-name">SEC flags</td><td>
+      <span class="field-bad">424B5_ACTIVE</span> → recent prospectus, active dilution window<br>
+      <span class="field-bad">SERIAL_HEAVY</span> → 3+ offerings in 12 months = repeat offender<br>
+      <span class="field-bad">PRIOR3_DILUTION</span> → dilutive event in last 90 days<br>
+      <span class="field-bad">SUPPLY_OVERHANG</span> → 2+ offerings in 6 months<br>
+      <span class="field-bad">LATE_PHASE</span> → 4+ offerings = company in chronic dilution
+    </td></tr>
+    <tr><td class="field-name">+Xpts</td><td>Score boost from SEC confirmation. Up to +70 for the most flagged setups.</td></tr>
+  </table>
+  <div class="tip">SEC data confirms the DILUTION_DUMP regime. When 424B5_ACTIVE fires AND regime = DILUTION_DUMP, the setup has institutional backing for the short thesis.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 12 -->
+<div class="section" id="s12">
+  <div class="section-header">
+    <span class="section-num">12</span>
+    <span class="section-title">GATE SYSTEM (5 GATES)</span>
+    <span class="section-badge badge-gate">Entry filter</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="y">Gates:  3/5 passed  |  Bias: LOW_CONVICTION  |  Conf: 0.90</span></div>
+    <div class="code-line"><span class="r">DQ:     CHOP_EXTREME:95pct</span></div>
+    <div class="code-line">  <span class="r">✗</span> G1:disqualifiers=FAIL(CHOP_EXTREME:95pct)</div>
+    <div class="code-line">  <span class="g">✓</span> G2:tier=HIGH=PASS</div>
+    <div class="code-line">  <span class="r">✗</span> G3:bias=LOW_CONVICTION=FAIL(need MAX or HIGH conviction)</div>
+    <div class="code-line">  <span class="g">✓</span> G4:section=S1=PASS</div>
+    <div class="code-line">  <span class="g">✓</span> G5:conf=0.90=PASS</div>
+  </div>
+  <table class="field-table">
+    <tr><th>Gate</th><th>Pass condition</th><th>Fail = ?</th></tr>
+    <tr><td class="field-name">G1 Disqualifiers</td><td>Zero active disqualifiers</td><td>Hard block. No entry regardless of score.</td></tr>
+    <tr><td class="field-name">G2 Tier</td><td>Tier = HIGH or MEDIUM (score ≥ 25)</td><td>Score too low — setup not developed enough</td></tr>
+    <tr><td class="field-name">G3 Bias</td><td>MAX_CONVICTION or HIGH_CONVICTION</td><td>Signal+grade combination not strong enough</td></tr>
+    <tr><td class="field-name">G4 Section</td><td>Section = S1</td><td>Still in S2 — wait for bearish flip</td></tr>
+    <tr><td class="field-name">G5 Confidence</td><td>Classifier confidence ≥ 0.55 (55%)</td><td>Classifier unsure of S1/S2 — A return +1.8% at &lt;55%</td></tr>
+  </table>
+
+  <h4 id="disq-list">Active Disqualifiers (G1)</h4>
+  <table class="field-table">
+    <tr><th>Disqualifier</th><th>Condition</th><th>Data reason</th></tr>
+    <tr><td class="field-name">CHOP_EXTREME</td><td>Chop ≥ 90%</td><td>Too noisy to enter cleanly</td></tr>
+    <tr><td class="field-name">DEAD_ZONE</td><td>Entry 5-15% below HOD</td><td>Too far from HOD for E, not far enough for A</td></tr>
+    <tr><td class="field-name">AT_OR_ABOVE_HOD</td><td>Entry ≥ 0% from HOD</td><td>A return +1.0% = consistently LOSING</td></tr>
+    <tr><td class="field-name">LOW_FLOAT_TURNOVER</td><td>Float turnover &lt;10%</td><td>A return → 0% = no edge</td></tr>
+    <tr><td class="field-name">INSUFFICIENT_DATA</td><td>&lt;5 bars loaded</td><td>Not enough price history to classify</td></tr>
+    <tr><td class="field-name">LOW_VOLUME</td><td>Vol spike &lt;0.3x after 30+ RTH bars</td><td>Dead tape, no participation</td></tr>
+  </table>
+
+  <h4>Bias Levels</h4>
+  <table class="field-table">
+    <tr><th>Bias</th><th>Meaning</th></tr>
+    <tr><td class="field-name">MAX_CONVICTION</td><td>Signal = HIGH_VALUE AND Grade = A — full position</td></tr>
+    <tr><td class="field-name">HIGH_CONVICTION</td><td>Signal = ENTER_E or ENTER_A AND Grade = B — standard position</td></tr>
+    <tr><td class="field-name">LOW_CONVICTION</td><td>Signal = WAIT AND Grade = C AND Score ≥ 25 — monitor only</td></tr>
+    <tr><td class="field-name">NO_CONVICTION</td><td>Everything else — skip</td></tr>
+  </table>
+
+  <div class="note">All 5 gates must pass for HIGH_VALUE or ENTER signals. Partial gate passes (3-4/5) produce WAIT signal with active monitoring.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 13 -->
+<div class="section" id="s13">
+  <div class="section-header">
+    <span class="section-num">13</span>
+    <span class="section-title">WATCH / WHY / WARNINGS</span>
+    <span class="section-badge badge-always">Every poll</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="c">Watch:  Chop 95% high but Score 150 + 0 flips — monitor</span></div>
+    <div class="code-line"><span class="d">Why: S1 confirmed (90%) | TIER_1: PM_SELL_PRESSURE | Power combo: FADE+SUPPLY</span></div>
+    <div class="code-line"><span class="y">⚠  Chop 95% → DANGER | LATE_HOD (80%) → A +16.2% LOSING | HEAVY_VWAP_DIST → LOSING</span></div>
+  </div>
+  <table class="field-table">
+    <tr><th>Line</th><th>Meaning</th></tr>
+    <tr><td class="field-name">Watch:</td><td>What to do next — actionable instruction based on current state</td></tr>
+    <tr><td class="field-name">Why:</td><td>Top 3 reasons the signal fired — the evidence trail</td></tr>
+    <tr><td class="field-name">⚠  Warnings:</td><td>Active risk factors. Any warning means reduce confidence and/or size. Multiple warnings = pass on this setup.</td></tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 14 -->
+<div class="section" id="s14">
+  <div class="section-header">
+    <span class="section-num">14</span>
+    <span class="section-title">★ WINNERS CIRCLE</span>
+    <span class="section-badge badge-new">v3 new</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="y">★ WINNERS CIRCLE: 5/7 gates  [<span class="g">HOD✓</span> <span class="r">VWAP✗</span> <span class="g">QD✓</span> <span class="g">GAIN✓</span> <span class="g">CONF✓</span> <span class="r">ZONE✗</span> <span class="g">LOD✓</span>]</span></div>
+    <div class="code-line"><span class="y">  Expected A: −10 to −20%   E: −15 to −25%</span></div>
+  </div>
+  <p>The Winners Circle scorecard checks the 7 gates that define the best-performing Cat5ive sessions (avg A −20 to −35%, E −30 to −45% when all 7 pass).</p>
+  <table class="field-table">
+    <tr><th>Gate</th><th>Label</th><th>Pass condition</th><th>Data backing</th></tr>
+    <tr><td class="field-name">HOD✓/✗</td><td>Early HOD</td><td>HOD set in PM or &lt;30% of elapsed bars</td><td>Early HOD: A −10.6% avg</td></tr>
+    <tr><td class="field-name">VWAP✓/✗</td><td>VWAP Dump</td><td>VolAboveVWAP &lt;40%</td><td>Accumulation &lt;40%: A −14.1% avg</td></tr>
+    <tr><td class="field-name">QD✓/✗</td><td>Quiet Dump</td><td>quiet_dump_proxy = True</td><td>Flag=1: A −25.3% avg (strongest)</td></tr>
+    <tr><td class="field-name">GAIN✓/✗</td><td>Small Gain</td><td>Bucket = SUB10, 10-20pct, or 20-45pct</td><td>SUB10: A −13.7%, 45-70% LOSING</td></tr>
+    <tr><td class="field-name">CONF✓/✗</td><td>High Confidence</td><td>Classifier confidence ≥ 70%</td><td>≥85%: A −10.3%; &lt;55%: A +1.8%</td></tr>
+    <tr><td class="field-name">ZONE✓/✗</td><td>Zone A Entry</td><td>Entry within 5% of HOD</td><td>Zone A: E −22.9% avg (best E)</td></tr>
+    <tr><td class="field-name">LOD✓/✗</td><td>Deep LOD</td><td>Session low &gt;10% below PM open</td><td>Thesis proven intraday</td></tr>
+  </table>
+
+  <h4 id="grade-key">WC Tier Key</h4>
+  <div class="gate-row">
+    <div class="gate-pill gate-pass">★ 6-7/7 WINNERS_CIRCLE → Expected A −20 to −35%</div>
+    <div class="gate-pill gate-warn">4-5/7 QUALIFYING → Expected A −10 to −20%</div>
+    <div class="gate-pill gate-warn">2-3/7 DEVELOPING → Expected A −5 to −10%</div>
+    <div class="gate-pill gate-fail">0-1/7 NOT_QUALIFYING</div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 15 -->
+<div class="section" id="s15">
+  <div class="section-header">
+    <span class="section-num">15</span>
+    <span class="section-title">⚡ BLUEPR8NT</span>
+    <span class="section-badge badge-new">v3 new</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="m">⚡ BLUEPR8NT: 5/5 gates  [<span class="g">DIL✓</span> <span class="g">SCR✓</span> <span class="g">QD✓</span> <span class="g">CONF✓</span> <span class="g">SEC✓</span>]</span></div>
+    <div class="code-line"><span class="m">  Dataset: A -19.8% / E -37.0%  MFE -47.1%   vs rest A -5.1% / E -14.4%</span></div>
+    <div class="code-line"><span class="m">  ★ All 5 gates → E priority. Expected E → −37%</span></div>
+  </div>
+  <p>BLUEPR8NT is the highest-tier Cat5ive pattern — 9 sessions in the backtest dataset averaged A −19.8% and E −37.0%, vs the rest at A −5.1% and E −14.4%. That's 3-4× better than the average qualifying setup.</p>
+  <table class="field-table">
+    <tr><th>Gate</th><th>Label</th><th>Pass condition</th></tr>
+    <tr><td class="field-name">DIL✓/✗</td><td>Dilution Dump</td><td>Regime = DILUTION_DUMP</td></tr>
+    <tr><td class="field-name">SCR✓/✗</td><td>High Score</td><td>Pre-fall score ≥ 40 (dataset avg = 48.6 for BP vs 32.6 for rest)</td></tr>
+    <tr><td class="field-name">QD✓/✗</td><td>Quiet Dump</td><td>quiet_dump_proxy = True</td></tr>
+    <tr><td class="field-name">CONF✓/✗</td><td>High Confidence</td><td>Classifier confidence ≥ 70%</td></tr>
+    <tr><td class="field-name">SEC✓/✗</td><td>Dilution Confirmed</td><td>SEC 424B5 filed within 30 days OR DILUTION_DUMP regime confirmed</td></tr>
+  </table>
+
+  <div class="gate-row">
+    <div class="gate-pill gate-pass">⚡ 5/5 BLUEPR8NT → Prioritize E. Expected E → −37%, MFE −47%</div>
+    <div class="gate-pill gate-warn">4/5 BLUEPR8NT_CANDIDATE → Strong BP. E over A.</div>
+    <div class="gate-pill gate-warn">3/5 BP_WATCH → Monitor for confirmation</div>
+    <div class="gate-pill gate-fail">0-2/5 NOT_BP</div>
+  </div>
+  <div class="tip">When BLUEPR8NT fires, Strategy E (enter at HOD) significantly outperforms Strategy A. Dataset E MFE avg = −47.1% vs A MFE = much lower. Size normally for E, let it run.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────── SECTION 16 -->
+<div class="section" id="s16">
+  <div class="section-header">
+    <span class="section-num">16</span>
+    <span class="section-title">TICK LAYER</span>
+    <span class="section-badge badge-ticks">Tradier key required</span>
+  </div>
+  <div class="terminal">
+    <div style="height:14px"></div>
+    <div class="code-line"><span class="c">TICK:  n=8,350  Rate:285/min  VPIN:0.612  Buy:38%  Sell:57%</span></div>
+    <div class="code-line">       LargePrint:24%  DPproxy:8%  PathEff:0.831  ScoreΔ:<span class="g">+24</span></div>
+    <div class="code-line">       <span class="c">LOW_BUY_PRESSURE(38%): +10 | LARGE_PRINTS(24%): +8 | HIGH_VPIN(0.61): +6</span></div>
+  </div>
+  <p>The tick layer computes PM trade-print features from Tradier's <code>interval=tick</code> endpoint (04:00-09:30 ET window, fetched in 30-min chunks). Fetched automatically when Tradier key is present.</p>
+  <table class="field-table">
+    <tr><th>Field</th><th>Meaning</th><th>Threshold</th></tr>
+    <tr>
+      <td class="field-name">n=</td>
+      <td>Total tick prints in the PM window</td>
+      <td>High-activity tickers (SOAR) can have 50,000+ prints across full PM</td>
+    </tr>
+    <tr>
+      <td class="field-name">Rate</td>
+      <td>Prints per minute during PM</td>
+      <td><span class="field-good">&gt;50/min</span> = +5 score (active algo environment)<br><span class="field-neutral">&lt;5/min</span> = quiet market</td>
+    </tr>
+    <tr>
+      <td class="field-name">VPIN</td>
+      <td>Order flow toxicity proxy (bulk volume classification). Measures imbalance between buyer/seller volume.</td>
+      <td>
+        <span class="field-good">&gt;0.55</span> = +6 score (toxic, informed trading)<br>
+        <span class="field-bad">&lt;0.20</span> = −5 score (benign, no directional pressure)<br>
+        <span class="field-warn">0.20-0.55</span> = moderate
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">Buy % / Sell %</td>
+      <td>% of PM volume in up-ticks (buyer aggressor) vs down-ticks (seller aggressor)</td>
+      <td>
+        <span class="field-good">Sell &gt;65%</span> = sellers dominating PM (+10 score)<br>
+        <span class="field-bad">Buy &gt;65%</span> = buyers active (−10 score, don't short)<br>
+        <span class="field-neutral">Split 40/60</span> = contested
+      </td>
+    </tr>
+    <tr>
+      <td class="field-name">LargePrint %</td>
+      <td>% of PM volume in prints &gt;5× average size. Proxy for block trades / institutional activity.</td>
+      <td><span class="field-good">&gt;20%</span> = +8 score (institutional blocks printing)</td>
+    </tr>
+    <tr>
+      <td class="field-name">DPproxy %</td>
+      <td>% of PM volume in prints &gt;10× average size. Higher bar for institutional proxy.</td>
+      <td><span class="field-good">&gt;25%</span> = +8 score (very large prints, quiet distribution)</td>
+    </tr>
+    <tr>
+      <td class="field-name">PathEff</td>
+      <td>Net PM move / total tick-to-tick path. How directional was the PM move?</td>
+      <td><span class="field-good">Close to 1.0</span> = clean directional move<br><span class="field-bad">Close to 0.0</span> = random walk, no conviction</td>
+    </tr>
+    <tr>
+      <td class="field-name">ScoreΔ</td>
+      <td>Net score adjustment from tick layer (added to v3 base score)</td>
+      <td><span class="field-good">Positive</span> = tick data confirms short setup<br><span class="field-bad">Negative</span> = tick data contradicts short setup</td>
+    </tr>
+  </table>
+  <div class="note">Tick score adjustments are marked CALIBRATION_v1 — thresholds are initial estimates based on OHLCV backtest analogs, not yet directly validated against 50+ live tick sessions. Use as confirming evidence, not primary gate.</div>
+</div>
+
+<!-- FOOTER -->
+<div style="margin-top:60px; padding-top:20px; border-top:1px solid var(--border); color:var(--dim); font-family:'IBM Plex Mono',monospace; font-size:11px; line-height:1.8;">
+  <div style="color:var(--green); font-size:13px; margin-bottom:8px;">Quick Decision Logic</div>
+  <div>HIGH_VALUE + Grade A + WC ≥6/7 + BP ≥4/5  →  FULL SIZE, STRATEGY E</div>
+  <div>ENTER_E/A + Grade B + WC ≥4/7             →  STANDARD SIZE, enter</div>
+  <div>WAIT + any DQ active                        →  SKIP this poll, monitor</div>
+  <div>SKIP                                        →  No trade</div>
+  <div>WC 0-1/7 regardless of signal              →  PASS — setup not confirmed</div>
+  <div>LATE_HOD −20 + HEAVY_VWAP −18 active       →  CAUTION even if score is high</div>
+  <div style="margin-top:12px; color:var(--dim)">Cat5ive Classifier v4.0 — Output Reference Guide</div>
+</div>
+
+</div><!-- content -->
+</div><!-- page-body -->
+</body>
+</html>
