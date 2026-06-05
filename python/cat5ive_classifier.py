@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 """
-cat5ive_classifier_v3.py Ã¢Â€Â” Real-Time Trade Classifier
+cat5ive_classifier_v3.py — Real-Time Trade Classifier
 =======================================================
-v3.0 Ã¢Â€Â” Data-heist gates wired in from dual backtest analysis.
+v3.0 — Data-heist gates wired in from dual backtest analysis.
 
 ZERO DEPENDENCIES on cat5ive_sim.py or any other local file.
 Single self-contained file. Copy anywhere. Run anywhere.
 
-Fetches live 1-minute bars from Tradier Ã¢Â†Â’ Polygon Ã¢Â†Â’ yfinance.
+Fetches live 1-minute bars from Tradier → Polygon → yfinance.
 Computes signals, S1/S2 classification, scoring, and alert grading
 from raw OHLCV bar data only.
 
 NEW IN v3 vs v2:
-  Ã¢ÂœÂ¦ vol_above_vwap_pct gate  (>80% Ã¢Â†Â’ Ã¢ÂˆÂ’18 score, confirmed disqualifier)
-  Ã¢ÂœÂ¦ hod_timing gate          (>60% elapsed Ã¢Â†Â’ Ã¢ÂˆÂ’20 score, hard gate)
-  Ã¢ÂœÂ¦ intraday_gain_bucket     (45-70% spike Ã¢Â†Â’ Ã¢ÂˆÂ’15 score; SUB10 Ã¢Â†Â’ +bonus)
-  Ã¢ÂœÂ¦ quiet_dump_proxy         (intraday: gain<45% AND >20% below PM open Ã¢Â†Â’ +15)
-  Ã¢ÂœÂ¦ at/above HOD block       (entry Ã¢Â‰Â¥ 0% from HOD Ã¢Â†Â’ disqualifier)
-  Ã¢ÂœÂ¦ float_turnover gate      (<10% Ã¢Â†Â’ disqualifier; fetched FMPÃ¢Â†Â’FinvizÃ¢Â†Â’yfinance)
-  Ã¢ÂœÂ¦ session_low gate         (LOD <10% below PM open Ã¢Â†Â’ warning)
-  Ã¢ÂœÂ¦ score_trajectory         (OLS slope across polls Ã¢Â†Â’ RISING/FLAT/FALLING)
-  Ã¢ÂœÂ¦ entry_c detection        (3 clean bars post-entry Ã¢Â†Â’ position-add signal)
-  Ã¢ÂœÂ¦ momentum_decay_rate      (HOD fade rate; moderate = bonus)
-  Ã¢ÂœÂ¦ G5 threshold tightened   (0.65 Ã¢Â†Â’ 0.55 per data; <55% conf = losing trade)
+  ✦ vol_above_vwap_pct gate  (>80% → −18 score, confirmed disqualifier)
+  ✦ hod_timing gate          (>60% elapsed → −20 score, hard gate)
+  ✦ intraday_gain_bucket     (45-70% spike → −15 score; SUB10 → +bonus)
+  ✦ quiet_dump_proxy         (intraday: gain<45% AND >20% below PM open → +15)
+  ✦ at/above HOD block       (entry ≥ 0% from HOD → disqualifier)
+  ✦ float_turnover gate      (<10% → disqualifier; fetched FMP→Finviz→yfinance)
+  ✦ session_low gate         (LOD <10% below PM open → warning)
+  ✦ score_trajectory         (OLS slope across polls → RISING/FLAT/FALLING)
+  ✦ entry_c detection        (3 clean bars post-entry → position-add signal)
+  ✦ momentum_decay_rate      (HOD fade rate; moderate = bonus)
+  ✦ G5 threshold tightened   (0.65 → 0.55 per data; <55% conf = losing trade)
 
 SETUP (one time):
   setx TRADIER_API_KEY  "your_production_key"
   setx POLYGON_API_KEY  "your_polygon_key"
-  setx FMP_API_KEY      "your_fmp_key"        (optional Ã¢Â€Â” improves float fetch)
+  setx FMP_API_KEY      "your_fmp_key"        (optional — improves float fetch)
 
   OR create config.json anywhere and pass with --config:
   {
@@ -50,37 +50,36 @@ APP INTEGRATION (subprocess):
       ['python', 'cat5ive_classifier_v3.py', 'LABT', '--json', '--once'],
       capture_output=True, text=True)
   signal = json.loads(out.stdout.strip())
-  # signal['signal']              Ã¢Â†Â’ 'HIGH_VALUE' / 'ENTER_E' / 'WAIT' / 'SKIP'
-  # signal['quality_score']       Ã¢Â†Â’ 0-100
-  # signal['grade']               Ã¢Â†Â’ 'A' / 'B' / 'C'
-  # signal['quiet_dump_proxy']    Ã¢Â†Â’ True/False  (v3 new)
-  # signal['intraday_gain_bucket']Ã¢Â†Â’ 'SUB10' / '10-20pct' / '45-70pct' etc (v3)
-  # signal['score_trajectory']    Ã¢Â†Â’ 'RISING' / 'FLAT' / 'FALLING'  (v3)
-  # signal['entry_c_fired']       Ã¢Â†Â’ True/False  (v3 new)
+  # signal['signal']              → 'HIGH_VALUE' / 'ENTER_E' / 'WAIT' / 'SKIP'
+  # signal['quality_score']       → 0-100
+  # signal['grade']               → 'A' / 'B' / 'C'
+  # signal['quiet_dump_proxy']    → True/False  (v3 new)
+  # signal['intraday_gain_bucket']→ 'SUB10' / '10-20pct' / '45-70pct' etc (v3)
+  # signal['score_trajectory']    → 'RISING' / 'FLAT' / 'FALLING'  (v3)
+  # signal['entry_c_fired']       → True/False  (v3 new)
 """
 
 import sys
-if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 import os, sys, time, json, argparse, math
 from collections import deque
 from datetime import datetime, date, timedelta
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List
 
-# Ã¢Â”Â€Ã¢Â”Â€ Optional imports (graceful fallback) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── Optional imports (graceful fallback) ─────────────────────────────────────
 try:    import requests;    HAS_REQUESTS = True
 except: HAS_REQUESTS = False
 
 try:    import yfinance as yf; HAS_YF = True
 except: HAS_YF = False
 
-# Ã¢Â”Â€Ã¢Â”Â€ Terminal colours Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── Terminal colours ──────────────────────────────────────────────────────────
 BOLD='\\033[1m'; RESET='\\033[0m'; GRN='\\033[92m'; YEL='\\033[93m'
 RED='\\033[91m'; CYN='\\033[96m'; MAG='\\033[95m'; DIM='\\033[2m'
 
-# Ã¢Â”Â€Ã¢Â”Â€ Signal definitions (guidelines v3.0) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── Signal definitions (guidelines v3.0) ─────────────────────────────────────
 TIER_1 = {'SUPPLY_OVERHANG','AH_REVERSAL_TRAP','LIVE_STRENGTH',
            'DAY3_EXHAUSTION','LATE_PHASE','MEAN_REVERSION_GAP'}
 TIER_2 = {'PM_SELL_PRESSURE','OVEREXTENDED_AH_S2','PM_FADE_CONFIRMED',
@@ -89,7 +88,7 @@ TIER_3 = {'VWAP_FAIL_S1','DILUTION_DUMP_SIGNAL','SERIAL_HEAVY',
            'OVEREXTENDED_OPEN','HIGH_VOL_REJECTION'}
 ALL_Q  = TIER_1 | TIER_2 | TIER_3
 
-# v3 Ã¢Â€Â” new signals (informational, used in score adjustments)
+# v3 — new signals (informational, used in score adjustments)
 V3_SIGNALS = {'LATE_HOD', 'HEAVY_VWAP_DIST', 'MEDIUM_SPIKE_ZONE',
               'QUIET_DUMP_PROXY', 'ENTRY_C_WINDOW', 'LOW_SESSION_LOW'}
 
@@ -111,13 +110,13 @@ EXPECTED = {
     ('UNKNOWN',             'E'): ('+22%','-18%','+25%'),
 }
 
-# Ã¢Â”Â€Ã¢Â”Â€ Score history for trajectory computation (per ticker, in-memory) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── Score history for trajectory computation (per ticker, in-memory) ─────────
 _score_history: dict = {}   # {ticker: deque(maxlen=20)}
-_float_cache: dict   = {}   # {ticker: int}  Ã¢Â€Â” float shares, session-cached
+_float_cache: dict   = {}   # {ticker: int}  — float shares, session-cached
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 1 Ã¢Â€Â” BAR DATA FETCHING
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 1 — BAR DATA FETCHING
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class Bar:
@@ -233,7 +232,7 @@ def fetch_yfinance(ticker: str, date_str: str) -> List[Bar]:
 
 def get_bars(ticker: str, date_str: str,
              tradier_key: str, polygon_key: str) -> List[Bar]:
-    """Fetch bars Ã¢Â€Â” Tradier Ã¢Â†Â’ Polygon Ã¢Â†Â’ yfinance."""
+    """Fetch bars — Tradier → Polygon → yfinance."""
     bars = fetch_tradier(ticker, date_str, tradier_key)
     if bars: return bars
     bars = fetch_polygon(ticker, date_str, polygon_key)
@@ -241,9 +240,9 @@ def get_bars(ticker: str, date_str: str,
     return fetch_yfinance(ticker, date_str)
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 2 Ã¢Â€Â” TECHNICAL INDICATORS + v3 OHLCV FEATURES
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 2 — TECHNICAL INDICATORS + v3 OHLCV FEATURES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def compute_vwap(bars: List[Bar]) -> List[float]:
     """Cumulative VWAP from session start."""
@@ -297,7 +296,7 @@ def pm_stats(bars: List[Bar]):
     return pm_high, pm_low, pm_last, pm_move
 
 
-# Ã¢Â”Â€Ã¢Â”Â€ v3 OHLCV features Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── v3 OHLCV features ─────────────────────────────────────────────────────────
 
 def compute_pm_open(bars: List[Bar]) -> float:
     """First PM bar open price."""
@@ -328,11 +327,11 @@ def compute_intraday_gain(bars: List[Bar]) -> tuple:
     (intraday_gain_pct, bucket) from PM open to current HOD.
 
     Buckets from dual backtest:
-      SUB10    Ã¢Â†Â’ Ã¢ÂˆÂ’13.7% avg A   (strong short setup)
-      10-20pct Ã¢Â†Â’ Ã¢ÂˆÂ’11.0%          (strong)
-      20-45pct Ã¢Â†Â’ Ã¢ÂˆÂ’4.8%           (moderate)
-      45-70pct Ã¢Â†Â’ +5.4%           (LOSING Ã¢Â€Â” penalise)
-      SPIKE70+ Ã¢Â†Â’ Ã¢ÂˆÂ’2.0%           (mixed)
+      SUB10    → −13.7% avg A   (strong short setup)
+      10-20pct → −11.0%          (strong)
+      20-45pct → −4.8%           (moderate)
+      45-70pct → +5.4%           (LOSING — penalise)
+      SPIKE70+ → −2.0%           (mixed)
     """
     pm_open = compute_pm_open(bars)
     if pm_open <= 0: return 0.0, 'UNKNOWN'
@@ -351,8 +350,8 @@ def compute_intraday_gain(bars: List[Bar]) -> tuple:
 def compute_session_low_vs_pm_open(bars: List[Bar]) -> float:
     """
     How far LOD is below PM open (positive = LOD is below open).
-    <10% = tight Ã¢Â€Â” stock barely dipped Ã¢Â€Â” losing A setup (+4.7%).
-    >25% = deep Ã¢Â€Â” strong short confirmation.
+    <10% = tight — stock barely dipped — losing A setup (+4.7%).
+    >25% = deep — strong short confirmation.
     """
     pm_open = compute_pm_open(bars)
     if pm_open <= 0: return 0.0
@@ -367,7 +366,7 @@ def compute_quiet_dump_proxy(bars: List[Bar]) -> bool:
     True when:
       - intraday gain < 45% (not a full spike)
       - current price is already > 20% below PM open
-    Data result: A = Ã¢ÂˆÂ’25.3% avg when flag=1 (strongest bucket in report).
+    Data result: A = −25.3% avg when flag=1 (strongest bucket in report).
     At close this becomes the actual quiet_dump_flag; intraday this is a leading indicator.
     """
     gain_pct, bucket = compute_intraday_gain(bars)
@@ -383,8 +382,8 @@ def compute_quiet_dump_proxy(bars: List[Bar]) -> bool:
 def compute_hod_set_pct(bars: List[Bar]) -> float:
     """
     % of current session elapsed when HOD was set.
-    >60% = late HOD Ã¢Â€Â” losing setup (A = +16.2%).
-    <30% = early HOD Ã¢Â€Â” best setup (A = Ã¢ÂˆÂ’10.6%).
+    >60% = late HOD — losing setup (A = +16.2%).
+    <30% = early HOD — best setup (A = −10.6%).
     """
     if not bars: return 0.0
     _, hod_idx, _, _ = hod_lod(bars)
@@ -394,9 +393,9 @@ def compute_hod_set_pct(bars: List[Bar]) -> float:
 def compute_score_trajectory(ticker: str, current_score: int) -> str:
     """
     OLS slope of pre-fall score across recent polls.
-    RISING = score building Ã¢Â†Â’ stronger setup.
-    FALLING = score eroding Ã¢Â†Â’ reduce size.
-    Requires Ã¢Â‰Â¥5 data points; returns FLAT on first few polls.
+    RISING = score building → stronger setup.
+    FALLING = score eroding → reduce size.
+    Requires ≥5 data points; returns FLAT on first few polls.
     """
     if ticker not in _score_history:
         _score_history[ticker] = deque(maxlen=20)
@@ -421,11 +420,11 @@ def compute_score_trajectory(ticker: str, current_score: int) -> str:
 
 def detect_entry_c(bars: List[Bar], entry_fired_bar_idx: int = -1) -> bool:
     """
-    Entry C Ã¢Â€Â” least resistance entry signal.
+    Entry C — least resistance entry signal.
     After dual entry has fired, scan for 3 consecutive clean bars:
-      HIGH < 1.01 ÃƒÂ— prev_close (no rally)
+      HIGH < 1.01 × prev_close (no rally)
       close < prev_close (descending)
-    Data result: A = Ã¢ÂˆÂ’8.7% when Entry C found vs Ã¢ÂˆÂ’4.2% when not found.
+    Data result: A = −8.7% when Entry C found vs −4.2% when not found.
     If entry_fired_bar_idx = -1, uses the first qualifying signal bar.
     """
     if len(bars) < 4: return False
@@ -450,8 +449,8 @@ def detect_entry_c(bars: List[Bar], entry_fired_bar_idx: int = -1) -> bool:
 def compute_momentum_decay(bars: List[Bar]) -> float:
     """
     Rate at which price is fading from HOD per bar elapsed.
-    momentum_decay = (HOD - current_price) / (HOD ÃƒÂ— bars_since_HOD)
-    Moderate range 0.01-0.05 = best A outcome (A = Ã¢ÂˆÂ’12.7% avg).
+    momentum_decay = (HOD - current_price) / (HOD × bars_since_HOD)
+    Moderate range 0.01-0.05 = best A outcome (A = −12.7% avg).
     """
     if len(bars) < 2: return 0.0
     hod_v, hod_idx, _, _ = hod_lod(bars)
@@ -462,15 +461,15 @@ def compute_momentum_decay(bars: List[Bar]) -> float:
     return round((hod_v - price) / (hod_v * bars_since), 4)
 
 
-# Ã¢Â”Â€Ã¢Â”Â€ Float share fetching (FMP Ã¢Â†Â’ Finviz Ã¢Â†Â’ yfinance) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── Float share fetching (FMP → Finviz → yfinance) ───────────────────────────
 
 def fetch_float_shares(ticker: str, fmp_key: str = '') -> int:
     """
     Fetch float shares for a ticker. Called once at startup; cached in
     _float_cache for the session.
 
-    Sources: FMP Ã¢Â†Â’ Finviz scrape Ã¢Â†Â’ yfinance
-    (EDGAR excluded Ã¢Â€Â” reports shares outstanding, not float)
+    Sources: FMP → Finviz scrape → yfinance
+    (EDGAR excluded — reports shares outstanding, not float)
     Returns 0 if no source succeeds.
     """
     t = ticker.upper()
@@ -537,9 +536,9 @@ def fetch_float_shares(ticker: str, fmp_key: str = '') -> int:
     return float_shares
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 3 Ã¢Â€Â” SIGNAL DETECTION (v2 signals + v3 new signals)
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 3 — SIGNAL DETECTION (v2 signals + v3 new signals)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def detect_signals(bars: List[Bar], vwaps: List[float],
                    float_turnover_pct: float = 0.0) -> dict:
@@ -565,7 +564,7 @@ def detect_signals(bars: List[Bar], vwaps: List[float],
 
     signals = {}
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v2 signals (unchanged) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v2 signals (unchanged) ────────────────────────────────────────────────
 
     # VWAP_FAIL_S1
     below_vwap = price < cur_vwap
@@ -622,7 +621,7 @@ def detect_signals(bars: List[Bar], vwaps: List[float],
     else:
         signals['HIGH_VOL_REJECTION'] = False
 
-    # LIVE_STRENGTH (inverse Ã¢Â€Â” bad for short)
+    # LIVE_STRENGTH (inverse — bad for short)
     signals['LIVE_STRENGTH'] = price > cur_vwap and len(rth) > 10
 
     # MEAN_REVERSION_GAP
@@ -643,12 +642,12 @@ def detect_signals(bars: List[Bar], vwaps: List[float],
     else:
         signals['PM_FADE_MOVE'] = False
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v3 NEW SIGNALS Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v3 NEW SIGNALS ────────────────────────────────────────────────────────
 
     # LATE_HOD: HOD formed in last 40% of session elapsed
     # Data: Late HOD >60% = A return +16.2% (LOSING). >40% = caution zone.
     # FIX v3.1: require len(bars) > 120 (2+ hours elapsed) before firing.
-    # hod_set_pct uses hod_idx / len(bars_so_far) Ã¢Â€Â” in early session this
+    # hod_set_pct uses hod_idx / len(bars_so_far) — in early session this
     # produces false positives because any recent HOD reads as 'late'.
     hod_pct = compute_hod_set_pct(bars)
     signals['LATE_HOD'] = (hod_pct > 60.0 and len(bars) > 120)
@@ -662,7 +661,7 @@ def detect_signals(bars: List[Bar], vwaps: List[float],
     # Data: 45-70pct bucket = A return +5.4% (LOSING)
     # FIX v3.1: only fire when HOD has been stable 30+ bars.
     # Running gain_bucket can show 45-70% transiently while HOD is still
-    # forming Ã¢Â€Â” the bucket may shift down once HOD stops updating.
+    # forming — the bucket may shift down once HOD stops updating.
     _, gain_bucket = compute_intraday_gain(bars)
     _hod_stable_ms = (len(bars) - 1 - hod_lod(bars)[1]) >= 30
     signals['MEDIUM_SPIKE_ZONE'] = (gain_bucket == '45-70pct' and _hod_stable_ms)
@@ -673,20 +672,20 @@ def detect_signals(bars: List[Bar], vwaps: List[float],
     signals['LOW_SESSION_LOW'] = (0 < slvpo < 10.0)
 
     # QUIET_DUMP_PROXY: small gain + already deep below PM open
-    # Data: quiet_dump_flag = A return Ã¢ÂˆÂ’25.3% (STRONGEST bucket in report)
+    # Data: quiet_dump_flag = A return −25.3% (STRONGEST bucket in report)
     signals['QUIET_DUMP_PROXY'] = compute_quiet_dump_proxy(bars)
 
     # ENTRY_C_WINDOW: 3-bar clean descending window post-entry
-    # Data: Entry C fired = A Ã¢ÂˆÂ’8.7% vs A Ã¢ÂˆÂ’4.2% when not fired
+    # Data: Entry C fired = A −8.7% vs A −4.2% when not fired
     signals['ENTRY_C_WINDOW'] = detect_entry_c(bars)
 
     # Return only True signals
     return {k: v for k, v in signals.items() if v}
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 4 Ã¢Â€Â” S1/S2 CLASSIFICATION
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 4 — S1/S2 CLASSIFICATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class SessionState:
@@ -749,9 +748,9 @@ def classify_section(bars: List[Bar], vwaps: List[float],
         return 'S2', conf
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 4b Ã¢Â€Â” SCORING + REGIME
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 4b — SCORING + REGIME
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def compute_score(signals: dict, section: str,
                   confidence: int, bars: List[Bar],
@@ -761,12 +760,12 @@ def compute_score(signals: dict, section: str,
     v3: data-heist gate adjustments applied directly to score.
 
     Gate adjustments (from dual backtest analysis):
-      LATE_HOD        Ã¢Â†Â’ Ã¢ÂˆÂ’20  (A return +16.2% in late bucket = LOSING)
-      HEAVY_VWAP_DIST Ã¢Â†Â’ Ã¢ÂˆÂ’18  (A return +12.5% in >80% bucket = LOSING)
-      MEDIUM_SPIKE_ZONEÃ¢Â†Â’ Ã¢ÂˆÂ’15 (A return +5.4% in 45-70% bucket = LOSING)
-      QUIET_DUMP_PROXY Ã¢Â†Â’ +15 (A return Ã¢ÂˆÂ’25.3% when flag=1 = STRONGEST bucket)
-      LOW_SESSION_LOW  Ã¢Â†Â’ Ã¢ÂˆÂ’10 (A return +4.7% when LOD<10% below open = LOSING)
-      float_turnover<10Ã¢Â†Â’ Ã¢ÂˆÂ’10 (A return +0.1% when float turnover low = LOSING)
+      LATE_HOD        → −20  (A return +16.2% in late bucket = LOSING)
+      HEAVY_VWAP_DIST → −18  (A return +12.5% in >80% bucket = LOSING)
+      MEDIUM_SPIKE_ZONE→ −15 (A return +5.4% in 45-70% bucket = LOSING)
+      QUIET_DUMP_PROXY → +15 (A return −25.3% when flag=1 = STRONGEST bucket)
+      LOW_SESSION_LOW  → −10 (A return +4.7% when LOD<10% below open = LOSING)
+      float_turnover<10→ −10 (A return +0.1% when float turnover low = LOSING)
     """
     score = 0
     score += confidence // 2    # up to 47 pts from confidence
@@ -796,12 +795,12 @@ def compute_score(signals: dict, section: str,
                        if len(_ht) >= 5 and ':' in _ht else 0)
         except Exception:
             _hod_et = 0
-        if 0 < _hod_et < 34200:   # PM HOD Ã¢Â€Â” definitive early signal
+        if 0 < _hod_et < 34200:   # PM HOD — definitive early signal
             score += 15
         elif 0 < _hod_et < 37800:  # HOD before 10:30am RTH
             score += 8
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v3 gate adjustments Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v3 gate adjustments ───────────────────────────────────────────────────
 
     if signals.get('LATE_HOD'):
         score -= 20                 # HOD set after 60% of session = losing
@@ -822,8 +821,8 @@ def compute_score(signals: dict, section: str,
     if 0 < float_turnover_pct < 10.0:
         score -= 10                 # Low float rotation = weak setup
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Winners Circle positive rewards (previously missing) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
-    # Data: vol_above_vwap < 40% = A Ã¢ÂˆÂ’14.1% avg (best bucket by distribution)
+    # ── Winners Circle positive rewards (previously missing) ─────────────────
+    # Data: vol_above_vwap < 40% = A −14.1% avg (best bucket by distribution)
     if bars:
         _wc_vwaps = compute_vwap(bars)
         _vav = compute_vol_above_vwap(bars, _wc_vwaps)
@@ -836,31 +835,31 @@ def compute_score(signals: dict, section: str,
     if bars:
         _slvpo = compute_session_low_vs_pm_open(bars)
         if _slvpo > 20.0:
-            score += 8    # Stock dumped 20%+ from open Ã¢Â€Â” thesis confirmed
+            score += 8    # Stock dumped 20%+ from open — thesis confirmed
         elif _slvpo > 10.0:
             score += 4    # Meaningful dip from open
 
-    # Data: confidence Ã¢Â‰Â¥ 85% = A Ã¢ÂˆÂ’10.3% avg vs +1.8% for <55%
+    # Data: confidence ≥ 85% = A −10.3% avg vs +1.8% for <55%
     if confidence >= 85:
         score += 8    # High classifier certainty = strongest S1 conviction
     elif confidence >= 70:
         score += 4    # Good conviction
 
-    # SUB10 gain bonus Ã¢Â€Â” small spike + descending = strong setup
+    # SUB10 gain bonus — small spike + descending = strong setup
     # FIX v3.1: require HOD stable 30+ bars before awarding bucket bonus.
     # Running HOD can temporarily show SUB10 while the spike is still forming.
     _, gain_bucket = compute_intraday_gain(bars)
     _hod_stable_sub10 = (len(bars) - 1 - hod_lod(bars)[1]) >= 30
     if gain_bucket == 'SUB10' and signals.get('VWAP_FAIL_S1') and _hod_stable_sub10:
-        score += 8                  # A = Ã¢ÂˆÂ’13.7% in SUB10 bucket (confirmed HOD)
+        score += 8                  # A = −13.7% in SUB10 bucket (confirmed HOD)
 
     # FIX v3.1 Fix 7: bid_depth_decay bonus uses PM window (not pre_hod).
-    # pre_hod window requires knowing future HOD timestamp Ã¢Â€Â” future-contaminated.
-    # PM window (bid_depth_decay_pm) is finalized at 9:30am Ã¢Â€Â” live-safe.
+    # pre_hod window requires knowing future HOD timestamp — future-contaminated.
+    # PM window (bid_depth_decay_pm) is finalized at 9:30am — live-safe.
     _bdp = float_turnover_pct  # reuse float_turnover_pct scope; actual value below
     # Note: bid_depth_decay_pm comes from L2 data when available via l1_l2_extractor
     # In live classifier, passed via extra_fields dict if L2 feed is connected.
-    # Score impact: wallpaper book (ÃŽÂ»>0.7) in PM = +6 pts (A=Ã¢ÂˆÂ’8.3% avg)
+    # Score impact: wallpaper book (λ>0.7) in PM = +6 pts (A=−8.3% avg)
 
     score = max(0, min(150, score))
 
@@ -902,7 +901,7 @@ def detect_regime(bars: List[Bar], pm_move: float,
 
 
 def count_rth_flips(bars: List[Bar], vwaps: List[float]) -> int:
-    """Count S1Ã¢Â†Â”S2 flips in RTH bars."""
+    """Count S1↔S2 flips in RTH bars."""
     rth_idx   = [i for i, b in enumerate(bars) if b.session == 'RTH']
     if len(rth_idx) < 2: return 0
 
@@ -942,9 +941,9 @@ def classify_velocity(bars: List[Bar], vwaps: List[float]) -> str:
     return 'FALLING_FAST'
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 5 Ã¢Â€Â” CLASSIFICATION ENGINE
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 5 — CLASSIFICATION ENGINE
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class ClassifierSignal:
@@ -1013,9 +1012,9 @@ class ClassifierSignal:
     t2_entry_type:      str   = 'NOT_QUALIFIED'
     last_bar_time:      str   = ''
     sec_cache_age_hrs:  float = 0.0
-    # Ã¢Â”Â€Ã¢Â”Â€ v3 new fields Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v3 new fields ──────────────────────────────────────────────────────────
     vol_above_vwap_pct:     float = 0.0   # % of volume traded above VWAP
-    intraday_gain_pct:      float = 0.0   # (HOD - PM_open) / PM_open ÃƒÂ— 100
+    intraday_gain_pct:      float = 0.0   # (HOD - PM_open) / PM_open × 100
     intraday_gain_bucket:   str   = ''    # SUB10/10-20pct/20-45pct/45-70pct/SPIKE70+
     session_low_vs_pm_open: float = 0.0   # how far LOD below PM open %
     quiet_dump_proxy:       bool  = False # intraday quiet dump signal
@@ -1023,7 +1022,7 @@ class ClassifierSignal:
     pm_open_price:          float = 0.0   # first PM bar open
     entry_c_fired:          bool  = False # 3-bar clean window detected
     float_shares:           int   = 0     # float shares from FMP/Finviz/yfinance
-    float_turnover_pct:     float = 0.0   # PM_volume / float_shares ÃƒÂ— 100
+    float_turnover_pct:     float = 0.0   # PM_volume / float_shares × 100
     momentum_decay_rate:    float = 0.0   # price fade from HOD per bar
     hod_set_pct:            float = 0.0   # % session elapsed when HOD formed
     v3_gate_notes:          List[str] = None  # v3 gate adjustment log
@@ -1084,10 +1083,10 @@ def compute_extended(bars: List[Bar], vwaps: List[float],
     if not bars:
         return dict(pm_bars=0, rth_bars=0, pm_move_pct=0.0, pm_high=0.0,
                     gap_pct=0.0, vwap=0.0, atr=0.0, price_vs_vwap=0.0,
-                    hod_time='Ã¢Â€Â”', lod_time='Ã¢Â€Â”', hod_bars_ago=0,
+                    hod_time='—', lod_time='—', hod_bars_ago=0,
                     consec_s1=0, s1_pct=0.0, vol_spike=0.0,
-                    session_pct=0.0, all_signals=[], suggested_size='Ã¢Â€Â”',
-                    next_watch='Ã¢Â€Â”',
+                    session_pct=0.0, all_signals=[], suggested_size='—',
+                    next_watch='—',
                     # v3 fields
                     vol_above_vwap_pct=0.0, intraday_gain_pct=0.0,
                     intraday_gain_bucket='', session_low_vs_pm_open=0.0,
@@ -1116,8 +1115,8 @@ def compute_extended(bars: List[Bar], vwaps: List[float],
     atr = compute_atr(bars, 14)
 
     hod_v, hod_idx, lod_v, lod_idx = hod_lod(bars)
-    hod_time = bars[hod_idx].ts if hod_idx < len(bars) else 'Ã¢Â€Â”'
-    lod_time = bars[lod_idx].ts if lod_idx < len(bars) else 'Ã¢Â€Â”'
+    hod_time = bars[hod_idx].ts if hod_idx < len(bars) else '—'
+    lod_time = bars[lod_idx].ts if lod_idx < len(bars) else '—'
     hod_bars_ago = len(bars) - 1 - hod_idx
 
     consec_s1 = 0
@@ -1155,27 +1154,27 @@ def compute_extended(bars: List[Bar], vwaps: List[float],
 
     ez = entry_zone(round((price - hod_v) / hod_v * 100, 2) if hod_v > 0 else 0)
     if section == 'S2':
-        nxt = f"Wait for S1 flip Ã¢Â€Â” currently S2 ({consec_s1} bars)"
+        nxt = f"Wait for S1 flip — currently S2 ({consec_s1} bars)"
     elif ez == 'DEAD_ZONE':
         zone_a_px = round(hod_v * 0.95, 3)
         zone_b_px = round(hod_v * 0.85, 3)
-        nxt = (f"Exit dead zone Ã¢Â€Â” need price > ${zone_a_px} (Zone A) "
+        nxt = (f"Exit dead zone — need price > ${zone_a_px} (Zone A) "
                f"or < ${zone_b_px} (Zone B)")
         if score >= 75 and section == 'S1':
-            nxt += " | HIGH tier Ã¢Â€Â” re-evaluate at RTH open for Strategy A"
+            nxt += " | HIGH tier — re-evaluate at RTH open for Strategy A"
     elif chop >= 80:
         if score >= 75 and flips <= 3 and section == 'S1':
-            nxt = f"Chop {chop:.0f}% high but Score {score} + {flips} flips Ã¢Â€Â” monitor"
+            nxt = f"Chop {chop:.0f}% high but Score {score} + {flips} flips — monitor"
         else:
             nxt = f"Wait for chop to drop below 80% (currently {chop:.0f}%)"
     elif flips > 6 and flips <= 14:
-        nxt = f"Many flips ({flips}) Ã¢Â€Â” reduce size, confirm direction"
+        nxt = f"Many flips ({flips}) — reduce size, confirm direction"
     elif not set(all_sigs) & ALL_Q:
         nxt = "Wait for qualifying signal (VWAP_FAIL_S1, PM_SELL_PRESSURE, etc)"
     else:
-        nxt = f"Setup valid Ã¢Â€Â” monitor S1 persistence ({consec_s1} consec bars)"
+        nxt = f"Setup valid — monitor S1 persistence ({consec_s1} consec bars)"
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v3 field computations Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v3 field computations ─────────────────────────────────────────────────
     vav_pct  = compute_vol_above_vwap(bars, vwaps)
     gain_pct, gain_bucket = compute_intraday_gain(bars)
     slvpo    = compute_session_low_vs_pm_open(bars)
@@ -1192,17 +1191,17 @@ def compute_extended(bars: List[Bar], vwaps: List[float],
     # v3 gate notes log
     v3_notes = []
     if signals.get('LATE_HOD'):
-        v3_notes.append(f"LATE_HOD({hod_sp:.0f}%): Ã¢ÂˆÂ’20 pts")
+        v3_notes.append(f"LATE_HOD({hod_sp:.0f}%): −20 pts")
     if signals.get('HEAVY_VWAP_DIST'):
-        v3_notes.append(f"HEAVY_VWAP({vav_pct:.0f}%): Ã¢ÂˆÂ’18 pts")
+        v3_notes.append(f"HEAVY_VWAP({vav_pct:.0f}%): −18 pts")
     if signals.get('MEDIUM_SPIKE_ZONE'):
-        v3_notes.append(f"MED_SPIKE({gain_pct:.0f}%): Ã¢ÂˆÂ’15 pts")
+        v3_notes.append(f"MED_SPIKE({gain_pct:.0f}%): −15 pts")
     if signals.get('QUIET_DUMP_PROXY'):
         v3_notes.append(f"QUIET_DUMP: +15 pts")
     if signals.get('LOW_SESSION_LOW'):
-        v3_notes.append(f"LOW_SESSION_LOW({slvpo:.0f}%): Ã¢ÂˆÂ’10 pts")
+        v3_notes.append(f"LOW_SESSION_LOW({slvpo:.0f}%): −10 pts")
     if 0 < ft_pct < 10:
-        v3_notes.append(f"LOW_FLOAT_TURN({ft_pct:.1f}%): Ã¢ÂˆÂ’10 pts")
+        v3_notes.append(f"LOW_FLOAT_TURN({ft_pct:.1f}%): −10 pts")
 
     return dict(
         pm_bars=pm_b, rth_bars=rth_b, pm_move_pct=pm_move, pm_high=pm_high,
@@ -1221,7 +1220,7 @@ def compute_extended(bars: List[Bar], vwaps: List[float],
     )
 
 
-# Ã¢Â”Â€Ã¢Â”Â€ SEC EDGAR filing integration (unchanged from v2) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+# ── SEC EDGAR filing integration (unchanged from v2) ─────────────────────────
 SEC_CACHE_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sec_cache.json')
 SEC_TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json'
 SEC_SUBMIT_URL  = 'https://data.sec.gov/submissions/CIK{cik}.json'
@@ -1299,7 +1298,7 @@ def _sec_get_filings(cik: str, ticker: str, cache: dict) -> list:
 def fetch_sec_filings(ticker: str, session_date: str) -> dict:
     """
     Fetch and analyze SEC filings from EDGAR for a ticker up to session_date.
-    Results cached in sec_cache.json (24hr TTL Ã¢Â€Â” CIK cached permanently).
+    Results cached in sec_cache.json (24hr TTL — CIK cached permanently).
     """
     empty = dict(
         available=False, days_since_424b5=None,
@@ -1307,7 +1306,7 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
         has_shelf=False, recent_8k=False,
         **{s: False for s in ['424B5_ACTIVE', 'SERIAL_HEAVY',
                                'PRIOR3_DILUTION', 'SUPPLY_OVERHANG', 'LATE_PHASE']},
-        score_boost=0, regime_override=None, cache_age_hrs=0.0,
+        score_boost=0, regime_override=None,
     )
     try:
         session_dt = datetime.strptime(session_date, '%Y-%m-%d')
@@ -1373,21 +1372,21 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
     """
     Evaluate entry gates. Returns (gates_passed, gate_detail, disqualifiers, bias).
 
-    Gate 1 Ã¢Â€Â” disqualifiers:    must be empty (no structural blockers)
-    Gate 2 Ã¢Â€Â” pre_fall_tier:    HIGH or MEDIUM (score >= 25)
-    Gate 3 Ã¢Â€Â” bias:             MAX_CONVICTION or HIGH_CONVICTION
-    Gate 4 Ã¢Â€Â” section:          S1
-    Gate 5 Ã¢Â€Â” confidence_norm:  >= 0.55 (v3 tightened from 0.65; <55% = losing)
+    Gate 1 — disqualifiers:    must be empty (no structural blockers)
+    Gate 2 — pre_fall_tier:    HIGH or MEDIUM (score >= 25)
+    Gate 3 — bias:             MAX_CONVICTION or HIGH_CONVICTION
+    Gate 4 — section:          S1
+    Gate 5 — confidence_norm:  >= 0.55 (v3 tightened from 0.65; <55% = losing)
 
     v3 new disqualifiers:
-      AT_OR_ABOVE_HOD      Ã¢Â€Â” entry at or above HOD (A return +1.0% = LOSING)
-      LOW_FLOAT_TURNOVER   Ã¢Â€Â” float turnover < 10% (A return Ã¢Â‰Âˆ 0% = LOSING)
-      LATE_HOD_HARD_BLOCK  Ã¢Â€Â” HOD set after 60% AND score < 25 (no saving grace)
+      AT_OR_ABOVE_HOD      — entry at or above HOD (A return +1.0% = LOSING)
+      LOW_FLOAT_TURNOVER   — float turnover < 10% (A return ≈ 0% = LOSING)
+      LATE_HOD_HARD_BLOCK  — HOD set after 60% AND score < 25 (no saving grace)
     """
     disqualifiers = []
     gate_detail   = []
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v2 disqualifiers (preserved) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v2 disqualifiers (preserved) ─────────────────────────────────────────
     if sig.chop >= 90:
         disqualifiers.append(f'CHOP_EXTREME:{sig.chop:.0f}pct')
     if sig.entry_zone == 'DEAD_ZONE':
@@ -1401,7 +1400,7 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
     if sig.vol_spike < 0.3 and sig.rth_bars > 30:
         disqualifiers.append(f'LOW_VOLUME:spike={sig.vol_spike:.1f}x')
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v3 new disqualifiers Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v3 new disqualifiers ──────────────────────────────────────────────────
     # AT_OR_ABOVE_HOD: entering at/above HOD = A return +1.0% (LOSING)
     if sig.pct_from_hod >= 0.0:
         disqualifiers.append(f'AT_OR_ABOVE_HOD:{sig.pct_from_hod:+.1f}%')
@@ -1416,7 +1415,7 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
     # The LATE_HOD signal (-20 pts) already handles the timing penalty.
     # Sessions with late HOD and low score won't pass Gate G2 regardless.
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Bias mapping Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Bias mapping ──────────────────────────────────────────────────────────
     if sig.signal == 'HIGH_VALUE' and sig.grade == 'A':
         bias = 'MAX_CONVICTION'
     elif sig.signal in ('ENTER_E', 'ENTER_A') and sig.grade == 'B':
@@ -1426,12 +1425,11 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
     else:
         bias = 'NO_CONVICTION'
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Gate evaluation Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Gate evaluation ───────────────────────────────────────────────────────
     g1 = len(disqualifiers) == 0
     g2 = sig.tier in ('HIGH', 'MEDIUM')
     g3 = bias in ('MAX_CONVICTION', 'HIGH_CONVICTION')
     g4 = sig.section == 'S1'
-
     conf_norm = sig.confidence_norm
     g5_standard       = conf_norm >= 0.55
     g5_slightly_early = (0.50 <= conf_norm < 0.55
@@ -1461,7 +1459,7 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
         f"G2:tier={sig.tier}={'PASS' if g2 else 'FAIL(need HIGH or MEDIUM)'}",
         f"G3:bias={bias}={'PASS' if g3 else 'FAIL(need MAX or HIGH conviction)'}",
         f"G4:section={sig.section}={'PASS' if g4 else 'FAIL(need S1)'}",
-        f"G5:conf={conf_norm:.2f}={'PASS('+t2+')' if g5 else 'WATCH('+t2+')' if t2 in ('EARLY','VERY_EARLY') else 'FAIL'}",
+        f"G5:conf={conf_norm:.2f}={'PASS('+t2+')' if g5 else ('WATCH('+t2+')' if t2 in ('EARLY','VERY_EARLY') else 'FAIL')}",
     ]
 
     gates_passed = sum([g1, g2, g3, g4, g5])
@@ -1496,9 +1494,9 @@ def run_classification(ticker: str, bars: List[Bar],
             bar_count=0,
             pm_bars=0, rth_bars=0, pm_move_pct=0.0, pm_high=0.0,
             gap_pct=0.0, vwap=0.0, atr=0.0, price_vs_vwap=0.0,
-            hod_time='Ã¢Â€Â”', lod_time='Ã¢Â€Â”', hod_bars_ago=0,
+            hod_time='—', lod_time='—', hod_bars_ago=0,
             consec_s1=0, s1_pct=0.0, vol_spike=0.0, session_pct=0.0,
-            all_signals=[], suggested_size='Ã¢Â€Â”', next_watch='Ã¢Â€Â”',
+            all_signals=[], suggested_size='—', next_watch='—',
             **{k: v for k, v in empty_v3.items()
                if k not in ('float_shares', 'v3_gate_notes')},
             float_shares=float_shares,
@@ -1507,13 +1505,13 @@ def run_classification(ticker: str, bars: List[Bar],
         )
         return sig
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Compute float turnover Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Compute float turnover ─────────────────────────────────────────────────
     pm_bars_list = [b for b in bars if b.session == 'PM']
     pm_vol = sum(b.volume for b in pm_bars_list)
     float_turnover_pct = round(pm_vol / float_shares * 100, 2) \
         if float_shares > 0 and pm_vol > 0 else 0.0
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Core indicators Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Core indicators ────────────────────────────────────────────────────────
     vwaps      = compute_vwap(bars)
     signals    = detect_signals(bars, vwaps, float_turnover_pct)
     section, conf = classify_section(bars, vwaps, signals)
@@ -1522,7 +1520,7 @@ def run_classification(ticker: str, bars: List[Bar],
     _, _, pm_last, pm_move = pm_stats(bars)
     regime     = detect_regime(bars, pm_move, signals)
 
-    # Ã¢Â”Â€Ã¢Â”Â€ SEC filing enrichment Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── SEC filing enrichment ─────────────────────────────────────────────────
     _sec_date = session_date or date.today().isoformat()
     sec = dict(available=False, score_boost=0, regime_override=None,
                **{s: False for s in ['424B5_ACTIVE','SERIAL_HEAVY',
@@ -1562,7 +1560,7 @@ def run_classification(ticker: str, bars: List[Bar],
     # Score trajectory (across polls)
     traj = compute_score_trajectory(ticker, score)
 
-    # Ã¢Â”Â€Ã¢Â”Â€ v3 feature values Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── v3 feature values ─────────────────────────────────────────────────────
     vol_av       = compute_vol_above_vwap(bars, vwaps)
     gain_pct, gain_bucket = compute_intraday_gain(bars)
     slvpo        = compute_session_low_vs_pm_open(bars)
@@ -1577,7 +1575,7 @@ def run_classification(ticker: str, bars: List[Bar],
     mom_dec      = compute_momentum_decay(bars)
     hod_sp       = compute_hod_set_pct(bars)
 
-    # Ã¢Â”Â€Ã¢Â”Â€ LONG OPPORTUNITY Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── LONG OPPORTUNITY ──────────────────────────────────────────────────────
     if section == 'S2' and pct_hod <= -20 and regime != 'UNKNOWN':
         ext = compute_extended(bars, vwaps, signals, section,
                                score=score, float_shares=float_shares)
@@ -1590,8 +1588,8 @@ def run_classification(ticker: str, bars: List[Bar],
             price=price, hod=hod_v, lod=lod_v, pct_from_hod=pct_hod,
             entry_zone=ez, expected_mae='+5%', expected_ret='+10-15%',
             stop_pct='-5%', quality_score=0,
-            reasons=[f"LOD bounce Ã¢Â€Â” 95.8% rate | {pct_hod:.1f}% from HOD",
-                     "S2 detected after big drop Ã¢Â€Â” LOD zone",
+            reasons=[f"LOD bounce — 95.8% rate | {pct_hod:.1f}% from HOD",
+                     "S2 detected after big drop — LOD zone",
                      "Target: +10-15%  Stop: -5% below entry"],
             warnings=warnings, bar_count=len(bars),
             pm_bars=ext['pm_bars'], rth_bars=ext['rth_bars'],
@@ -1617,18 +1615,20 @@ def run_classification(ticker: str, bars: List[Bar],
         sig.quality_score    = calc_quality(sig)
         sig.confidence_norm  = round(sig.confidence / 100.0, 4)
         sig.pre_fall_tier    = sig.tier
-        gp, gd, dq, bv       = evaluate_gates(sig)
+        gp, gd, dq, bv, t2   = evaluate_gates(sig)
         sig.gates_passed     = gp
         sig.gate_detail      = gd
         sig.disqualifiers    = dq
         sig.bias             = bv
+        sig.t2_entry_type    = t2
+        sig.last_bar_time    = bars[-1].ts[:5] if bars else ''
         return sig
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Build reasons / warnings Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Build reasons / warnings ──────────────────────────────────────────────
     if section == 'S1':
         reasons.append(f"S1 confirmed  (confidence {conf}%)")
     else:
-        warnings.append(f"Section = S2 Ã¢Â€Â” no short signal yet")
+        warnings.append(f"Section = S2 — no short signal yet")
 
     q_sigs = [s for s in active_sigs if s in ALL_Q]
     if q_sigs:
@@ -1640,60 +1640,60 @@ def run_classification(ticker: str, bars: List[Bar],
         reasons.append(f"Power combo: {pwr_combo} (lift {pwr_lift:.1f})")
 
     if velocity in ('RISING_FAST','RISING'):
-        reasons.append(f"Confidence {velocity} Ã¢Â†Â’ high-value indicator")
+        reasons.append(f"Confidence {velocity} → high-value indicator")
     elif velocity in ('FALLING','FALLING_FAST'):
-        warnings.append(f"Confidence {velocity} Ã¢Â†Â’ reduce size 30%")
+        warnings.append(f"Confidence {velocity} → reduce size 30%")
 
     if flips == 0:
-        reasons.append("0 RTH flips Ã¢Â€Â” freshest S1 (92.9% win)")
+        reasons.append("0 RTH flips — freshest S1 (92.9% win)")
     elif flips <= 3:
-        reasons.append(f"{flips} RTH flips Ã¢Â€Â” clean setup")
+        reasons.append(f"{flips} RTH flips — clean setup")
     elif flips > 6:
-        warnings.append(f"{flips} RTH flips Ã¢Â€Â” reduce size 30%")
+        warnings.append(f"{flips} RTH flips — reduce size 30%")
 
     chop_blocked = (chop >= 90 or
                     (chop >= 80 and (score < 75 or flips > 3)))
     if chop >= 80:
         if score >= 75 and flips <= 3:
-            warnings.append(f"Chop {chop:.0f}% high but Score {score} + {flips} flips Ã¢Â€Â” allowed")
+            warnings.append(f"Chop {chop:.0f}% high but Score {score} + {flips} flips — allowed")
         else:
-            warnings.append(f"Chop {chop:.0f}% >= 80% Ã¢Â€Â” DANGER (hard block)")
+            warnings.append(f"Chop {chop:.0f}% >= 80% — DANGER (hard block)")
 
     if ez == 'DEAD_ZONE':
-        warnings.append(f"{pct_hod:.1f}% below HOD Ã¢Â€Â” dead zone, wait")
+        warnings.append(f"{pct_hod:.1f}% below HOD — dead zone, wait")
     elif ez == 'ZONE_A':
-        reasons.append(f"Within 5% of HOD Ã¢Â€Â” prime entry zone (90% win)")
+        reasons.append(f"Within 5% of HOD — prime entry zone (90% win)")
 
     # v3 reasons/warnings
     if qdp:
-        reasons.append(f"QUIET_DUMP_PROXY: gain {gain_pct:.0f}% + {slvpo:.0f}% below open (Ã¢ÂˆÂ’25.3% avg)")
+        reasons.append(f"QUIET_DUMP_PROXY: gain {gain_pct:.0f}% + {slvpo:.0f}% below open (−25.3% avg)")
     if gain_bucket == 'SUB10':
-        reasons.append(f"SUB10 gain ({gain_pct:.0f}%) Ã¢Â†Â’ strongest short bucket (A Ã¢ÂˆÂ’13.7% avg)")
+        reasons.append(f"SUB10 gain ({gain_pct:.0f}%) → strongest short bucket (A −13.7% avg)")
     if signals.get('LATE_HOD'):
-        warnings.append(f"LATE_HOD ({hod_sp:.0f}% elapsed) Ã¢Â†Â’ A +16.2% in late bucket (LOSING)")
+        warnings.append(f"LATE_HOD ({hod_sp:.0f}% elapsed) → A +16.2% in late bucket (LOSING)")
     if signals.get('HEAVY_VWAP_DIST'):
-        warnings.append(f"HEAVY_VWAP_DIST ({vol_av:.0f}% vol above VWAP) Ã¢Â†Â’ A +12.5% = LOSING")
+        warnings.append(f"HEAVY_VWAP_DIST ({vol_av:.0f}% vol above VWAP) → A +12.5% = LOSING")
     if signals.get('MEDIUM_SPIKE_ZONE'):
-        warnings.append(f"MEDIUM_SPIKE_ZONE ({gain_pct:.0f}%) Ã¢Â†Â’ A +5.4% = LOSING")
+        warnings.append(f"MEDIUM_SPIKE_ZONE ({gain_pct:.0f}%) → A +5.4% = LOSING")
     if entry_c:
-        reasons.append(f"ENTRY_C detected Ã¢Â€Â” 3-bar clean window (size +10%)")
+        reasons.append(f"ENTRY_C detected — 3-bar clean window (size +10%)")
     if traj == 'RISING':
-        reasons.append("Score RISING across polls Ã¢Â†Â’ strengthening setup")
+        reasons.append("Score RISING across polls → strengthening setup")
     elif traj == 'FALLING':
-        warnings.append("Score FALLING across polls Ã¢Â†Â’ reduce size")
+        warnings.append("Score FALLING across polls → reduce size")
     # FIX v3.1 Fix 6: only award decay signal when HOD is confirmed stable 30+ bars.
     # momentum_decay = (HOD-price)/(HOD*bars_since_HOD) is meaningless if HOD just moved.
     _bars_since_hod_md = len(bars) - 1 - hod_lod(bars)[1] if bars else 0
     if 0.01 <= mom_dec <= 0.05 and _bars_since_hod_md >= 30:
-        reasons.append(f"Momentum decay moderate ({mom_dec:.3f}) Ã¢Â†Â’ A Ã¢ÂˆÂ’12.7% avg")
+        reasons.append(f"Momentum decay moderate ({mom_dec:.3f}) → A −12.7% avg")
     if 0 < slvpo < 10:
-        warnings.append(f"Session low only {slvpo:.0f}% below PM open Ã¢Â†Â’ A +4.7% avg (LOSING)")
+        warnings.append(f"Session low only {slvpo:.0f}% below PM open → A +4.7% avg (LOSING)")
 
     now_h = datetime.now().hour
     if 7 <= now_h < 8:
-        warnings.append("07-08am window Ã¢Â€Â” highest E MAE (+65.9%)")
+        warnings.append("07-08am window — highest E MAE (+65.9%)")
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Grade determination Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Grade determination ───────────────────────────────────────────────────
     hard_skip = chop_blocked or section != 'S1' or not has_sigs or ez == 'DEAD_ZONE'
 
     if hard_skip:
@@ -1717,11 +1717,11 @@ def run_classification(ticker: str, bars: List[Bar],
         if grade_a:
             out_signal = 'HIGH_VALUE'
             out_grade  = 'A'
-            reasons.append("GRADE A Ã¢Â€Â” all prime conditions met")
+            reasons.append("GRADE A — all prime conditions met")
         else:
             out_signal = f'ENTER_{strategy}'
             out_grade  = 'B'
-            reasons.append("GRADE B Ã¢Â€Â” standard qualifying entry")
+            reasons.append("GRADE B — standard qualifying entry")
 
     ext = compute_extended(bars, vwaps, signals, section,
                            score=score, float_shares=float_shares)
@@ -1770,30 +1770,28 @@ def run_classification(ticker: str, bars: List[Bar],
     sig.quality_score    = calc_quality(sig)
     sig.confidence_norm  = round(sig.confidence / 100.0, 4)
     sig.pre_fall_tier    = sig.tier
-    sig.last_bar_time    = bars[-1].ts[:5] if bars else ''
-    gp, gd, dq, bv, t2   = evaluate_gates(sig)
+    gp, gd, dq, bv       = evaluate_gates(sig)
     sig.gates_passed     = gp
     sig.gate_detail      = gd
     sig.disqualifiers    = dq
     sig.bias             = bv
-    sig.t2_entry_type    = t2
     return sig
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 6 Ã¢Â€Â” OUTPUT & LOGGING
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 6 — OUTPUT & LOGGING
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
 # WINNERS CIRCLE + BLUEPR8NT EVALUATION
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def evaluate_winners_circle(sig: 'ClassifierSignal') -> dict:
     """
     Score the session against the 7 Winners Circle gates.
 
-    Winners Circle = sessions where A Ã¢Â‰Âˆ Ã¢ÂˆÂ’15 to Ã¢ÂˆÂ’30% and E Ã¢Â‰Âˆ Ã¢ÂˆÂ’25 to Ã¢ÂˆÂ’40%.
+    Winners Circle = sessions where A ≈ −15 to −30% and E ≈ −25 to −40%.
     Derived from backtest analysis of 214 sessions.
 
     Returns dict with gate results, WC score, tier label, and expected range.
@@ -1802,7 +1800,7 @@ def evaluate_winners_circle(sig: 'ClassifierSignal') -> dict:
 
     # Gate 1: Early HOD (hod_set_pct < 30% of elapsed OR hod_in_pm)
     try:
-        _ht  = sig.hod_time[-5:] if sig.hod_time and sig.hod_time != 'Ã¢Â€Â”' else ''
+        _ht  = sig.hod_time[-5:] if sig.hod_time and sig.hod_time != '—' else ''
         _het = (int(_ht[:2])*3600 + int(_ht[3:5])*60
                 if len(_ht) >= 5 and ':' in _ht else 99999)
     except Exception:
@@ -1818,10 +1816,10 @@ def evaluate_winners_circle(sig: 'ClassifierSignal') -> dict:
     # Gate 4: Small intraday gain (not a big retail spike)
     gates['SMALL_GAIN'] = sig.intraday_gain_bucket in ('SUB10', '10-20pct', '20-45pct')
 
-    # Gate 5: High classifier confidence (Ã¢Â‰Â¥ 70%)
+    # Gate 5: High classifier confidence (≥ 70%)
     gates['HIGH_CONF']  = sig.confidence >= 70
 
-    # Gate 6: Entry in Zone A (within 5% of HOD Ã¢Â€Â” best E outcomes)
+    # Gate 6: Entry in Zone A (within 5% of HOD — best E outcomes)
     gates['ZONE_A']     = sig.pct_from_hod > -5.0
 
     # Gate 7: Session proved its downside (LOD > 10% below PM open)
@@ -1832,16 +1830,16 @@ def evaluate_winners_circle(sig: 'ClassifierSignal') -> dict:
     # WC tier based on gates passed
     if wc_score >= 6:
         tier  = 'WINNERS_CIRCLE'
-        exp_a = 'Ã¢ÂˆÂ’20 to Ã¢ÂˆÂ’35%'
-        exp_e = 'Ã¢ÂˆÂ’30 to Ã¢ÂˆÂ’45%'
+        exp_a = '−20 to −35%'
+        exp_e = '−30 to −45%'
     elif wc_score >= 4:
         tier  = 'QUALIFYING'
-        exp_a = 'Ã¢ÂˆÂ’10 to Ã¢ÂˆÂ’20%'
-        exp_e = 'Ã¢ÂˆÂ’15 to Ã¢ÂˆÂ’25%'
+        exp_a = '−10 to −20%'
+        exp_e = '−15 to −25%'
     elif wc_score >= 2:
         tier  = 'DEVELOPING'
-        exp_a = 'Ã¢ÂˆÂ’5 to Ã¢ÂˆÂ’10%'
-        exp_e = 'Ã¢ÂˆÂ’8 to Ã¢ÂˆÂ’15%'
+        exp_a = '−5 to −10%'
+        exp_e = '−8 to −15%'
     else:
         tier  = 'NOT_QUALIFYING'
         exp_a = 'uncertain'
@@ -1862,16 +1860,16 @@ def evaluate_bluepr8nt(sig: 'ClassifierSignal') -> dict:
     Score the session against the BLUEPR8NT pattern (9 sessions, backtest).
 
     BLUEPR8NT sessions averaged:
-      A = Ã¢ÂˆÂ’19.8%  (vs Ã¢ÂˆÂ’5.1% rest)      Ã¢Â†Â’ 4ÃƒÂ— better
-      E = Ã¢ÂˆÂ’37.0%  (vs Ã¢ÂˆÂ’14.4% rest)     Ã¢Â†Â’ 3ÃƒÂ— better
-      Pre-fall score = 48.6 (vs 32.6)  Ã¢Â†Â’ 49% higher conviction
-      E MFE = Ã¢ÂˆÂ’47.1% (vs Ã¢ÂˆÂ’27.5%)       Ã¢Â†Â’ 71% better ideal exit
+      A = −19.8%  (vs −5.1% rest)      → 4× better
+      E = −37.0%  (vs −14.4% rest)     → 3× better
+      Pre-fall score = 48.6 (vs 32.6)  → 49% higher conviction
+      E MFE = −47.1% (vs −27.5%)       → 71% better ideal exit
 
     5 BLUEPR8NT detection gates:
       1. DILUTION_DUMP regime
       2. Pre-fall score > 40
       3. Quiet dump proxy (small gain + below open)
-      4. Confidence Ã¢Â‰Â¥ 70%
+      4. Confidence ≥ 70%
       5. dp_prints_pre_hod == 0 OR dark pool prints absent
          (when tick data unavailable: skip / treat as unknown)
 
@@ -1892,13 +1890,13 @@ def evaluate_bluepr8nt(sig: 'ClassifierSignal') -> dict:
 
     if bp_score >= 5:
         bp_tier   = 'BLUEPR8NT'
-        note      = 'All 5 gates Ã¢Â€Â” E priority. Expected E Ã¢Â‰Âˆ Ã¢ÂˆÂ’37%'
+        note      = 'All 5 gates — E priority. Expected E ≈ −37%'
     elif bp_score >= 4:
         bp_tier   = 'BLUEPR8NT_CANDIDATE'
-        note      = '4/5 gates Ã¢Â€Â” strong BP candidate. E preferred over A'
+        note      = '4/5 gates — strong BP candidate. E preferred over A'
     elif bp_score >= 3:
         bp_tier   = 'BP_WATCH'
-        note      = '3/5 gates Ã¢Â€Â” partial match. Monitor for confirmation'
+        note      = '3/5 gates — partial match. Monitor for confirmation'
     else:
         bp_tier   = 'NOT_BP'
         note      = ''
@@ -1929,12 +1927,12 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     traj_c  = GRN if sig.score_trajectory=='RISING' else RED if sig.score_trajectory=='FALLING' else DIM
 
     W = 68
-    print(f"\n  {'Ã¢Â•Â'*W}")
+    print(f"\n  {'═'*W}")
     # Header
     print(f"  {BOLD}{sig.ticker:8}{RESET}  ${sig.price:.3f}  "
           f"{sc}{BOLD}{sig.signal:12}{RESET}  [{gc}Grade {sig.grade}{RESET}]  "
           f"Q={sig.quality_score}/100  @{sig.timestamp}  {DIM}v3{RESET}")
-    print(f"  {'Ã¢Â”Â€'*W}")
+    print(f"  {'─'*W}")
 
     # Row 1: Regime + tier + score + section
     print(f"  Regime:  {sig.regime:22}  "
@@ -1951,7 +1949,7 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     # Row 3: HOD/LOD
     print(f"  HOD:    ${sig.hod:.3f} @{sig.hod_time} ({sig.hod_bars_ago} bars ago)  "
           f"LOD:${sig.lod:.3f} @{sig.lod_time}")
-    print(f"  Entry:  {zc}{sig.pct_from_hod:+.1f}% from HOD Ã¢Â†Â’ Zone:{sig.entry_zone}{RESET}  "
+    print(f"  Entry:  {zc}{sig.pct_from_hod:+.1f}% from HOD → Zone:{sig.entry_zone}{RESET}  "
           f"Suggested size:{GRN}{sig.suggested_size}{RESET}")
 
     # Row 4: S1/S2 state
@@ -1990,7 +1988,7 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     print(f"          HOD@:{hod_c}{sig.hod_set_pct:.0f}%{RESET} elapsed  "
           f"SessionLow:{sig.session_low_vs_pm_open:.0f}% below open  "
           f"FloatTurn:{ft_c}{sig.float_turnover_pct:.1f}%{RESET}  "
-          f"EntryC:{'Ã¢ÂœÂ“' if sig.entry_c_fired else 'Ã¢Â€Â”'}")
+          f"EntryC:{'✓' if sig.entry_c_fired else '—'}")
 
     # Row 8: Expected outcome
     print(f"  Expect: ret={sig.expected_ret}  "
@@ -2004,7 +2002,7 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     non_q = [s for s in sig.all_signals if s not in ALL_Q
              and s not in q and s not in V3_SIGNALS][:3]
     if q or v3sigs:
-        print(f"  {'Ã¢Â”Â€'*W}")
+        print(f"  {'─'*W}")
         if q:
             print(f"  Signals:  {GRN}{' | '.join(q[:5])}{RESET}")
         if v3sigs:
@@ -2016,7 +2014,7 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
 
     # v3 gate notes
     if verbose and sig.v3_gate_notes:
-        print(f"  {'Ã¢Â”Â€'*W}")
+        print(f"  {'─'*W}")
         print(f"  {CYN}v3 score adj: {' | '.join(sig.v3_gate_notes)}{RESET}")
 
     # SEC filing row
@@ -2025,7 +2023,7 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
                                  'PRIOR3_DILUTION','SUPPLY_OVERHANG','LATE_PHASE']
                     if s in sig.active_signals]
         d424_str = f"{sig.sec_days_424b5}d ago" if sig.sec_days_424b5 else "none"
-        regime_flag = f" {GRN}Ã¢Â†Â’ DILUTION_DUMP overridden{RESET}" if sig.sec_regime_changed else ""
+        regime_flag = f" {GRN}→ DILUTION_DUMP overridden{RESET}" if sig.sec_regime_changed else ""
         print(f"  {GRN}SEC:      424B5:{d424_str}  "
               f"offerings_12m:{sig.sec_offerings_12m}  "
               f"+{sig.sec_score_boost}pts{regime_flag}{RESET}")
@@ -2035,7 +2033,7 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
         print(f"  {DIM}SEC:      unavailable (no EDGAR data for this ticker){RESET}")
 
     # Gate summary
-    print(f"  {'Ã¢Â”Â€'*W}")
+    print(f"  {'─'*W}")
     all_pass = sig.gates_passed == 5
     gate_col = GRN if all_pass else YEL if sig.gates_passed >= 3 else RED
     print(f"  {gate_col}Gates:  {sig.gates_passed}/5 passed  |  "
@@ -2046,24 +2044,24 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     if verbose and sig.gate_detail:
         for g in sig.gate_detail:
             ok = 'PASS' in g
-            print(f"  {'  ' + GRN + 'Ã¢ÂœÂ“' if ok else '  ' + RED + 'Ã¢ÂœÂ—'}{RESET} {g}")
+            print(f"  {'  ' + GRN + '✓' if ok else '  ' + RED + '✗'}{RESET} {g}")
 
     # Next watch
-    print(f"  {'Ã¢Â”Â€'*W}")
+    print(f"  {'─'*W}")
     print(f"  {CYN}Watch:  {sig.next_watch}{RESET}")
 
     if verbose and sig.reasons:
         print(f"  {DIM}Why: {' | '.join(sig.reasons[:3])}{RESET}")
     if sig.warnings:
-        print(f"  {YEL}Ã¢ÂšÂ  {' | '.join(sig.warnings)}{RESET}")
+        print(f"  {YEL}⚠ {' | '.join(sig.warnings)}{RESET}")
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Tick features (from v4 layer, if available) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Tick features (from v4 layer, if available) ──────────────────────────
     _tf = getattr(sig, '_tick_features', None)
     if _tf is not None and getattr(_tf, 'ticks_available', False):
         from cat5ive_classifier_v4 import print_tick_features as _ptf
         _ptf(_tf)
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Winners Circle evaluation Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Winners Circle evaluation ──────────────────────────────────────────
     wc = evaluate_winners_circle(sig)
     bp = evaluate_bluepr8nt(sig)
 
@@ -2081,15 +2079,15 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     wc_parts = []
     for gk, gv in wc['gates'].items():
         icon = gate_icons.get(gk, gk)
-        wc_parts.append(f"{GRN if gv else RED}{icon}{'Ã¢ÂœÂ“' if gv else 'Ã¢ÂœÂ—'}{RESET}")
+        wc_parts.append(f"{GRN if gv else RED}{icon}{'✓' if gv else '✗'}{RESET}")
 
-    print(f"  {'Ã¢Â”Â€'*W}")
-    print(f"  {wc_col}Ã¢Â˜Â… WINNERS CIRCLE: {wc_score}/{wc['total']} gates  "
+    print(f"  {'─'*W}")
+    print(f"  {wc_col}★ WINNERS CIRCLE: {wc_score}/{wc['total']} gates  "
           f"[{' '.join(wc_parts)}]{RESET}")
     if wc_tier in ('WINNERS_CIRCLE', 'QUALIFYING'):
         print(f"  {wc_col}  Expected A: {wc['exp_a']}   E: {wc['exp_e']}{RESET}")
 
-    # Ã¢Â”Â€Ã¢Â”Â€ BLUEPR8NT evaluation Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── BLUEPR8NT evaluation ───────────────────────────────────────────────
     bp_score = bp['score']
     bp_tier  = bp['tier']
     bp_col   = (MAG+BOLD if bp_tier == 'BLUEPR8NT'           else
@@ -2104,19 +2102,19 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     bp_parts = []
     for gk, gv in bp['gates'].items():
         icon = bp_gate_icons.get(gk, gk)
-        bp_parts.append(f"{GRN if gv else RED}{icon}{'Ã¢ÂœÂ“' if gv else 'Ã¢ÂœÂ—'}{RESET}")
+        bp_parts.append(f"{GRN if gv else RED}{icon}{'✓' if gv else '✗'}{RESET}")
 
-    print(f"  {bp_col}Ã¢ÂšÂ¡ BLUEPR8NT: {bp_score}/{bp['total']} gates  "
+    print(f"  {bp_col}⚡ BLUEPR8NT: {bp_score}/{bp['total']} gates  "
           f"[{' '.join(bp_parts)}]{RESET}")
     if bp_tier in ('BLUEPR8NT', 'BLUEPR8NT_CANDIDATE'):
         print(f"  {bp_col}  Dataset: A {bp['bp_avg_a']} / E {bp['bp_avg_e']}  "
               f"MFE {bp['bp_mfe_e']}   vs rest A {bp['rest_avg_a']} / E {bp['rest_avg_e']}{RESET}")
         if bp['note']:
-            print(f"  {bp_col}  Ã¢Â†Â’ {bp['note']}{RESET}")
+            print(f"  {bp_col}  → {bp['note']}{RESET}")
     elif bp_tier == 'BP_WATCH':
-        print(f"  {bp_col}  Ã¢Â†Â’ {bp['note']}{RESET}")
+        print(f"  {bp_col}  → {bp['note']}{RESET}")
 
-    print(f"  {'Ã¢Â•Â'*W}")
+    print(f"  {'═'*W}")
 
 
 def log_signal(sig: ClassifierSignal, log_dir: str):
@@ -2126,12 +2124,12 @@ def log_signal(sig: ClassifierSignal, log_dir: str):
         f.write(json.dumps(asdict(sig)) + '\n')
 
 
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
-# SECTION 7 Ã¢Â€Â” KEY LOADING & CLI
-# Ã¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•ÂÃ¢Â•Â
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 7 — KEY LOADING & CLI
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def load_keys(config_path: str = None) -> tuple:
-    """Load API keys: env vars Ã¢Â†Â’ config.json. Returns (tradier, polygon, fmp)."""
+    """Load API keys: env vars → config.json. Returns (tradier, polygon, fmp)."""
     tradier = os.environ.get('TRADIER_API_KEY','')
     polygon = os.environ.get('POLYGON_API_KEY','')
     fmp     = os.environ.get('FMP_API_KEY','')
@@ -2174,7 +2172,7 @@ def main():
     p.add_argument('--no-sec',    action='store_true',
                    help='Disable SEC EDGAR filing lookup')
     p.add_argument('--time',      default=None,
-                   help='HH:MM Ã¢Â€Â” stop analysis at this bar (snapshot mode)')
+                   help='HH:MM — stop analysis at this bar (snapshot mode)')
     p.add_argument('--interval',  type=int, default=90)
     p.add_argument('--once',      action='store_true')
     p.add_argument('--json',      action='store_true')
@@ -2215,7 +2213,7 @@ def main():
             print(f"  OR: pip install yfinance  (slow fallback){RESET}")
             sys.exit(1)
 
-    # Ã¢Â”Â€Ã¢Â”Â€ Prefetch float shares (once per ticker, session-cached) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+    # ── Prefetch float shares (once per ticker, session-cached) ───────────────
     float_map = {}
     if not args.no_float:
         for tkr in tickers:
@@ -2239,7 +2237,7 @@ def main():
             # Market hours check (live mode only)
             if not args.date and (now.hour < 4 or now.hour >= 20):
                 if not args.json:
-                    print(f"  {DIM}Outside 4am-8pm ET Ã¢Â€Â” sleeping{RESET}")
+                    print(f"  {DIM}Outside 4am-8pm ET — sleeping{RESET}")
                 if args.once: break
                 time.sleep(args.interval)
                 continue
@@ -2315,4 +2313,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
