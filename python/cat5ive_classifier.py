@@ -76,8 +76,8 @@ try:    import yfinance as yf; HAS_YF = True
 except: HAS_YF = False
 
 # ── Terminal colours ──────────────────────────────────────────────────────────
-BOLD='\\033[1m'; RESET='\\033[0m'; GRN='\\033[92m'; YEL='\\033[93m'
-RED='\\033[91m'; CYN='\\033[96m'; MAG='\\033[95m'; DIM='\\033[2m'
+BOLD='\033[1m'; RESET='\033[0m'; GRN='\033[92m'; YEL='\033[93m'
+RED='\033[91m'; CYN='\033[96m'; MAG='\033[95m'; DIM='\033[2m'
 
 # ── Signal definitions (guidelines v3.0) ─────────────────────────────────────
 TIER_1 = {'SUPPLY_OVERHANG','AH_REVERSAL_TRAP','LIVE_STRENGTH',
