@@ -791,7 +791,7 @@ export default function TradeCard({
                   disabled={showOverlay || watchPending}
                 >
                   <Eye className="w-4 h-4 mr-2" />
-                  {watchPending ? 'Starting…' : 'Watch Until Entry'}
+                  {watchPending ? 'Starting…' : 'Watch Until Entry Threshold'}
                 </Button>
                 {showWatchPicker && (
                   <div
