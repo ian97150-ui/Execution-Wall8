@@ -508,6 +508,9 @@ async function handleWallSignal(data: {
     // If the existing intent was cancelled/invalidated (e.g. delay expired unapproved),
     // a fresh WALL must resurrect it back to pending so the card reappears.
     const wasInvalidated = existingIntent.status === 'cancelled';
+    // ORDER_ONLY cards are synthetic placeholders created when an ORDER arrives before its WALL.
+    // A real WALL event must upgrade them to ARMED so they appear in the WALL deck.
+    const wasOrderOnly = existingIntent.card_state === 'ORDER_ONLY';
     tradeIntent = await prisma.tradeIntent.update({
       where: { id: existingIntent.id },
       data: {
@@ -520,9 +523,9 @@ async function handleWallSignal(data: {
         confidence: finalConfidence,
         quality_tier: finalQualityTier,
         quality_score: finalQualityScore,
-        // Reset status and card_state when resurrecting a cancelled intent
+        // Resurrect cancelled intents; upgrade ORDER_ONLY to ARMED when real WALL arrives
         status: wasInvalidated ? 'pending' : existingIntent.status,
-        card_state: wasInvalidated ? (card_state || 'ARMED') : (card_state || existingIntent.card_state),
+        card_state: (wasInvalidated || wasOrderOnly) ? (card_state || 'ARMED') : (card_state || existingIntent.card_state),
         primary_blocker: primary_blocker || null,
         intent_data: intent ? JSON.stringify(intent) : existingIntent.intent_data,
         gates_data: gates ? JSON.stringify(gates) : existingIntent.gates_data,
