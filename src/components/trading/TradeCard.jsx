@@ -115,14 +115,6 @@ export default function TradeCard({
   try {
     signalEntries = Object.entries(JSON.parse(intent.intent_data || '{}')).filter(([, v]) => typeof v === 'boolean');
   } catch {}
-  const hasV3Data = scoreSnapshot && (
-    scoreSnapshot.t2_entry_type || scoreSnapshot.score_trajectory ||
-    scoreSnapshot.quiet_dump_proxy != null || scoreSnapshot.gate_detail?.length > 0 ||
-    scoreSnapshot.v3_gate_notes?.length > 0 || scoreSnapshot.float_turnover_pct != null ||
-    scoreSnapshot.vol_above_vwap_pct != null || scoreSnapshot.intraday_gain_bucket
-  );
-  const hasExpandedData = gateEntries.length > 0 || signalEntries.length > 0 || intent.strategy_id || intent.timeframe || hasV3Data;
-
   // Parse score snapshot from sec_checklist
   let scoreSnapshot = null;
   let filingConfirmedRecently = false;
@@ -138,6 +130,14 @@ export default function TradeCard({
       filingConfirmedRecently = hasFiling && (runDate === todayET || runDate === yday);
     }
   } catch {}
+
+  const hasV3Data = scoreSnapshot && (
+    scoreSnapshot.t2_entry_type || scoreSnapshot.score_trajectory ||
+    scoreSnapshot.quiet_dump_proxy != null || scoreSnapshot.gate_detail?.length > 0 ||
+    scoreSnapshot.v3_gate_notes?.length > 0 || scoreSnapshot.float_turnover_pct != null ||
+    scoreSnapshot.vol_above_vwap_pct != null || scoreSnapshot.intraday_gain_bucket
+  );
+  const hasExpandedData = gateEntries.length > 0 || signalEntries.length > 0 || intent.strategy_id || intent.timeframe || hasV3Data;
 
   const getSecUrl = (ticker) => {
     const forms = "10-K%2C10-K405%2C10-KT%2C10-Q%2C8-K%2CF-3%2CF-3ASR%2CF-3DPOS%2CF-3MEF%2CN-2%2CN-2%20POSASR%2CS-1%2CS-11%2CS-11MEF%2CS-1MEF%2CS-3%2CS-3ASR%2CS-3D%2CS-3DPOS%2CS-3MEF%2CSF-3%2C6-K";
