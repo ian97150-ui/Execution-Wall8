@@ -397,16 +397,7 @@ router.post('/demo', async (req: Request, res: Response) => {
     const randomTier = qualityTiers[Math.floor(Math.random() * qualityTiers.length)];
     const randomScore = Math.floor(60 + Math.random() * 40);
 
-    // Run checklist first so card is pre-populated when it appears
-    let checklistData: { sec_checklist: string; sec_bias: string } = { sec_checklist: '', sec_bias: 'NO_DATA' };
-    try {
-      const checklist = await runChecklist(randomTicker);
-      checklistData = { sec_checklist: JSON.stringify(checklist), sec_bias: checklist.bias };
-      console.log(`📋 Demo checklist complete: ${randomTicker} bias=${checklist.bias} score=${checklist.score_snapshot?.score}`);
-    } catch (checkErr: any) {
-      console.warn(`⚠️ Demo checklist failed for ${randomTicker}: ${checkErr.message}`);
-    }
-
+    // Create the card immediately so it appears in the UI right away
     const intent = await prisma.tradeIntent.create({
       data: {
         ticker: randomTicker,
@@ -417,8 +408,6 @@ router.post('/demo', async (req: Request, res: Response) => {
         quality_tier: randomTier,
         quality_score: randomScore,
         sec_watch: true,
-        sec_checklist: checklistData.sec_checklist || null,
-        sec_bias: checklistData.sec_bias !== 'NO_DATA' ? checklistData.sec_bias : null,
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
       }
     });
@@ -433,10 +422,28 @@ router.post('/demo', async (req: Request, res: Response) => {
 
     console.log(`🎯 Demo WALL card created: ${intent.ticker} (${intent.dir}) @ $${intent.price}`);
 
+    // Respond immediately — checklist runs async and populates within ~30s via the live poller
     res.status(201).json({
       intent,
-      message: `Demo WALL card created: ${intent.ticker} — checklist pre-loaded`
+      message: `Demo WALL card created: ${intent.ticker} — checklist loading in background`
     });
+
+    // Run checklist in background (same as real WALL webhook flow)
+    runChecklist(randomTicker)
+      .then(async (checklist) => {
+        await prisma.tradeIntent.update({
+          where: { id: intent.id },
+          data: {
+            sec_checklist: JSON.stringify(checklist),
+            sec_bias: checklist.bias !== 'NO_DATA' ? checklist.bias : null,
+          }
+        });
+        console.log(`📋 Demo checklist done: ${randomTicker} bias=${checklist.bias}`);
+      })
+      .catch((err: any) => {
+        console.warn(`⚠️ Demo checklist failed for ${randomTicker}: ${err.message}`);
+      });
+
   } catch (error: any) {
     console.error('Error creating demo WALL card:', error);
     res.status(500).json({ error: error.message });

@@ -441,6 +441,7 @@ export default function Dashboard() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['secWatch'] });
       queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
       toast.success(`Demo WALL card created: ${data.intent.ticker}`);
     },
