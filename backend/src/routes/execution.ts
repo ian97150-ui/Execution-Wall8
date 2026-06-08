@@ -407,6 +407,13 @@ router.post('/', async (req: Request, res: Response) => {
     });
     captureGradeSnapshot(execution.ticker, execution.id, execution.intent_id).catch(console.error);
 
+    // Look up strategy_id from linked intent so it appears in audit log CSV
+    let intentStrategyId: string | null = null;
+    if (intent_id) {
+      const linkedIntent = await prisma.tradeIntent.findUnique({ where: { id: intent_id }, select: { strategy_id: true } }).catch(() => null);
+      intentStrategyId = linkedIntent?.strategy_id ?? null;
+    }
+
     await prisma.auditLog.create({
       data: {
         event_type: 'execution_created',
@@ -416,7 +423,8 @@ router.post('/', async (req: Request, res: Response) => {
           order_action,
           quantity,
           delay_expires_at,
-          intent_id
+          intent_id,
+          strategy_id: intentStrategyId
         })
       }
     });

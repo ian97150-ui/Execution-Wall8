@@ -1049,6 +1049,7 @@ async function handleOrderSignal(data: {
         details: JSON.stringify({
           execution_id: execution.id,
           intent_id: linkedIntentId,
+          strategy_id,
           source: 'webhook',
           type: 'ORDER',
           order_action: action,
