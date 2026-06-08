@@ -1,21 +1,22 @@
 /**
  * Mode V Short — threshold check + notification / auto-approval service.
  *
- * TWO threshold levels:
+ * Thresholds updated for v3 classifier (G5 tightened: 0.65→0.55 standard).
  *
  * AUTO-EXEC (strict) — all 5 gates:
  *   1. disqualifiers.length === 0
  *   2. pre_fall_tier HIGH or MEDIUM  (score >= 25)
  *   3. bias MAX_CONVICTION (Strat A) or MAX/HIGH_CONVICTION (Strat B)
  *   4. section === 'S1'
- *   5. confidence >= 0.65
+ *   5. confidence >= 0.55 (v3 standard)
+ *      OR 0.50–0.54 + TIER_1/2 (SLIGHTLY_EARLY) AND quiet_dump_proxy OR RISING trajectory
  *
  * NOTIFICATION (loose) — same gates, wider windows:
- *   1. disqualifiers.length === 0       (unchanged — structural blockers always disqualify)
+ *   1. disqualifiers.length === 0
  *   2. pre_fall_tier HIGH, MEDIUM or LOW (score >= 10)
- *   3. bias MAX, HIGH, or LOW_CONVICTION (NO_CONVICTION excluded)
- *   4. section S1 or S2                 (includes D+2-D+5 setups, avg 65.9% move)
- *   5. confidence >= 0.50
+ *   3. bias MAX, HIGH, or LOW_CONVICTION
+ *   4. section S1 or S2
+ *   5. confidence >= 0.45  (catches EARLY watchable setups, v3 EARLY zone)
  *
  * Notification fires in SAFE and FULL mode when loose gates pass.
  * Auto-approval only fires in FULL + auto_sub_mode=mode_v_short when strict gates pass.
@@ -56,12 +57,12 @@ export function meetsModeVShortThreshold(
   const conf = snap.confidence ?? 0;
   const tier = snap.signal_tier as string | undefined;
   const SLIGHTLY_EARLY_TIERS = new Set(['TIER_1', 'TIER_2']);
-  const g5Standard      = conf >= 0.65;
-  const g5SlightlyEarly = conf >= 0.55 && conf < 0.65 && !!tier && SLIGHTLY_EARLY_TIERS.has(tier);
+  // v3: standard pass threshold lowered 0.65→0.55; SLIGHTLY_EARLY zone is now 0.50–0.54
+  const g5Standard      = conf >= 0.55;
+  const g5SlightlyEarly = conf >= 0.50 && conf < 0.55 && !!tier && SLIGHTLY_EARLY_TIERS.has(tier);
   if (!g5Standard && !g5SlightlyEarly) return false;
 
-  // v3 signal quality boost — quiet_dump_proxy or rising trajectory required
-  // when confidence is in the SLIGHTLY_EARLY zone (0.55–0.64) to avoid marginal autos
+  // SLIGHTLY_EARLY auto-exec requires a strong v3 signal to avoid marginal fires
   if (g5SlightlyEarly) {
     const hasStrongProfile = (snap as any).quiet_dump_proxy === true
       || (snap as any).score_trajectory === 'RISING';
@@ -83,7 +84,8 @@ export function meetsModeVShortNotifyThreshold(
   if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM' && snap.pre_fall_tier !== 'LOW') return false;
   if (!NOTIFY_BIAS.has(snap.bias)) return false;
   if (snap.section !== 'S1' && snap.section !== 'S2') return false;
-  if ((snap.confidence ?? 0) < 0.50) return false;
+  // v3: lowered to 0.45 to catch EARLY watchable setups (0.45–0.49 zone)
+  if ((snap.confidence ?? 0) < 0.45) return false;
   return true;
 }
 
