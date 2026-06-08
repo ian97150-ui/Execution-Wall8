@@ -345,10 +345,22 @@ export function stopSecWatchScanner(): void {
 // have a cached checklist. Runs every 60s. Stops automatically when no intents
 // are active. Does NOT re-call EDGAR — only fast market/borrow APIs.
 
+// Pre-market open (04:00 ET) through 2h after close (18:00 ET), weekdays only
+function isLiveScoreWindowET(): boolean {
+  if (!isWeekdayET()) return false;
+  const etHHMM = getETMinute();
+  const [h, m] = etHHMM.split(':').map(Number);
+  const totalMin = h * 60 + m;
+  return totalMin >= 240 && totalMin < 1080; // 04:00–18:00 ET
+}
+
 export function startLiveScorePoller(): void {
   if (liveScoreInterval) return;
 
   liveScoreInterval = setInterval(async () => {
+    // Skip entirely outside trading window — keeps Neon compute idle overnight/weekends
+    if (!isLiveScoreWindowET()) return;
+
     const active = await prisma.tradeIntent.findMany({
       where: {
         status: { not: 'swiped_off' },
@@ -359,6 +371,9 @@ export function startLiveScorePoller(): void {
       distinct: ['ticker'],
     }).catch(() => []);
 
+    // Self-throttle: if nothing active, skip the per-ticker queries entirely
+    if (active.length === 0) return;
+
     for (const { ticker } of active) {
       refreshLiveScore(ticker).catch(err =>
         console.warn(`[LiveScorePoller] ${ticker} refresh failed:`, err instanceof Error ? err.message : err)
@@ -366,7 +381,7 @@ export function startLiveScorePoller(): void {
     }
   }, 60_000);
 
-  console.log('📡 Live score poller started — refreshing S1/S2 every 60s for active cards');
+  console.log('📡 Live score poller started — refreshing every 60s, weekdays 04:00–18:00 ET only');
 }
 
 export function stopLiveScorePoller(): void {

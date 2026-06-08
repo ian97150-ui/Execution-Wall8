@@ -119,7 +119,7 @@ export default function Dashboard() {
       return response.data || [];
     },
     enabled: !!settings,
-    refetchInterval: 15000
+    refetchInterval: 120000
   });
 
   // Fetch executions from the Execution table (only pending/executing - active queue)
