@@ -55,7 +55,7 @@ function computeFlags(cls: ClassifierSignal, capturedAt: Date) {
   };
 }
 
-function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string | null) {
+function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string | null, wallStrategyId?: string | null) {
   const etDate   = new Date(capturedAt.getTime() + ET_OFFSET_MS);
   const date     = etDate.toISOString().slice(0, 10);
   const timeHHMM = etDate.toISOString().slice(11, 16);
@@ -70,6 +70,7 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
     date,
     time:        timeHHMM,
     strategy,
+    wall_strategy: wallStrategyId ?? null,   // TradingView strategy_id (e.g. "Strat A", "Strat E")
     signal:      cls.signal,
     t2_entry_type: cls.t2_entry_type ?? null,
     price:       cls.price,
@@ -201,7 +202,15 @@ export function buildRecordFromSnapshot(
 
 export async function captureSignal(cls: ClassifierSignal, intentId: string | null): Promise<void> {
   const capturedAt = new Date();
-  const record     = buildRecord(cls, capturedAt, intentId);
+
+  // Look up the TradingView strategy_id from the originating intent
+  let wallStrategyId: string | null = null;
+  if (intentId) {
+    const intent = await prisma.tradeIntent.findUnique({ where: { id: intentId }, select: { strategy_id: true } }).catch(() => null);
+    wallStrategyId = intent?.strategy_id ?? null;
+  }
+
+  const record = buildRecord(cls, capturedAt, intentId, wallStrategyId);
 
   await prisma.liveTrade.upsert({
     where:  { record_id: record.record_id },

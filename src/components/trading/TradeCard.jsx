@@ -236,6 +236,11 @@ export default function TradeCard({
                     {Number(dayPeakMove).toFixed(1)}% mover
                   </span>
                 )}
+                {intent.strategy_id && (
+                  <span className="px-2 py-1 rounded-md text-xs font-bold bg-slate-600/50 text-slate-300 border border-slate-500/50 tracking-wide">
+                    {intent.strategy_id}
+                  </span>
+                )}
                 {intent.sec_bias && <BiasBadge bias={intent.sec_bias} />}
                 {scoreSnapshot?.section && (
                   <span className={cn(
