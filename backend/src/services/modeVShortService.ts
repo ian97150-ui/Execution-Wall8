@@ -59,6 +59,15 @@ export function meetsModeVShortThreshold(
   const g5Standard      = conf >= 0.65;
   const g5SlightlyEarly = conf >= 0.55 && conf < 0.65 && !!tier && SLIGHTLY_EARLY_TIERS.has(tier);
   if (!g5Standard && !g5SlightlyEarly) return false;
+
+  // v3 signal quality boost — quiet_dump_proxy or rising trajectory required
+  // when confidence is in the SLIGHTLY_EARLY zone (0.55–0.64) to avoid marginal autos
+  if (g5SlightlyEarly) {
+    const hasStrongProfile = (snap as any).quiet_dump_proxy === true
+      || (snap as any).score_trajectory === 'RISING';
+    if (!hasStrongProfile) return false;
+  }
+
   return true;
 }
 

@@ -150,6 +150,12 @@ export interface ScoreSnapshot {
   raw_signal?:        string;    // direct classifier output: ENTER_E | ENTER_A | HIGH_VALUE | WAIT | SKIP
   score_trajectory?:  string;    // RISING | FLAT | FALLING
   quiet_dump_proxy?:  boolean;
+  // v3 extended fields
+  vol_above_vwap_pct?:   number;
+  intraday_gain_bucket?: string;   // SUB10 | 10-20pct | 20-45pct | 45-70pct | SPIKE70+
+  float_turnover_pct?:   number;
+  hod_set_pct?:          number;
+  v3_gate_notes?:        string[];
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -818,6 +824,11 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     raw_signal:        cls.signal,
     score_trajectory:  cls.score_trajectory  ?? undefined,
     quiet_dump_proxy:  cls.quiet_dump_proxy  ?? undefined,
+    vol_above_vwap_pct:   cls.vol_above_vwap_pct   ?? undefined,
+    intraday_gain_bucket: cls.intraday_gain_bucket  ?? undefined,
+    float_turnover_pct:   cls.float_turnover_pct    ?? undefined,
+    hod_set_pct:          cls.hod_set_pct           ?? undefined,
+    v3_gate_notes:        cls.v3_gate_notes         ?? undefined,
   };
 }
 
