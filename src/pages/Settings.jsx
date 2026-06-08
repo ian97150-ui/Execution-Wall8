@@ -21,7 +21,15 @@ import ScheduleList from "../components/settings/ScheduleList";
 import api from "@/api/apiClient";
 
 // Get the backend API URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api');
+
+// Webhook URL shown to the user — must be an absolute URL TradingView can reach.
+// In production the frontend and backend share the same Railway origin, so
+// window.location.origin gives the correct public URL automatically.
+const WEBHOOK_URL = import.meta.env.PROD
+  ? `${window.location.origin}/api/webhook`
+  : 'http://localhost:3000/api/webhook';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -751,12 +759,12 @@ export default function Settings() {
                 <Input
                   type="text"
                   readOnly
-                  value={`${API_BASE_URL.replace('/api', '')}/api/webhook`}
+                  value={WEBHOOK_URL}
                   className="bg-slate-800 border-slate-700 text-emerald-400 font-mono text-sm"
                 />
                 <Button
                   onClick={() => {
-                    navigator.clipboard.writeText(`${API_BASE_URL.replace('/api', '')}/api/webhook`);
+                    navigator.clipboard.writeText(WEBHOOK_URL);
                     toast.success('Webhook URL copied!');
                   }}
                   variant="outline"

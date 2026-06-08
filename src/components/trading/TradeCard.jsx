@@ -115,7 +115,13 @@ export default function TradeCard({
   try {
     signalEntries = Object.entries(JSON.parse(intent.intent_data || '{}')).filter(([, v]) => typeof v === 'boolean');
   } catch {}
-  const hasExpandedData = gateEntries.length > 0 || signalEntries.length > 0 || intent.strategy_id || intent.timeframe;
+  const hasV3Data = scoreSnapshot && (
+    scoreSnapshot.t2_entry_type || scoreSnapshot.score_trajectory ||
+    scoreSnapshot.quiet_dump_proxy != null || scoreSnapshot.gate_detail?.length > 0 ||
+    scoreSnapshot.v3_gate_notes?.length > 0 || scoreSnapshot.float_turnover_pct != null ||
+    scoreSnapshot.vol_above_vwap_pct != null || scoreSnapshot.intraday_gain_bucket
+  );
+  const hasExpandedData = gateEntries.length > 0 || signalEntries.length > 0 || intent.strategy_id || intent.timeframe || hasV3Data;
 
   // Parse score snapshot from sec_checklist
   let scoreSnapshot = null;
@@ -531,6 +537,148 @@ export default function TradeCard({
             <div className="space-y-3 pb-1">
               {!hasExpandedData && (
                 <p className="text-xs text-slate-500 text-center py-2">No additional signal data available</p>
+              )}
+
+              {/* v3 Classifier Analysis */}
+              {hasV3Data && (
+                <div className="space-y-2.5">
+                  <p className="text-xs text-slate-500 uppercase tracking-wider">v3 Analysis</p>
+
+                  {/* T2 type · trajectory · quiet dump · gates/5 */}
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {scoreSnapshot.t2_entry_type && (
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-bold tracking-wide border",
+                        scoreSnapshot.t2_entry_type === 'ON_TIME'        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" :
+                        scoreSnapshot.t2_entry_type === 'SLIGHTLY_EARLY' ? "bg-amber-500/20 text-amber-400 border-amber-500/40" :
+                        scoreSnapshot.t2_entry_type === 'EARLY'          ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" :
+                        scoreSnapshot.t2_entry_type === 'VERY_EARLY'     ? "bg-orange-500/15 text-orange-400 border-orange-500/30" :
+                        scoreSnapshot.t2_entry_type === 'PREMATURE_RISK' ? "bg-red-500/20 text-red-400 border-red-500/40" :
+                        "bg-slate-700/50 text-slate-500 border-slate-600/40"
+                      )}>
+                        T2: {scoreSnapshot.t2_entry_type.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                    {scoreSnapshot.score_trajectory && (
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-bold tracking-wide border",
+                        scoreSnapshot.score_trajectory === 'RISING'  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                        scoreSnapshot.score_trajectory === 'FALLING' ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                        "bg-slate-700/50 text-slate-400 border-slate-600/40"
+                      )}>
+                        {scoreSnapshot.score_trajectory === 'RISING' ? '↑' : scoreSnapshot.score_trajectory === 'FALLING' ? '↓' : '→'} {scoreSnapshot.score_trajectory}
+                      </span>
+                    )}
+                    {scoreSnapshot.quiet_dump_proxy === true && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide border bg-rose-600/25 text-rose-300 border-rose-500/50">
+                        ⚡ QUIET DUMP
+                      </span>
+                    )}
+                    {scoreSnapshot.gates_passed != null && (
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-mono font-bold border",
+                        scoreSnapshot.gates_passed >= 5 ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                        scoreSnapshot.gates_passed >= 3 ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                        "bg-red-500/15 text-red-400 border-red-500/30"
+                      )}>
+                        {scoreSnapshot.gates_passed}/5 gates
+                      </span>
+                    )}
+                  </div>
+
+                  {/* G1–G5 gate detail */}
+                  {scoreSnapshot.gate_detail?.length > 0 && (
+                    <div className="space-y-1">
+                      {scoreSnapshot.gate_detail.map((line, i) => {
+                        const pass  = line.includes('=PASS');
+                        const watch = line.includes('WATCH(');
+                        return (
+                          <div key={i} className={cn(
+                            "px-2 py-1 rounded text-[10px] font-mono border",
+                            pass  ? "bg-emerald-500/8 text-emerald-400/80 border-emerald-500/20" :
+                            watch ? "bg-amber-500/8 text-amber-400/80 border-amber-500/20" :
+                                    "bg-red-500/8 text-red-400/70 border-red-500/20"
+                          )}>
+                            {pass ? '✓' : watch ? '◐' : '✗'} {line}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Intraday + float metrics grid */}
+                  {(scoreSnapshot.intraday_gain_bucket || scoreSnapshot.float_turnover_pct != null ||
+                    scoreSnapshot.vol_above_vwap_pct != null || scoreSnapshot.hod_set_pct != null) && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {scoreSnapshot.intraday_gain_bucket && (
+                        <div className="bg-slate-800/50 rounded-lg px-2 py-1.5 border border-slate-700/50">
+                          <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Gain Bucket</p>
+                          <p className="text-[10px] font-mono font-bold text-slate-300">{scoreSnapshot.intraday_gain_bucket.replace(/_/g, ' ')}</p>
+                        </div>
+                      )}
+                      {scoreSnapshot.float_turnover_pct != null && (
+                        <div className={cn(
+                          "rounded-lg px-2 py-1.5 border",
+                          scoreSnapshot.float_turnover_pct < 10
+                            ? "bg-red-500/8 border-red-500/25"
+                            : "bg-slate-800/50 border-slate-700/50"
+                        )}>
+                          <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Float TO</p>
+                          <p className={cn(
+                            "text-[10px] font-mono font-bold",
+                            scoreSnapshot.float_turnover_pct < 10 ? "text-red-400" : "text-slate-300"
+                          )}>
+                            {scoreSnapshot.float_turnover_pct.toFixed(1)}%
+                          </p>
+                        </div>
+                      )}
+                      {scoreSnapshot.vol_above_vwap_pct != null && (
+                        <div className={cn(
+                          "rounded-lg px-2 py-1.5 border",
+                          scoreSnapshot.vol_above_vwap_pct > 80
+                            ? "bg-red-500/8 border-red-500/25"
+                            : "bg-slate-800/50 border-slate-700/50"
+                        )}>
+                          <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Vol Above VWAP</p>
+                          <p className={cn(
+                            "text-[10px] font-mono font-bold",
+                            scoreSnapshot.vol_above_vwap_pct > 80 ? "text-red-400" : "text-slate-300"
+                          )}>
+                            {scoreSnapshot.vol_above_vwap_pct.toFixed(1)}%
+                          </p>
+                        </div>
+                      )}
+                      {scoreSnapshot.hod_set_pct != null && (
+                        <div className={cn(
+                          "rounded-lg px-2 py-1.5 border",
+                          scoreSnapshot.hod_set_pct < 20
+                            ? "bg-red-500/8 border-red-500/25"
+                            : "bg-slate-800/50 border-slate-700/50"
+                        )}>
+                          <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">HOD Set At</p>
+                          <p className={cn(
+                            "text-[10px] font-mono font-bold",
+                            scoreSnapshot.hod_set_pct < 20 ? "text-red-400" : "text-slate-300"
+                          )}>
+                            {scoreSnapshot.hod_set_pct.toFixed(0)}% session
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Score adjustment notes */}
+                  {scoreSnapshot.v3_gate_notes?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider">Score Adjustments</p>
+                      {scoreSnapshot.v3_gate_notes.map((note, i) => (
+                        <div key={i} className="px-2 py-1 rounded text-[10px] font-mono bg-slate-800/40 border border-slate-700/40 text-slate-400">
+                          {note}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Gate breakdown */}
