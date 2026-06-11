@@ -156,6 +156,10 @@ export interface ScoreSnapshot {
   float_turnover_pct?:   number;
   hod_set_pct?:          number;
   v3_gate_notes?:        string[];
+  wc_score?:             number;   // 0-7 Winners Circle gates passed
+  wc_tier?:              string;   // WINNERS_CIRCLE | QUALIFYING | DEVELOPING | NOT_QUALIFYING
+  bp_score?:             number;   // 0-5 BLUEPR8NT gates passed
+  bp_tier?:              string;   // BLUEPR8NT | BLUEPR8NT_CANDIDATE | BP_WATCH | NOT_BP
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -829,6 +833,10 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     float_turnover_pct:   cls.float_turnover_pct    ?? undefined,
     hod_set_pct:          cls.hod_set_pct           ?? undefined,
     v3_gate_notes:        cls.v3_gate_notes         ?? undefined,
+    wc_score:             cls.wc_score              ?? undefined,
+    wc_tier:              cls.wc_tier               ?? undefined,
+    bp_score:             cls.bp_score              ?? undefined,
+    bp_tier:              cls.bp_tier               ?? undefined,
   };
 }
 

@@ -92,6 +92,11 @@ export interface ClassifierSignal {
   contested_day?:          boolean;
   margin_lean?:            number;
   score_delta_pre?:        number;
+  // WC / BLUEPR8NT
+  wc_score?:               number;  // 0-7 Winners Circle gates passed
+  wc_tier?:                string;  // WINNERS_CIRCLE | QUALIFYING | DEVELOPING | NOT_QUALIFYING
+  bp_score?:               number;  // 0-5 BLUEPR8NT gates passed
+  bp_tier?:                string;  // BLUEPR8NT | BLUEPR8NT_CANDIDATE | BP_WATCH | NOT_BP
 }
 
 /**

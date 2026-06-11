@@ -591,6 +591,36 @@ export default function TradeCard({
                     )}
                   </div>
 
+                  {/* WC / BLUEPR8NT row */}
+                  {(scoreSnapshot.wc_score != null || scoreSnapshot.bp_score != null) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {scoreSnapshot.wc_score != null && (
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-mono font-bold border",
+                          scoreSnapshot.wc_tier === 'WINNERS_CIRCLE'  ? "bg-violet-500/20 text-violet-300 border-violet-500/40" :
+                          scoreSnapshot.wc_tier === 'QUALIFYING'       ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30" :
+                          scoreSnapshot.wc_tier === 'DEVELOPING'       ? "bg-slate-500/15 text-slate-400 border-slate-500/30" :
+                          "bg-red-500/10 text-red-400/70 border-red-500/20"
+                        )}>
+                          WC {scoreSnapshot.wc_score}/7
+                          {scoreSnapshot.wc_tier === 'WINNERS_CIRCLE' && ' ★'}
+                        </span>
+                      )}
+                      {scoreSnapshot.bp_score != null && (
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-mono font-bold border",
+                          scoreSnapshot.bp_tier === 'BLUEPR8NT'           ? "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40" :
+                          scoreSnapshot.bp_tier === 'BLUEPR8NT_CANDIDATE' ? "bg-purple-500/15 text-purple-400 border-purple-500/30" :
+                          scoreSnapshot.bp_tier === 'BP_WATCH'            ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/25" :
+                          "bg-slate-500/10 text-slate-500 border-slate-600/20"
+                        )}>
+                          BP {scoreSnapshot.bp_score}/5
+                          {scoreSnapshot.bp_tier === 'BLUEPR8NT' && ' ◆'}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* G1–G5 gate detail */}
                   {scoreSnapshot.gate_detail?.length > 0 && (
                     <div className="space-y-1">

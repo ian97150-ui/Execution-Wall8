@@ -1164,6 +1164,11 @@ class ClassifierSignal:
     contested_day:         bool  = False # True when flips>8 AND consec_s1<5
     margin_lean:           float = 0.0   # mean lean value across last 20 bars
     score_delta_pre:       int   = 0     # raw score change 5 bars before entry
+    # ── WC / BLUEPR8NT outputs ─────────────────────────────────────────────
+    wc_score:              int   = 0     # Winners Circle gates passed (0-7)
+    wc_tier:               str   = ''    # WINNERS_CIRCLE / QUALIFYING / DEVELOPING / NOT_QUALIFYING
+    bp_score:              int   = 0     # BLUEPR8NT gates passed (0-5)
+    bp_tier:               str   = ''    # BLUEPR8NT / BLUEPR8NT_CANDIDATE / BP_WATCH / NOT_BP
 
 
 SIG_COLOR = {'HIGH_VALUE':GRN+BOLD,'ENTER_E':GRN,'ENTER_A':CYN,
@@ -1997,6 +2002,10 @@ def run_classification(ticker: str, bars: List[Bar],
     sig.disqualifiers    = dq
     sig.bias             = bv
     sig.t2_entry_type    = t2
+    _wc = evaluate_winners_circle(sig)
+    sig.wc_score = _wc['score'];  sig.wc_tier = _wc['tier']
+    _bp = evaluate_bluepr8nt(sig)
+    sig.bp_score = _bp['score'];  sig.bp_tier = _bp['tier']
     return sig
 
 
