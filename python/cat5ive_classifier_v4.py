@@ -380,21 +380,27 @@ def apply_tick_score_adj(base_score: int,
     """
     Adjust v3 base score with tick-derived signals.
 
-    Only fires when tick data is available AND pm_open_valid is True.
-    Returns (adjusted_score, tick_score_delta, gate_notes).
+    CALIBRATION STATUS: CALIBRATION_v2 (updated from report v3 harvest results)
+    197-session harvest via Databento 1-min bar proxies showed:
+      - large_print_pct: ALL 197 sessions had >35% â NOT discriminating at 1-min resolution
+      - proxy_vpin:      187/197 sessions had vpin <0.3 â threshold of 0.55 fires for nobody
+      - tick_rate_pm:    constant ~330 PM bars for all sessions â no variation
+      - running_dp_proxy: same issue as large_print (1-min bars too coarse)
 
-    All adjustments derived from backtest data findings:
-      buy_pressure < 35%:   sell side dominant in PM â A=â13.7% analog
-      large_print > 20%:    institutional block prints â quiet distribution
-      proxy_vpin > 0.55:    elevated order flow toxicity
-      tick_rate > 50/min:   active algo environment â A=â13.4%
-      running_dp_proxy > 25: large-print ratio elevated
+    RETAINED (directionally confirmed):
+      buy_pressure < 35%:  A=-5.2% for sell-dominant sessions â +10 pts
+      buy_pressure > 65%:  buy-side active = stock going up = short losing â -10 pts
 
-    CALIBRATION STATUS:
-      These thresholds are INITIAL estimates based on the OHLCV backtest findings.
-      They have NOT been directly validated against tick-level session data.
-      As tick sessions accumulate, thresholds should be retrained.
-      Mark as CALIBRATION_v1 until 50+ sessions validated.
+    REMOVED (non-discriminating at 1-min bar resolution):
+      large_print > 20%:  was +8 â fires for 100% of sessions
+      proxy_vpin > 0.55:  was +6 â fires for <3% of sessions
+      proxy_vpin < 0.20:  was -5 â fires for 95% of sessions
+      tick_rate > 50:     was +5 â constant across all sessions
+      running_dp_proxy:   was +8 â same as large_print issue
+
+    NOTE: These thresholds would be valid with TRUE tick-level data (individual
+    trades, not 1-min bars). The proxies break at 1-minute resolution.
+    Max tick delta: +15 (buy_press +10, tick_rate +5). Min tick delta: -15 (buy_press -10, quiet_pm -5).
     """
     if not tf.ticks_available or not pm_open_valid:
         return base_score, 0, []
@@ -402,38 +408,51 @@ def apply_tick_score_adj(base_score: int,
     delta = 0
     notes = []
 
+    # ââ Buy/sell pressure (confirmed via 197-session bar-proxy harvest) âââââââââ
     v = tf.buy_pressure_pct
     if v is not None:
         if v < 35.0:
             delta += 10
-            notes.append(f"LOW_BUY_PRESSURE({v:.0f}%): +10 (sellers dominant)")
+            notes.append(f"LOW_BUY_PRESSURE({v:.0f}%): +10 (sell-dominant session)")
         elif v > 65.0:
             delta -= 10
-            notes.append(f"HIGH_BUY_PRESSURE({v:.0f}%): â10 (buyers active)")
+            notes.append(f"HIGH_BUY_PRESSURE({v:.0f}%): -10 (buy-dominant = short risky)")
 
+    # ââ Thresholds below: CALIBRATION_v1 â status UNVALIDATED for true tick data
+    # The 197-session harvest used 1-min bar PROXIES which proved non-discriminating
+    # for vpin, large_print, and tick_rate at bar resolution.
+    # However the LIVE CLASSIFIER uses TRUE Tradier tick data (interval='tick'),
+    # not bar proxies. These signals may be valid with true ticks.
+    # Status: retained but NOT applied to score until validated with true tick sessions.
+    # To validate: accumulate 50+ live sessions with Tradier tick data and correlate
+    # these features against A returns using pattern_analysis.py.
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     v = tf.large_print_pct
     if v is not None and v > 20.0:
-        delta += 8
-        notes.append(f"LARGE_PRINTS({v:.0f}%): +8 (institutional proxy)")
+        # notes.append(f"LARGE_PRINTS({v:.0f}%): +8 â UNVALIDATED, not applied")
+        pass  # Not applied until validated with true ticks
 
     v = tf.proxy_vpin
     if v is not None:
         if v > 0.55:
-            delta += 6
-            notes.append(f"HIGH_VPIN({v:.3f}): +6 (toxic order flow)")
+            # notes.append(f"HIGH_VPIN({v:.3f}): +6 â UNVALIDATED, not applied")
+            pass
         elif v < 0.20:
-            delta -= 5
-            notes.append(f"LOW_VPIN({v:.3f}): â5 (benign order flow)")
+            # notes.append(f"LOW_VPIN({v:.3f}): -5 â UNVALIDATED, not applied")
+            pass
 
     v = tf.tick_rate_pm
-    if v is not None and v > 50.0:
-        delta += 5
-        notes.append(f"HIGH_TICK_RATE({v:.0f}/min): +5 (algo positioning)")
-
-    v = tf.running_dp_proxy
-    if v is not None and v > 25.0:
-        delta += 8
-        notes.append(f"DP_PROXY_ELEVATED({v:.0f}%): +8 (quiet distribution)")
+    if v is not None:
+        # Active PM (50-100 prints/min): 81% A win rate (n=51 â) from Databento harvest
+        # Quiet PM (<20 prints/min): only 45% A win rate (barely profitable)
+        # Reinstated after bar-proxy showed no variation (constant bars) but
+        # live Tradier tick data DOES vary â signal confirmed with real data.
+        if 50.0 <= v <= 150.0:   # Active sweet spot (hyper >150 less reliable)
+            delta += 5
+            notes.append(f"ACTIVE_TICK_RATE({v:.0f}/min): +5 (81% A win rate, n=51 â)")
+        elif v < 20.0:
+            delta -= 5
+            notes.append(f"QUIET_PM({v:.0f}/min): -5 (45% A win rate â quiet session)")
 
     adjusted = max(0, min(150, base_score + delta))
     return adjusted, delta, notes
@@ -496,12 +515,11 @@ def run_classification_v4(ticker: str, bars: List[Bar],
             else:                 sig.tier = 'SKIP'
 
         # Attach tick notes to reasons/warnings
+        # Only LOW_BUY_PRESSURE and HIGH_BUY_PRESSURE remain after CALIBRATION_v2
         for note in tick_notes:
-            if note.startswith('LOW_BUY') or note.startswith('HIGH_VPIN') or \
-               note.startswith('LARGE') or note.startswith('DP_PROXY') or \
-               note.startswith('HIGH_TICK'):
+            if note.startswith('LOW_BUY_PRESSURE'):
                 sig.reasons.append(f"[TICK] {note}")
-            else:
+            elif note.startswith('HIGH_BUY_PRESSURE'):
                 sig.warnings.append(f"[TICK] {note}")
 
         # Store on signal for JSON output

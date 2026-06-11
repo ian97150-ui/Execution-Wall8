@@ -85,6 +85,13 @@ export interface ClassifierSignal {
   momentum_decay_rate:    number;
   hod_set_pct:            number;
   v3_gate_notes:          string[];
+  // v3 gap-fill fields
+  near_miss_count?:        number;
+  run_day?:                number;
+  price_path_efficiency?:  number;
+  contested_day?:          boolean;
+  margin_lean?:            number;
+  score_delta_pre?:        number;
 }
 
 /**
