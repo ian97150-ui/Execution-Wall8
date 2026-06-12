@@ -1,8 +1,9 @@
 import { spawn } from 'child_process';
 import path from 'path';
 
-const SCRIPT = path.join(__dirname, '../../../python/cat5ive_classifier.py');
-const PYTHON  = process.platform === 'win32' ? 'python' : 'python3';
+const SCRIPT    = path.join(__dirname, '../../../python/cat5ive_classifier.py');
+const SCRIPT_V4 = path.join(__dirname, '../../../python/cat5ive_classifier_v4.py');
+const PYTHON    = process.platform === 'win32' ? 'python' : 'python3';
 
 export interface ClassifierSignal {
   ticker:        string;
@@ -98,6 +99,10 @@ export interface ClassifierSignal {
   wc_tier?:                string;  // WINNERS_CIRCLE | QUALIFYING | DEVELOPING | NOT_QUALIFYING
   bp_score?:               number;  // 0-5 BLUEPR8NT gates passed
   bp_tier?:                string;  // BLUEPR8NT | BLUEPR8NT_CANDIDATE | BP_WATCH | NOT_BP
+  // v4 tick layer (present only when runClassifierWithTicks() is used)
+  tick_rate_pm?:           number;  // prints per minute in PM window (50-150 = active)
+  buy_pressure_pct?:       number;  // % PM volume on up-ticks (<35% = sell dominant)
+  ticks_available?:        boolean; // true when Tradier tick fetch succeeded
 }
 
 /**
@@ -145,6 +150,66 @@ export async function runClassifier(
 
     // Hard timeout: kill process if it takes longer than 45s
     const timer = setTimeout(() => { proc.kill(); done(null); }, 45_000);
+    proc.on('close', () => clearTimeout(timer));
+  });
+}
+
+/**
+ * Spawn cat5ive_classifier_v4.py with Tradier tick data for a single ticker.
+ * Merges tick_features (tick_rate_pm, buy_pressure_pct, ticks_available) onto
+ * the returned ClassifierSignal. Returns null on failure or if v4 is unavailable.
+ */
+export async function runClassifierWithTicks(
+  ticker: string,
+  date?: string
+): Promise<ClassifierSignal | null> {
+  const fs = require('fs');
+  if (!fs.existsSync(SCRIPT_V4)) return null;
+
+  return new Promise((resolve) => {
+    const args: string[] = [SCRIPT_V4, ticker.toUpperCase(), '--json', '--once', '--no-float', '--tick-only-once'];
+    if (date) args.push('--date', date);
+
+    const tradierKey = process.env.TRADIER_API_KEY;
+    const polygonKey = process.env.POLYGON_API_KEY;
+    const env = {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
+      ...(tradierKey ? { TRADIER_API_KEY: tradierKey } : {}),
+      ...(polygonKey ? { POLYGON_API_KEY: polygonKey } : {}),
+    };
+
+    let output = '';
+    let resolved = false;
+    const done = (val: ClassifierSignal | null) => {
+      if (!resolved) { resolved = true; resolve(val); }
+    };
+
+    const proc = spawn(PYTHON, args, { env });
+
+    proc.stdout.on('data', (d: Buffer) => { output += d.toString(); });
+    proc.stderr.on('data', () => {});
+
+    proc.on('close', () => {
+      const jsonLine = output.trim().split('\n').reverse().find(l => l.trimStart().startsWith('{'));
+      if (!jsonLine) { done(null); return; }
+      try {
+        const full = JSON.parse(jsonLine);
+        const tf: Record<string, unknown> = (full.tick_features as Record<string, unknown>) ?? {};
+        const sig = full as ClassifierSignal;
+        // Hoist tick feature fields onto the signal
+        sig.tick_rate_pm     = typeof tf.tick_rate_pm     === 'number'  ? tf.tick_rate_pm     : undefined;
+        sig.buy_pressure_pct = typeof tf.buy_pressure_pct === 'number'  ? tf.buy_pressure_pct : undefined;
+        sig.ticks_available  = typeof tf.ticks_available  === 'boolean' ? tf.ticks_available  : false;
+        done(sig);
+      } catch { done(null); }
+    });
+
+    proc.on('error', () => done(null));
+
+    // Tick fetch adds latency — allow 90s
+    const timer = setTimeout(() => { proc.kill(); done(null); }, 90_000);
     proc.on('close', () => clearTimeout(timer));
   });
 }

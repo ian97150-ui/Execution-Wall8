@@ -218,4 +218,136 @@ router.get('/run', async (req: Request, res: Response) => {
   finish(undefined, 0);
 });
 
+// ─── Mode V Gates Test ────────────────────────────────────────────────────────
+// GET /api/sim/signal-stack-report  (SSE stream)
+// Runs v4 classifier on every saved SimTicker session, computes the 8-signal
+// auto stack, and streams one JSON result row per session.
+// Final event: summary stats { total, by_count, would_exec_n }
+
+function computeAutoStack(sig: Record<string, unknown>): { count: number; signals: string[] } {
+  const active: string[] = [];
+  if (((sig.vol_above_vwap_pct   as number) ?? 100)  < 40)  active.push('VOL_LT40');
+  if (((sig.hod_set_pct          as number) ?? 100)  < 30)  active.push('HOD_LT30');
+  if (sig.quiet_dump_proxy       === true)                   active.push('QUIET_DUMP');
+  if (((sig.session_low_vs_pm_open as number) ?? 0)  > 10)  active.push('DEEP_LOD');
+  if (sig.entry_c_fired          === true)                   active.push('ENTRY_C');
+  if (((sig.wc_score             as number) ?? 0)    >= 4)  active.push('WC_GTE4');
+
+  const tf = (sig.tick_features as Record<string, unknown>) ?? {};
+  if (tf.ticks_available === true) {
+    const rate = (tf.tick_rate_pm as number) ?? 0;
+    if (rate >= 50 && rate <= 150) active.push('TICK_ACTIVE');
+    if (((tf.buy_pressure_pct as number) ?? 100) < 35) active.push('SELL_DOM');
+  }
+  return { count: active.length, signals: active };
+}
+
+router.get('/signal-stack-report', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
+  const send = (type: string, data: unknown) => {
+    try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
+
+  try {
+    const sessions = await prisma.simTicker.findMany({ orderBy: { spike_date: 'asc' } });
+    send('progress', { message: `Running Mode V Gates Test on ${sessions.length} sessions...` });
+
+    if (!fs.existsSync(CLASSIFIER_V4_PATH)) {
+      send('error', { message: 'cat5ive_classifier_v4.py not found' });
+      res.end(); clearInterval(keepalive); return;
+    }
+
+    const tradierKey = process.env.TRADIER_API_KEY;
+    const PYTHON     = process.platform === 'win32' ? 'python' : 'python3';
+
+    const results: Array<{
+      ticker: string; date: string; signal_count: number; signals: string[];
+      ohlcv_count: number; tick_count: number; would_exec: boolean;
+      wc_tier: string; classifier_signal: string; confidence: number;
+    }> = [];
+
+    for (const session of sessions) {
+      try {
+        const args = [
+          CLASSIFIER_V4_PATH, session.ticker,
+          '--date', session.spike_date,
+          '--json', '--once', '--no-float', '--tick-only-once',
+        ];
+        const output = await new Promise<string>((resolve) => {
+          let buf = '';
+          const proc = spawn(PYTHON_BIN, args, {
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+                   ...(tradierKey ? { TRADIER_API_KEY: tradierKey } : {}) },
+          });
+          proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+          proc.stderr.on('data', () => {});
+          proc.on('close', () => resolve(buf));
+          setTimeout(() => { proc.kill(); resolve(buf); }, 90_000);
+        });
+
+        const jsonLine = output.trim().split('\n').reverse().find((l: string) => l.trimStart().startsWith('{'));
+        if (!jsonLine) {
+          send('row', { ticker: session.ticker, date: session.spike_date, error: 'no output' });
+          continue;
+        }
+
+        const sig = JSON.parse(jsonLine) as Record<string, unknown>;
+        const { count, signals } = computeAutoStack(sig);
+        const ohlcv_count = signals.filter(s => !['TICK_ACTIVE','SELL_DOM'].includes(s)).length;
+        const tick_count  = signals.filter(s =>  ['TICK_ACTIVE','SELL_DOM'].includes(s)).length;
+        const tf = (sig.tick_features as Record<string, unknown>) ?? {};
+        const ticks_avail = tf.ticks_available === true;
+        const would_exec  = ticks_avail && count >= 7
+          && (sig.section === 'S1')
+          && ((sig.confidence_norm as number ?? 0) >= 0.55)
+          && ((sig.disqualifiers as string[])?.length ?? 0) === 0;
+
+        const row = {
+          ticker:            session.ticker,
+          date:              session.spike_date,
+          signal_count:      count,
+          signals,
+          ohlcv_count,
+          tick_count,
+          would_exec,
+          wc_tier:           (sig.wc_tier as string) ?? 'N/A',
+          classifier_signal: (sig.signal  as string) ?? 'N/A',
+          confidence:        Math.round(((sig.confidence_norm as number) ?? 0) * 100),
+        };
+        results.push(row);
+        send('row', row);
+      } catch (err) {
+        send('row', { ticker: session.ticker, date: session.spike_date, error: String(err) });
+      }
+    }
+
+    // Summary stats
+    const byCount: Record<number, number> = {};
+    let wouldExec = 0;
+    for (const r of results) {
+      byCount[r.signal_count] = (byCount[r.signal_count] ?? 0) + 1;
+      if (r.would_exec) wouldExec++;
+    }
+    send('summary', {
+      total:          results.length,
+      would_exec_n:   wouldExec,
+      by_count:       byCount,
+    });
+  } catch (err) {
+    send('error', { message: String(err) });
+  }
+
+  clearInterval(keepalive);
+  try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+});
+
 export default router;

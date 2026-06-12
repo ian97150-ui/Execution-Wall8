@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText } from 'lucide-react';
+import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText, ShieldCheck } from 'lucide-react';
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -26,9 +26,14 @@ export function BacktestPanel() {
   const [addTicker, setAddTicker]     = useState('');
   const [addDate, setAddDate]         = useState('');
   const [addStatus, setAddStatus]     = useState('');
-  const [activePanel, setActivePanel] = useState(null); // null | 'guide' | 'threshold'
+  const [activePanel, setActivePanel] = useState(null); // null | 'guide' | 'threshold' | 'gates'
   const [batchTickers, setBatchTickers] = useState(''); // space-separated override tickers
   const [snapTime, setSnapTime]       = useState('');   // HH:MM snapshot stop time
+  const [gatesRunning, setGatesRunning] = useState(false);
+  const [gatesRows,    setGatesRows]    = useState([]);
+  const [gatesSummary, setGatesSummary] = useState(null);
+  const [gatesProgress, setGatesProgress] = useState('');
+  const gatesEsRef = useRef(null);
   const esRef   = useRef(null);
   const termRef = useRef(null);
 
@@ -57,6 +62,47 @@ export function BacktestPanel() {
     if (esRef.current) { esRef.current.close(); esRef.current = null; }
     setRunning(false);
   }, []);
+
+  const stopGatesTest = useCallback(() => {
+    if (gatesEsRef.current) { gatesEsRef.current.close(); gatesEsRef.current = null; }
+    setGatesRunning(false);
+  }, []);
+
+  const runGatesTest = useCallback(() => {
+    if (gatesRunning) { stopGatesTest(); return; }
+    setGatesRows([]);
+    setGatesSummary(null);
+    setGatesProgress('Connecting…');
+    setGatesRunning(true);
+    setActivePanel('gates');
+
+    const es = new EventSource(`${API}/signal-stack-report`);
+    gatesEsRef.current = es;
+
+    es.addEventListener('progress', (e) => {
+      try { setGatesProgress(JSON.parse(e.data).message); } catch {}
+    });
+    es.addEventListener('row', (e) => {
+      try { setGatesRows(prev => [...prev, JSON.parse(e.data)]); } catch {}
+    });
+    es.addEventListener('summary', (e) => {
+      try { setGatesSummary(JSON.parse(e.data)); } catch {}
+    });
+    es.addEventListener('error', (e) => {
+      try { setGatesProgress('Error: ' + JSON.parse(e.data).message); } catch {}
+    });
+    es.addEventListener('done', () => {
+      es.close(); gatesEsRef.current = null;
+      setGatesRunning(false);
+      setGatesProgress('');
+    });
+    es.onerror = () => {
+      es.close(); gatesEsRef.current = null;
+      setGatesRunning(false);
+    };
+  }, [gatesRunning, stopGatesTest]);
+
+  useEffect(() => () => stopGatesTest(), [stopGatesTest]);
 
   const runCmd = useCallback((cmd, opts = {}) => {
     stopStream();
@@ -260,6 +306,13 @@ export function BacktestPanel() {
               style={{ minHeight: 0 }}
               title="Threshold Report"
             />
+          ) : activePanel === 'gates' ? (
+            <GatesTestPanel
+              rows={gatesRows}
+              summary={gatesSummary}
+              progress={gatesProgress}
+              running={gatesRunning}
+            />
           ) : (
             <pre
               ref={termRef}
@@ -345,6 +398,21 @@ export function BacktestPanel() {
                 {activePanel === 'threshold' ? <X className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
                 {activePanel === 'threshold' ? 'Close' : 'Threshold Report'}
               </button>
+              <button
+                onClick={activePanel === 'gates' && !gatesRunning ? () => setActivePanel(null) : runGatesTest}
+                disabled={running}
+                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${
+                  activePanel === 'gates'
+                    ? gatesRunning
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-400 animate-pulse'
+                      : 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                    : 'border-border hover:bg-accent'
+                }`}
+                title="Run 8-signal auto stack through all saved sessions"
+              >
+                <ShieldCheck className="w-3 h-3" />
+                {gatesRunning ? 'Running…' : activePanel === 'gates' ? 'Close' : 'Mode V Gates Test'}
+              </button>
               <span className="text-border">|</span>
               <CmdButton
                 label="Health"
@@ -369,6 +437,112 @@ export function BacktestPanel() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const SIGNAL_LABELS = {
+  VOL_LT40:   'Vol<40%',
+  HOD_LT30:   'HOD<30%',
+  QUIET_DUMP: 'Quiet↓',
+  DEEP_LOD:   'Deep LOD',
+  ENTRY_C:    'Entry C',
+  WC_GTE4:    'WC≥4',
+  TICK_ACTIVE:'Tick✓',
+  SELL_DOM:   'Sell Dom',
+};
+
+function stackColor(count) {
+  if (count >= 7) return 'text-emerald-400';
+  if (count >= 5) return 'text-amber-400';
+  if (count >= 3) return 'text-yellow-400';
+  return 'text-slate-500';
+}
+
+function GatesTestPanel({ rows, summary, progress, running }) {
+  return (
+    <div className="flex-1 overflow-auto bg-black/80 text-xs font-mono" style={{ minHeight: 0 }}>
+      {/* Header / progress */}
+      <div className="sticky top-0 px-3 py-1.5 bg-slate-900/95 border-b border-slate-700 flex items-center gap-3">
+        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+        <span className="font-semibold text-slate-200 tracking-wide">MODE V GATES TEST</span>
+        {running && <span className="text-amber-400 animate-pulse ml-1">● running</span>}
+        {progress && <span className="text-slate-400 ml-2">{progress}</span>}
+        {summary && !running && (
+          <span className="ml-auto text-slate-400">
+            {summary.total} sessions · <span className="text-emerald-400">{summary.would_exec_n} would exec</span>
+          </span>
+        )}
+      </div>
+
+      {/* Results table */}
+      {rows.length > 0 && (
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-800">
+              <th className="px-3 py-1 text-left">Ticker</th>
+              <th className="px-2 py-1 text-left">Date</th>
+              <th className="px-2 py-1 text-center">Stack</th>
+              <th className="px-2 py-1 text-left">Signals</th>
+              <th className="px-2 py-1 text-center">WC Tier</th>
+              <th className="px-2 py-1 text-center">Signal</th>
+              <th className="px-2 py-1 text-center">Conf</th>
+              <th className="px-2 py-1 text-center">Auto Exec?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                <td className="px-3 py-1 font-bold text-slate-200">{row.ticker || '–'}</td>
+                <td className="px-2 py-1 text-slate-400">{row.date || '–'}</td>
+                <td className={`px-2 py-1 text-center font-bold ${stackColor(row.signal_count ?? 0)}`}>
+                  {row.error ? '–' : `${row.signal_count}/8`}
+                </td>
+                <td className="px-2 py-1">
+                  {row.error ? (
+                    <span className="text-red-400">{row.error}</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-0.5">
+                      {(row.signals ?? []).map(s => (
+                        <span key={s} className={`px-1 rounded text-[9px] font-semibold ${
+                          ['TICK_ACTIVE','SELL_DOM'].includes(s)
+                            ? 'bg-cyan-500/20 text-cyan-300'
+                            : 'bg-slate-700 text-slate-300'
+                        }`}>
+                          {SIGNAL_LABELS[s] ?? s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="px-2 py-1 text-center text-slate-400">{row.wc_tier ?? '–'}</td>
+                <td className="px-2 py-1 text-center text-slate-300">{row.classifier_signal ?? '–'}</td>
+                <td className="px-2 py-1 text-center text-slate-400">{row.confidence != null ? `${row.confidence}%` : '–'}</td>
+                <td className={`px-2 py-1 text-center font-bold ${row.would_exec ? 'text-emerald-400' : 'text-slate-600'}`}>
+                  {row.would_exec ? '⚡ YES' : 'NO'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {/* Summary stats */}
+      {summary && (
+        <div className="px-3 py-2 border-t border-slate-700 text-[10px] text-slate-400 flex flex-wrap gap-4">
+          <span>Total: <span className="text-slate-200">{summary.total}</span></span>
+          <span>Would exec (≥7): <span className="text-emerald-400">{summary.would_exec_n}</span></span>
+          {Object.entries(summary.by_count ?? {}).sort(([a],[b]) => Number(b)-Number(a)).map(([k,v]) => (
+            <span key={k} className={stackColor(Number(k))}>
+              {k} signals: {v}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {rows.length === 0 && !running && !progress && (
+        <div className="px-3 py-4 text-slate-500">No results yet. Click Mode V Gates Test to run.</div>
+      )}
     </div>
   );
 }

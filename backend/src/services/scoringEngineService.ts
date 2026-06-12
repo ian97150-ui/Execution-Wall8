@@ -160,6 +160,14 @@ export interface ScoreSnapshot {
   wc_tier?:              string;   // WINNERS_CIRCLE | QUALIFYING | DEVELOPING | NOT_QUALIFYING
   bp_score?:             number;   // 0-5 BLUEPR8NT gates passed
   bp_tier?:              string;   // BLUEPR8NT | BLUEPR8NT_CANDIDATE | BP_WATCH | NOT_BP
+  // Auto signal stack (8 empirical signals from dual strategy report)
+  session_low_vs_pm_open?: number;   // Deep LOD: LOD % below PM open
+  entry_c_fired?:          boolean;  // 3-bar clean entry window
+  tick_rate_pm?:           number;   // v4 tick: prints/min in PM (50-150 = active)
+  buy_pressure_pct?:       number;   // v4 tick: % PM vol on up-ticks (<35 = sell dominant)
+  ticks_available?:        boolean;  // true when v4 tick layer ran successfully
+  auto_signal_count?:      number;   // 0-8 total auto signals active
+  auto_signals_active?:    string[]; // e.g. ['VOL_LT40','HOD_LT30','QUIET_DUMP',...]
 }
 
 // ─── Rule 1 — AH Reversal ─────────────────────────────────────────────────────
@@ -837,7 +845,40 @@ function _mapClassifierToSnapshot(cls: ClassifierSignal): ScoreSnapshot {
     wc_tier:              cls.wc_tier               ?? undefined,
     bp_score:             cls.bp_score              ?? undefined,
     bp_tier:              cls.bp_tier               ?? undefined,
+    // Auto signal stack — 8 signals from dual strategy report
+    session_low_vs_pm_open: cls.session_low_vs_pm_open ?? undefined,
+    entry_c_fired:          cls.entry_c_fired          ?? undefined,
+    tick_rate_pm:           cls.tick_rate_pm            ?? undefined,
+    buy_pressure_pct:       cls.buy_pressure_pct        ?? undefined,
+    ticks_available:        cls.ticks_available         ?? false,
+    ...(_computeAutoStack(cls)),
   };
+}
+
+/**
+ * Compute the 8-signal auto stack from a ClassifierSignal.
+ * Signals 1-6: OHLCV (always available from v3).
+ * Signals 7-8: tick layer (only when ticks_available === true from v4).
+ */
+function _computeAutoStack(
+  cls: ClassifierSignal
+): { auto_signal_count: number; auto_signals_active: string[] } {
+  const active: string[] = [];
+
+  if ((cls.vol_above_vwap_pct    ?? 100)  < 40)  active.push('VOL_LT40');
+  if ((cls.hod_set_pct           ?? 100)  < 30)  active.push('HOD_LT30');
+  if (cls.quiet_dump_proxy       === true)        active.push('QUIET_DUMP');
+  if ((cls.session_low_vs_pm_open ?? 0)   > 10)  active.push('DEEP_LOD');
+  if (cls.entry_c_fired          === true)        active.push('ENTRY_C');
+  if ((cls.wc_score              ?? 0)    >= 4)  active.push('WC_GTE4');
+
+  if (cls.ticks_available === true) {
+    const rate = cls.tick_rate_pm ?? 0;
+    if (rate >= 50 && rate <= 150) active.push('TICK_ACTIVE');
+    if ((cls.buy_pressure_pct ?? 100) < 35) active.push('SELL_DOM');
+  }
+
+  return { auto_signal_count: active.length, auto_signals_active: active };
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────

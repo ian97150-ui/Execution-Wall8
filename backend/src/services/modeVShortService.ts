@@ -1,22 +1,23 @@
 /**
  * Mode V Short — threshold check + notification / auto-approval service.
  *
- * Thresholds updated for v3 classifier (G5 tightened: 0.65→0.55 standard).
+ * Signal stack thresholds (dual strategy report, 197-session dataset):
  *
- * AUTO-EXEC (strict) — all 5 gates:
- *   1. disqualifiers.length === 0
- *   2. pre_fall_tier HIGH or MEDIUM  (score >= 25)
- *   3. bias MAX_CONVICTION (Strat A) or MAX/HIGH_CONVICTION (Strat B)
- *   4. section === 'S1'
- *   5. confidence >= 0.55 (v3 standard)
- *      OR 0.50–0.54 + TIER_1/2 (SLIGHTLY_EARLY) AND quiet_dump_proxy OR RISING trajectory
+ * AUTO-EXEC (strict) — two-stage gate:
+ *   Stage 1 — OHLCV (signals 1-6, always available):
+ *     1. disqualifiers.length === 0
+ *     2. section === 'S1'
+ *     3. auto_signal_count >= 6  (all 6 OHLCV signals fire)
+ *     4. confidence >= 0.55
+ *   Stage 2 — Tick confirmation (signals 7-8, v4 Tradier layer):
+ *     When stage-1 OHLCV count == 6, fetch tick data via runClassifierWithTicks().
+ *     Auto-execute only when total auto_signal_count >= 7
+ *     (at least 1 of the 2 tick signals confirms).
  *
- * NOTIFICATION (loose) — same gates, wider windows:
+ * NOTIFICATION (loose):
  *   1. disqualifiers.length === 0
- *   2. pre_fall_tier HIGH, MEDIUM or LOW (score >= 10)
- *   3. bias MAX, HIGH, or LOW_CONVICTION
- *   4. section S1 or S2
- *   5. confidence >= 0.45  (catches EARLY watchable setups, v3 EARLY zone)
+ *   2. section S1 or S2
+ *   3. auto_signal_count >= 3  (AUTO ZONE per report, 55%+ win rate)
  *
  * Notification fires in SAFE and FULL mode when loose gates pass.
  * Auto-approval only fires in FULL + auto_sub_mode=mode_v_short when strict gates pass.
@@ -25,67 +26,40 @@
 import { prisma } from '../index';
 import { ScoreSnapshot } from './scoringEngineService';
 import type { SecChecklist } from './secChecklistService';
-import type { ClassifierSignal } from './classifierService';
+import { runClassifierWithTicks, type ClassifierSignal } from './classifierService';
 import { captureSignal } from './liveTradeExportService';
 import { recordConsidered } from './liveConsideredService';
 import { PushoverNotifications } from './pushoverService';
 import { activateScheduler } from './executionScheduler';
 
-const EXEC_BIAS   = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION']);
-const NOTIFY_BIAS = new Set(['MAX_CONVICTION', 'HIGH_CONVICTION', 'LOW_CONVICTION']);
-
 /**
- * Strict threshold for auto-execution.
- * strategyId: 'Strat A' | 'Strat B' | ...
+ * Strict threshold for auto-execution (stage 2 — tick-confirmed).
+ * Requires all 6 OHLCV signals AND at least 1 tick signal (total >= 7).
  */
 export function meetsModeVShortThreshold(
-  snap: ScoreSnapshot | null | undefined,
-  strategyId?: string
+  snap: ScoreSnapshot | null | undefined
 ): boolean {
   if (!snap) return false;
   if ((snap.disqualifiers ?? []).length > 0) return false;
-  if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM') return false;
-
-  const isStratA = strategyId === 'Strat A';
-  if (isStratA) {
-    if (snap.bias !== 'MAX_CONVICTION') return false;
-  } else {
-    if (!EXEC_BIAS.has(snap.bias)) return false;
-  }
-
   if (snap.section !== 'S1') return false;
-  const conf = snap.confidence ?? 0;
-  const tier = snap.signal_tier as string | undefined;
-  const SLIGHTLY_EARLY_TIERS = new Set(['TIER_1', 'TIER_2']);
-  // v3: standard pass threshold lowered 0.65→0.55; SLIGHTLY_EARLY zone is now 0.50–0.54
-  const g5Standard      = conf >= 0.55;
-  const g5SlightlyEarly = conf >= 0.50 && conf < 0.55 && !!tier && SLIGHTLY_EARLY_TIERS.has(tier);
-  if (!g5Standard && !g5SlightlyEarly) return false;
-
-  // SLIGHTLY_EARLY auto-exec requires a strong v3 signal to avoid marginal fires
-  if (g5SlightlyEarly) {
-    const hasStrongProfile = (snap as any).quiet_dump_proxy === true
-      || (snap as any).score_trajectory === 'RISING';
-    if (!hasStrongProfile) return false;
-  }
-
+  if ((snap.confidence ?? 0) < 0.55) return false;
+  // Tick layer must have run and total signal count must be 7 or 8
+  if (!snap.ticks_available) return false;
+  if ((snap.auto_signal_count ?? 0) < 7) return false;
   return true;
 }
 
 /**
  * Loose threshold for push notifications only.
- * Catches borderline setups worth manual review — does NOT trigger auto-execution.
+ * Fires at ≥3 auto signals (AUTO ZONE per report — 55%+ win rate).
  */
 export function meetsModeVShortNotifyThreshold(
   snap: ScoreSnapshot | null | undefined
 ): boolean {
   if (!snap) return false;
   if ((snap.disqualifiers ?? []).length > 0) return false;
-  if (snap.pre_fall_tier !== 'HIGH' && snap.pre_fall_tier !== 'MEDIUM' && snap.pre_fall_tier !== 'LOW') return false;
-  if (!NOTIFY_BIAS.has(snap.bias)) return false;
   if (snap.section !== 'S1' && snap.section !== 'S2') return false;
-  // v3: lowered to 0.45 to catch EARLY watchable setups (0.45–0.49 zone)
-  if ((snap.confidence ?? 0) < 0.45) return false;
+  if ((snap.auto_signal_count ?? 0) < 3) return false;
   return true;
 }
 
@@ -122,12 +96,55 @@ export async function tryAutoApproveForModeVShort(
   if (!intent) return false;
 
   const strategyId: string = (intent as any).strategy_id ?? '';
-  const snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
+  let snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
 
-  // Check loose threshold first — fires notification in both SAFE and FULL mode
+  // Check loose threshold (≥3 auto signals) — fires notification in SAFE and FULL mode
   if (!meetsModeVShortNotifyThreshold(snap)) return false;
 
-  const strictPass = meetsModeVShortThreshold(snap, strategyId);
+  const ohlcvCount = snap?.auto_signal_count ?? 0;
+
+  // Stage 2: when all 6 OHLCV signals are active, fetch tick data to evaluate signals 7-8
+  let tickSnap: ScoreSnapshot | undefined;
+  if (ohlcvCount >= 6 && !snap?.ticks_available) {
+    console.log(`[ModeV] ${intent.ticker} OHLCV stack full (${ohlcvCount}/6) — fetching tick data`);
+    try {
+      const tickDate = (intent as any).created_at
+        ? new Date((intent as any).created_at).toISOString().slice(0, 10)
+        : undefined;
+      const tickCls = await runClassifierWithTicks(intent.ticker, tickDate);
+      if (tickCls) {
+        const tickActive = (tickCls.ticks_available === true)
+          && (tickCls.tick_rate_pm ?? 0) >= 50
+          && (tickCls.tick_rate_pm ?? 0) <= 150;
+        const sellDom = (tickCls.ticks_available === true)
+          && (tickCls.buy_pressure_pct ?? 100) < 35;
+        const prevSignals = snap?.auto_signals_active ?? [];
+        const newSignals  = [
+          ...prevSignals.filter(s => s !== 'TICK_ACTIVE' && s !== 'SELL_DOM'),
+          ...(tickActive ? ['TICK_ACTIVE'] : []),
+          ...(sellDom    ? ['SELL_DOM']    : []),
+        ];
+        tickSnap = {
+          ...snap!,
+          tick_rate_pm:        tickCls.tick_rate_pm,
+          buy_pressure_pct:    tickCls.buy_pressure_pct,
+          ticks_available:     tickCls.ticks_available ?? false,
+          auto_signals_active: newSignals,
+          auto_signal_count:   newSignals.length,
+        } as ScoreSnapshot;
+        console.log(
+          `[ModeV] ${intent.ticker} tick check — rate=${tickCls.tick_rate_pm?.toFixed(0) ?? 'n/a'}/min ` +
+          `buy=${tickCls.buy_pressure_pct?.toFixed(0) ?? 'n/a'}% ` +
+          `stack=${tickSnap.auto_signal_count}/8 [${newSignals.join(',')}]`
+        );
+        snap = tickSnap;
+      }
+    } catch (err) {
+      console.warn(`[ModeV] tick fetch failed for ${intent.ticker}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  const strictPass = meetsModeVShortThreshold(snap);
 
   const notifDetails = {
     score:      snap!.pre_fall_score,
@@ -137,7 +154,8 @@ export async function tryAutoApproveForModeVShort(
     section:    snap!.section,
     signals:    (snap!.overrides_fired ?? []).slice(0, 3).join(', ') || 'none',
     strategy:   strategyId || 'N/A',
-    // Flag whether this also met the strict (auto-exec) bar
+    auto_stack: `${snap!.auto_signal_count ?? 0}/8`,
+    tick_status: snap!.ticks_available ? 'tick-confirmed' : 'ohlcv-only',
     verified:   strictPass ? 'AUTO-EXEC GRADE' : 'REVIEW NEEDED',
   };
 
@@ -158,8 +176,8 @@ export async function tryAutoApproveForModeVShort(
   console.log(
     `⚡ Mode V Short: auto-approved ${intent.ticker} ` +
     `[${strategyId || 'unknown'}] ` +
-    `(score ${snap!.pre_fall_score}, ${snap!.pre_fall_tier}, ${snap!.bias}, ` +
-    `conf ${Math.round((snap!.confidence ?? 0) * 100)}%)`
+    `stack=${snap!.auto_signal_count}/8 [${(snap!.auto_signals_active ?? []).join(',')}] ` +
+    `conf ${Math.round((snap!.confidence ?? 0) * 100)}%`
   );
   return true;
 }
@@ -253,15 +271,28 @@ export async function handleWaitUpgrade(
   try { settings = await prisma.executionSettings.findFirst(); } catch {}
 
   if (settings?.execution_mode === 'full' && settings?.auto_sub_mode === 'mode_v_short') {
+    // Build auto signal stack from the upgraded ClassifierSignal (v3, no ticks)
+    const _autoSignals: string[] = [];
+    if ((cls.vol_above_vwap_pct    ?? 100)  < 40)  _autoSignals.push('VOL_LT40');
+    if ((cls.hod_set_pct           ?? 100)  < 30)  _autoSignals.push('HOD_LT30');
+    if (cls.quiet_dump_proxy       === true)        _autoSignals.push('QUIET_DUMP');
+    if ((cls.session_low_vs_pm_open ?? 0)   > 10)  _autoSignals.push('DEEP_LOD');
+    if (cls.entry_c_fired          === true)        _autoSignals.push('ENTRY_C');
+    if ((cls.wc_score              ?? 0)    >= 4)  _autoSignals.push('WC_GTE4');
     const fakeSnap = {
-      disqualifiers: cls.disqualifiers ?? [],
-      pre_fall_tier: cls.tier,
-      bias:          cls.bias,
-      section:       cls.section,
-      confidence:    cls.confidence / 100,
-      signal_tier:   cls.signal_tier,
+      disqualifiers:       cls.disqualifiers ?? [],
+      section:             cls.section,
+      confidence:          cls.confidence / 100,
+      ticks_available:     false,   // v3 path — tick check not run on wait upgrade
+      auto_signal_count:   _autoSignals.length,
+      auto_signals_active: _autoSignals,
     };
-    if (meetsModeVShortThreshold(fakeSnap as any)) {
+    // Wait-upgrade auto-exec: require 6/6 OHLCV (tick check not available on upgrade path)
+    const waitUpgradePass = (fakeSnap.disqualifiers.length === 0)
+      && (fakeSnap.section === 'S1')
+      && (fakeSnap.confidence >= 0.55)
+      && (fakeSnap.auto_signal_count >= 6);
+    if (waitUpgradePass) {
       const intent = await prisma.tradeIntent
         .findUnique({ where: { id: intentId } }).catch(() => null);
       if (intent?.status === 'pending') {

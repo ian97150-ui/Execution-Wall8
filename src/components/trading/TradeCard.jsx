@@ -621,6 +621,43 @@ export default function TradeCard({
                     </div>
                   )}
 
+                  {/* AUTO STACK badge (8-signal Mode V gate stack) */}
+                  {scoreSnapshot.auto_signal_count != null && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* Main badge */}
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-mono font-bold border",
+                        scoreSnapshot.auto_signal_count >= 7 ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" :
+                        scoreSnapshot.auto_signal_count >= 5 ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                        scoreSnapshot.auto_signal_count >= 3 ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" :
+                        "bg-slate-500/10 text-slate-500 border-slate-600/20"
+                      )}>
+                        AUTO {scoreSnapshot.auto_signal_count}/{scoreSnapshot.ticks_available ? '8' : '6'}
+                        {scoreSnapshot.auto_signal_count >= 7 && ' ⚡'}
+                        {scoreSnapshot.auto_signal_count >= 3 && scoreSnapshot.auto_signal_count < 7 && ' ZONE'}
+                      </span>
+                      {/* Active signal chips */}
+                      {(scoreSnapshot.auto_signals_active ?? []).map(sig => {
+                        const LABELS = {
+                          VOL_LT40:'Vol<40%', HOD_LT30:'HOD<30%', QUIET_DUMP:'Quiet↓',
+                          DEEP_LOD:'Deep LOD', ENTRY_C:'Entry C', WC_GTE4:'WC≥4',
+                          TICK_ACTIVE:'Tick✓', SELL_DOM:'Sell Dom',
+                        };
+                        const isTick = sig === 'TICK_ACTIVE' || sig === 'SELL_DOM';
+                        return (
+                          <span key={sig} className={cn(
+                            "px-1.5 py-0.5 rounded text-[9px] font-semibold border",
+                            isTick
+                              ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/25"
+                              : "bg-slate-700/50 text-slate-300 border-slate-600/30"
+                          )}>
+                            {LABELS[sig] ?? sig}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* G1–G5 gate detail */}
                   {scoreSnapshot.gate_detail?.length > 0 && (
                     <div className="space-y-1">
