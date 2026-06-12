@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { spawn, spawnSync } from 'child_process';
+import { StringDecoder } from 'string_decoder';
 import { prisma } from '../index';
 import path from 'path';
 import fs from 'fs';
@@ -55,8 +56,25 @@ router.get('/health', async (_req: Request, res: Response) => {
 
 function stripAnsi(str: string): string {
   return str
-    .replace(/﻿/g, '')                  // strip BOM
-    .replace(/\x1b\[[0-9;]*[mGKHJ]/g, '');  // strip ANSI color codes
+    .replace(/﻿/g, '')                           // strip BOM
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')            // strip ANSI escape sequences (colors, cursor)
+    .replace(/\x1b[^[]/g, '')                          // strip other ESC sequences (e.g. ESC=, ESC>)
+    // Normalize common Unicode output chars to readable ASCII
+    .replace(/[═╒╕╘╛╞╡╤╧╪]/g, '=')                   // double-line box chars → =
+    .replace(/[─━┄┅┈┉┼┤├┬┴┼╫╪]/g, '-')               // single-line horizontal box chars → -
+    .replace(/[│┃┆┇┊┋]/g, '|')                        // vertical box chars → |
+    .replace(/[╔╗╚╝╠╣╦╩╬]/g, '+')                    // corner box chars → +
+    .replace(/→/g, '->')                               // rightwards arrow
+    .replace(/←/g, '<-')                               // leftwards arrow
+    .replace(/↑/g, '^')                                // upwards arrow
+    .replace(/↓/g, 'v')                                // downwards arrow
+    .replace(/✓/g, 'Y')                                // check mark
+    .replace(/✗/g, 'N')                                // ballot x
+    .replace(/—/g, '-')                                // em dash
+    .replace(/–/g, '-')                                // en dash
+    .replace(/•/g, '*')                                // bullet
+    .replace(/△/g, '^')                                // triangle
+    .replace(/▼/g, 'v');                               // inverted triangle
 }
 
 function mergeCSV(appCsvPath: string): string {
@@ -212,9 +230,15 @@ router.get('/run', async (req: Request, res: Response) => {
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
              ...(tradierKey2 ? { TRADIER_API_KEY: tradierKey2 } : {}) },
     });
-    proc2.stdout?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(c.toString('utf8')))}\n\n`); });
-    proc2.stderr?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(c.toString('utf8')))}\n\n`); });
-    proc2.on('close', (code) => finish(csvPath, code ?? 0));
+    const dec2o = new StringDecoder('utf8');
+    const dec2e = new StringDecoder('utf8');
+    proc2.stdout?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(dec2o.write(c)))}\n\n`); });
+    proc2.stderr?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(dec2e.write(c)))}\n\n`); });
+    proc2.on('close', (code) => {
+      const tail2o = dec2o.end(); if (tail2o && !streamDone) res.write(`data: ${JSON.stringify(stripAnsi(tail2o))}\n\n`);
+      const tail2e = dec2e.end(); if (tail2e && !streamDone) res.write(`data: ${JSON.stringify(stripAnsi(tail2e))}\n\n`);
+      finish(csvPath, code ?? 0);
+    });
     proc2.on('error', (err) => { res.write(`data: ${JSON.stringify(`[error] ${err.message}`)}\n\n`); finish(csvPath, -1); });
     req.on('close', () => { if (!streamDone) { proc2.kill(); cleanup(csvPath); } });
     return;
@@ -260,15 +284,20 @@ router.get('/run', async (req: Request, res: Response) => {
     env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
   });
 
+  const deco = new StringDecoder('utf8');
+  const dece = new StringDecoder('utf8');
+
   const send = (text: string) => {
     if (streamDone) return;
     res.write(`data: ${JSON.stringify(stripAnsi(text))}\n\n`);
   };
 
-  proc.stdout?.on('data', (c: Buffer) => send(c.toString('utf8')));
-  proc.stderr?.on('data', (c: Buffer) => send(c.toString('utf8')));
+  proc.stdout?.on('data', (c: Buffer) => send(deco.write(c)));
+  proc.stderr?.on('data', (c: Buffer) => send(dece.write(c)));
 
   proc.on('close', (code: number | null) => {
+    const tailo = deco.end(); if (tailo) send(tailo);
+    const taile = dece.end(); if (taile) send(taile);
     cleanup2();
     finish(csvPath, code ?? 0);
   });
