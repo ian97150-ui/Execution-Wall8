@@ -219,9 +219,10 @@ router.get('/run', async (req: Request, res: Response) => {
 });
 
 // ─── Mode V Gates Test ────────────────────────────────────────────────────────
-// GET /api/sim/signal-stack-report  (SSE stream)
-// Runs v4 classifier on every saved SimTicker session, computes the 8-signal
-// auto stack, and streams one JSON result row per session.
+// GET /api/sim/signal-stack-report?ticker=MULN&date=2024-01-15[&time=HH:MM]
+// Runs the v4 classifier on a single ticker+date, computes the 8-signal auto
+// stack, and streams a single row result.
+// Optional ?time=HH:MM truncates bars to that snapshot point (same as Classify).
 // Final event: summary stats { total, by_count, would_exec_n }
 
 function computeAutoStack(sig: Record<string, unknown>): { count: number; signals: string[] } {
@@ -257,90 +258,84 @@ router.get('/signal-stack-report', async (req: Request, res: Response) => {
     try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
   };
 
+  const ticker   = (req.query.ticker as string | undefined)?.trim().toUpperCase();
+  const date     = (req.query.date   as string | undefined)?.trim();
+  const snapTime = (req.query.time   as string | undefined)?.trim();
+
+  if (!ticker || !date) {
+    send('error', { message: 'ticker and date query params are required' });
+    clearInterval(keepalive);
+    try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+    return;
+  }
+
   try {
-    const sessions = await prisma.simTicker.findMany({ orderBy: { spike_date: 'asc' } });
-    send('progress', { message: `Running Mode V Gates Test on ${sessions.length} sessions...` });
+    const label = snapTime ? `${ticker} ${date} @ ${snapTime}` : `${ticker} ${date}`;
+    send('progress', { message: `Running Mode V Gates Test — ${label}` });
 
     if (!fs.existsSync(CLASSIFIER_V4_PATH)) {
       send('error', { message: 'cat5ive_classifier_v4.py not found' });
-      res.end(); clearInterval(keepalive); return;
+      clearInterval(keepalive);
+      try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+      return;
     }
 
     const tradierKey = process.env.TRADIER_API_KEY;
 
-    const results: Array<{
-      ticker: string; date: string; signal_count: number; signals: string[];
-      ohlcv_count: number; tick_count: number; would_exec: boolean;
-      wc_tier: string; classifier_signal: string; confidence: number;
-    }> = [];
+    const args = [
+      CLASSIFIER_V4_PATH, ticker,
+      '--date', date,
+      '--json', '--once', '--no-float', '--tick-only-once',
+    ];
+    if (snapTime) args.push('--time', snapTime);
 
-    for (const session of sessions) {
-      try {
-        const args = [
-          CLASSIFIER_V4_PATH, session.ticker,
-          '--date', session.spike_date,
-          '--json', '--once', '--no-float', '--tick-only-once',
-        ];
-        const output = await new Promise<string>((resolve) => {
-          let buf = '';
-          const proc = spawn(PYTHON_BIN, args, {
-            env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
-                   ...(tradierKey ? { TRADIER_API_KEY: tradierKey } : {}) },
-          });
-          proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
-          proc.stderr.on('data', () => {});
-          proc.on('close', () => resolve(buf));
-          setTimeout(() => { proc.kill(); resolve(buf); }, 90_000);
-        });
-
-        const jsonLine = output.trim().split('\n').reverse().find((l: string) => l.trimStart().startsWith('{'));
-        if (!jsonLine) {
-          send('row', { ticker: session.ticker, date: session.spike_date, error: 'no output' });
-          continue;
-        }
-
-        const sig = JSON.parse(jsonLine) as Record<string, unknown>;
-        const { count, signals } = computeAutoStack(sig);
-        const ohlcv_count = signals.filter(s => !['TICK_ACTIVE','SELL_DOM'].includes(s)).length;
-        const tick_count  = signals.filter(s =>  ['TICK_ACTIVE','SELL_DOM'].includes(s)).length;
-        const tf = (sig.tick_features as Record<string, unknown>) ?? {};
-        const ticks_avail = tf.ticks_available === true;
-        const would_exec  = ticks_avail && count >= 7
-          && (sig.section === 'S1')
-          && ((sig.confidence_norm as number ?? 0) >= 0.55)
-          && ((sig.disqualifiers as string[])?.length ?? 0) === 0;
-
-        const row = {
-          ticker:            session.ticker,
-          date:              session.spike_date,
-          signal_count:      count,
-          signals,
-          ohlcv_count,
-          tick_count,
-          would_exec,
-          wc_tier:           (sig.wc_tier as string) ?? 'N/A',
-          classifier_signal: (sig.signal  as string) ?? 'N/A',
-          confidence:        Math.round(((sig.confidence_norm as number) ?? 0) * 100),
-        };
-        results.push(row);
-        send('row', row);
-      } catch (err) {
-        send('row', { ticker: session.ticker, date: session.spike_date, error: String(err) });
-      }
-    }
-
-    // Summary stats
-    const byCount: Record<number, number> = {};
-    let wouldExec = 0;
-    for (const r of results) {
-      byCount[r.signal_count] = (byCount[r.signal_count] ?? 0) + 1;
-      if (r.would_exec) wouldExec++;
-    }
-    send('summary', {
-      total:          results.length,
-      would_exec_n:   wouldExec,
-      by_count:       byCount,
+    const output = await new Promise<string>((resolve) => {
+      let buf = '';
+      const proc = spawn(PYTHON_BIN, args, {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+               ...(tradierKey ? { TRADIER_API_KEY: tradierKey } : {}) },
+      });
+      proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+      proc.stderr.on('data', () => {});
+      proc.on('close', () => resolve(buf));
+      setTimeout(() => { proc.kill(); resolve(buf); }, 90_000);
     });
+
+    const jsonLine = output.trim().split('\n').reverse().find((l: string) => l.trimStart().startsWith('{'));
+    if (!jsonLine) {
+      send('row', { ticker, date, snap_time: snapTime ?? null, error: 'no classifier output' });
+    } else {
+      const sig = JSON.parse(jsonLine) as Record<string, unknown>;
+      const { count, signals } = computeAutoStack(sig);
+      const ohlcv_count = signals.filter(s => !['TICK_ACTIVE','SELL_DOM'].includes(s)).length;
+      const tick_count  = signals.filter(s =>  ['TICK_ACTIVE','SELL_DOM'].includes(s)).length;
+      const tf = (sig.tick_features as Record<string, unknown>) ?? {};
+      const ticks_avail = tf.ticks_available === true;
+      const would_exec  = ticks_avail && count >= 7
+        && (sig.section === 'S1')
+        && (((sig.confidence_norm as number) ?? 0) >= 0.55)
+        && (((sig.disqualifiers as string[])?.length) ?? 0) === 0;
+
+      const row = {
+        ticker,
+        date,
+        snap_time:         snapTime ?? null,
+        signal_count:      count,
+        signals,
+        ohlcv_count,
+        tick_count,
+        would_exec,
+        wc_tier:           (sig.wc_tier as string) ?? 'N/A',
+        classifier_signal: (sig.signal  as string) ?? 'N/A',
+        confidence:        Math.round(((sig.confidence_norm as number) ?? 0) * 100),
+      };
+      send('row', row);
+      send('summary', {
+        total:        1,
+        would_exec_n: would_exec ? 1 : 0,
+        by_count:     { [count]: 1 },
+      });
+    }
   } catch (err) {
     send('error', { message: String(err) });
   }

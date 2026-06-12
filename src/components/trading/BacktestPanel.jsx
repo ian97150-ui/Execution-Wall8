@@ -70,13 +70,17 @@ export function BacktestPanel() {
 
   const runGatesTest = useCallback(() => {
     if (gatesRunning) { stopGatesTest(); return; }
+    if (!selected) return;
     setGatesRows([]);
     setGatesSummary(null);
     setGatesProgress('Connecting…');
     setGatesRunning(true);
     setActivePanel('gates');
 
-    const es = new EventSource(`${API}/signal-stack-report`);
+    const params = new URLSearchParams({ ticker: selected.ticker, date: selected.spike_date });
+    if (snapTime.trim()) params.set('time', snapTime.trim());
+
+    const es = new EventSource(`${API}/signal-stack-report?${params}`);
     gatesEsRef.current = es;
 
     es.addEventListener('progress', (e) => {
@@ -100,7 +104,7 @@ export function BacktestPanel() {
       es.close(); gatesEsRef.current = null;
       setGatesRunning(false);
     };
-  }, [gatesRunning, stopGatesTest]);
+  }, [gatesRunning, stopGatesTest, selected, snapTime]);
 
   useEffect(() => () => stopGatesTest(), [stopGatesTest]);
 
@@ -400,7 +404,7 @@ export function BacktestPanel() {
               </button>
               <button
                 onClick={activePanel === 'gates' && !gatesRunning ? () => setActivePanel(null) : runGatesTest}
-                disabled={running}
+                disabled={running || !selected}
                 className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${
                   activePanel === 'gates'
                     ? gatesRunning
@@ -408,7 +412,9 @@ export function BacktestPanel() {
                       : 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
                     : 'border-border hover:bg-accent'
                 }`}
-                title="Run 8-signal auto stack through all saved sessions"
+                title={selected
+                  ? `Grade ${selected.ticker} ${selected.spike_date}${snapTime.trim() ? ' @ ' + snapTime.trim() : ''}`
+                  : 'Select a session first'}
               >
                 <ShieldCheck className="w-3 h-3" />
                 {gatesRunning ? 'Running…' : activePanel === 'gates' ? 'Close' : 'Mode V Gates Test'}
@@ -460,6 +466,7 @@ function stackColor(count) {
 }
 
 function GatesTestPanel({ rows, summary, progress, running }) {
+  const hasSnapTime = rows.some(r => r.snap_time);
   return (
     <div className="flex-1 overflow-auto bg-black/80 text-xs font-mono" style={{ minHeight: 0 }}>
       {/* Header / progress */}
@@ -470,7 +477,7 @@ function GatesTestPanel({ rows, summary, progress, running }) {
         {progress && <span className="text-slate-400 ml-2">{progress}</span>}
         {summary && !running && (
           <span className="ml-auto text-slate-400">
-            {summary.total} sessions · <span className="text-emerald-400">{summary.would_exec_n} would exec</span>
+            {summary.total} {summary.total === 1 ? 'session' : 'sessions'} · <span className="text-emerald-400">{summary.would_exec_n} would exec</span>
           </span>
         )}
       </div>
@@ -482,6 +489,7 @@ function GatesTestPanel({ rows, summary, progress, running }) {
             <tr className="text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-800">
               <th className="px-3 py-1 text-left">Ticker</th>
               <th className="px-2 py-1 text-left">Date</th>
+              {hasSnapTime && <th className="px-2 py-1 text-center">Snap</th>}
               <th className="px-2 py-1 text-center">Stack</th>
               <th className="px-2 py-1 text-left">Signals</th>
               <th className="px-2 py-1 text-center">WC Tier</th>
@@ -495,6 +503,7 @@ function GatesTestPanel({ rows, summary, progress, running }) {
               <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                 <td className="px-3 py-1 font-bold text-slate-200">{row.ticker || '–'}</td>
                 <td className="px-2 py-1 text-slate-400">{row.date || '–'}</td>
+                {hasSnapTime && <td className="px-2 py-1 text-center text-violet-400">{row.snap_time ?? '–'}</td>}
                 <td className={`px-2 py-1 text-center font-bold ${stackColor(row.signal_count ?? 0)}`}>
                   {row.error ? '–' : `${row.signal_count}/8`}
                 </td>
