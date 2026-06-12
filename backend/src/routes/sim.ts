@@ -56,7 +56,7 @@ router.get('/health', async (_req: Request, res: Response) => {
 
 function stripAnsi(str: string): string {
   return str
-    .replace(/﻿/g, '')                           // strip BOM
+    .replace(/﻿/g, '')                                // strip BOM
     .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')            // strip ANSI escape sequences (colors, cursor)
     .replace(/\x1b[^[]/g, '')                          // strip other ESC sequences (e.g. ESC=, ESC>)
     // Normalize common Unicode output chars to readable ASCII
@@ -70,11 +70,14 @@ function stripAnsi(str: string): string {
     .replace(/↓/g, 'v')                                // downwards arrow
     .replace(/✓/g, 'Y')                                // check mark
     .replace(/✗/g, 'N')                                // ballot x
+    .replace(/⚠/g, '!')                               // warning sign (traj/warnings row)
+    .replace(/Δ/g, 'D')                               // delta (score trajectory delta)
     .replace(/—/g, '-')                                // em dash
     .replace(/–/g, '-')                                // en dash
     .replace(/•/g, '*')                                // bullet
     .replace(/△/g, '^')                                // triangle
-    .replace(/▼/g, 'v');                               // inverted triangle
+    .replace(/▼/g, 'v')                               // inverted triangle
+    .replace(/[^\x00-\x7F]/g, '');                    // strip any remaining non-ASCII (garbled UTF-8 bytes)
 }
 
 function mergeCSV(appCsvPath: string): string {
