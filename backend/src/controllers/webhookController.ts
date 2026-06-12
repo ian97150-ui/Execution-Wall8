@@ -1840,11 +1840,19 @@ async function handleWall55PctSignal(data: {
  */
 export async function getWebhookLogs(req: Request, res: Response) {
   try {
-    const { source, status, limit = 100, offset = 0 } = req.query;
+    const { source, status, ticker, date, limit = 100, offset = 0 } = req.query;
 
     const where: any = {};
     if (source) where.source = source;
     if (status) where.status = status;
+    // ticker and date filter against the payload JSON string
+    if (ticker) where.payload = { contains: (ticker as string).toUpperCase() };
+    if (date) {
+      const d = new Date(date as string);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      where.timestamp = { gte: d, lt: next };
+    }
 
     const logs = await prisma.webhookLog.findMany({
       where,
@@ -1855,8 +1863,20 @@ export async function getWebhookLogs(req: Request, res: Response) {
 
     const total = await prisma.webhookLog.count({ where });
 
+    // Parse payload for readability and extract ticker/event from each log
+    const enriched = logs.map(log => {
+      let parsed: any = null;
+      try { parsed = JSON.parse(log.payload); } catch {}
+      return {
+        ...log,
+        ticker:  parsed?.ticker || parsed?.symbol || null,
+        event:   parsed?.event  || parsed?.type   || null,
+        payload: parsed ?? log.payload,
+      };
+    });
+
     res.json({
-      logs,
+      logs: enriched,
       total,
       limit: Number(limit),
       offset: Number(offset)
