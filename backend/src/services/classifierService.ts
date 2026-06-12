@@ -92,6 +92,7 @@ export interface ClassifierSignal {
   contested_day?:          boolean;
   margin_lean?:            number;
   score_delta_pre?:        number;
+  close_vs_pm_open_pct?:   number;  // (pm_open - close) / pm_open * 100; 20-40% = 93% win rate
   // WC / BLUEPR8NT
   wc_score?:               number;  // 0-7 Winners Circle gates passed
   wc_tier?:                string;  // WINNERS_CIRCLE | QUALIFYING | DEVELOPING | NOT_QUALIFYING

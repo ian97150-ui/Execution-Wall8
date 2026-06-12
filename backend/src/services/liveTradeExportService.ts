@@ -108,6 +108,7 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
       score_trajectory:    cls.score_trajectory     ?? null,
       float_turnover_pct:  cls.float_turnover_pct   ?? null,
       hod_set_pct:         cls.hod_set_pct          ?? null,
+      close_vs_pm_open_pct: cls.close_vs_pm_open_pct ?? null,
       v3_gate_notes:       cls.v3_gate_notes        ?? [],
       wc_score:            cls.wc_score             ?? null,
       wc_tier:             cls.wc_tier              ?? null,

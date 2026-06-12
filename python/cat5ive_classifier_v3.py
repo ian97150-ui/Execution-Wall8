@@ -73,8 +73,8 @@ try:    import yfinance as yf; HAS_YF = True
 except: HAS_YF = False
 
 # ââ Terminal colours ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-BOLD='\\033[1m'; RESET='\\033[0m'; GRN='\\033[92m'; YEL='\\033[93m'
-RED='\\033[91m'; CYN='\\033[96m'; MAG='\\033[95m'; DIM='\\033[2m'
+BOLD='\033[1m'; RESET='\033[0m'; GRN='\033[92m'; YEL='\033[93m'
+RED='\033[91m'; CYN='\033[96m'; MAG='\033[95m'; DIM='\033[2m'
 
 # ââ Signal definitions (guidelines v3.0) âââââââââââââââââââââââââââââââââââââ
 TIER_1 = {'SUPPLY_OVERHANG','AH_REVERSAL_TRAP','LIVE_STRENGTH',
@@ -87,6 +87,7 @@ ALL_Q  = TIER_1 | TIER_2 | TIER_3
 
 # v3 â new signals (informational, used in score adjustments)
 V3_SIGNALS = {'LATE_HOD', 'HEAVY_VWAP_DIST', 'MEDIUM_SPIKE_ZONE', 'DEEP_SESSION_LOW',
+              'THESIS_PROVEN', 'THESIS_BUILDING', 'EXTREME_DROP', 'CLOSE_ABOVE_PM_OPEN',
               'QUIET_DUMP_PROXY', 'ENTRY_C_WINDOW', 'LOW_SESSION_LOW'}
 
 POWER_COMBOS = [
@@ -949,6 +950,31 @@ def compute_score(signals: dict, section: str,
         elif _slvpo >= 10.0:
             score += 4    # Meaningful dip from open
 
+    # ââ close_vs_pm_open_pct â HIGHEST WIN RATE SIGNAL (93% A win, n=32 â) ââ
+    # Where is the close RIGHT NOW relative to PM open?
+    # Different from session_low (which is the floor) â this is current price location.
+    # 20-40% below PM open: stock has already proven the thesis. 93% A win rate.
+    # The classifier knows pm_open_px if pm_open_valid. Use bars[-1].close.
+    if bars and len(bars) > 0:
+        _pm_open = None
+        _pm_bars = [b for b in bars if b.session == 'pre']
+        if _pm_bars: _pm_open = _pm_bars[0].open
+        if _pm_open and _pm_open > 0:
+            _curr_close = bars[-1].close
+            _close_vs_pm = (_pm_open - _curr_close) / _pm_open * 100  # positive = dropped
+            if 20.0 <= _close_vs_pm < 40.0:
+                score += 10                      # 93% A win rate (n=32 â) PROVEN THESIS
+                signals['THESIS_PROVEN'] = True
+            elif 10.0 <= _close_vs_pm < 20.0:
+                score += 5                       # Meaningful drop â thesis building
+                signals['THESIS_BUILDING'] = True
+            elif _close_vs_pm >= 40.0:
+                score += 4                       # Very deep â may be exhausted
+                signals['EXTREME_DROP'] = True
+            elif _close_vs_pm < 0:
+                score -= 8                       # Close ABOVE PM open â price going up
+                signals['CLOSE_ABOVE_PM_OPEN'] = True
+
     # Data: confidence â¥ 85% = A â10.3% avg vs +1.8% for <55%
     if confidence >= 85:
         score += 8    # High classifier certainty = strongest S1 conviction
@@ -1139,9 +1165,6 @@ class ClassifierSignal:
     pre_fall_tier:      str   = 'SKIP'
     gates_passed:       int   = 0
     gate_detail:        List[str] = None
-    t2_entry_type:      str   = 'NOT_QUALIFIED'
-    last_bar_time:      str   = ''
-    sec_cache_age_hrs:  float = 0.0
     # ââ v3 new fields ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     vol_above_vwap_pct:     float = 0.0   # % of volume traded above VWAP
     intraday_gain_pct:      float = 0.0   # (HOD - PM_open) / PM_open Ã 100
@@ -1156,6 +1179,13 @@ class ClassifierSignal:
     momentum_decay_rate:    float = 0.0   # price fade from HOD per bar
     hod_set_pct:            float = 0.0   # % session elapsed when HOD formed
     v3_gate_notes:          List[str] = None  # v3 gate adjustment log
+    t2_entry_type:          str   = 'NOT_QUALIFIED'
+    last_bar_time:          str   = ''
+    sec_cache_age_hrs:      float = 0.0
+    wc_score:               int   = 0
+    wc_tier:                str   = ''
+    bp_score:               int   = 0
+    bp_tier:                str   = ''
 
     # ââ Gap-fill fields (backtest-aligned, v3.1+) ââââââââââââââââââââââââââ
     near_miss_count:        int   = 0     # bars where conf crossed 45-55% threshold
@@ -1164,11 +1194,7 @@ class ClassifierSignal:
     contested_day:         bool  = False # True when flips>8 AND consec_s1<5
     margin_lean:           float = 0.0   # mean lean value across last 20 bars
     score_delta_pre:       int   = 0     # raw score change 5 bars before entry
-    # ── WC / BLUEPR8NT outputs ─────────────────────────────────────────────
-    wc_score:              int   = 0     # Winners Circle gates passed (0-7)
-    wc_tier:               str   = ''    # WINNERS_CIRCLE / QUALIFYING / DEVELOPING / NOT_QUALIFYING
-    bp_score:              int   = 0     # BLUEPR8NT gates passed (0-5)
-    bp_tier:               str   = ''    # BLUEPR8NT / BLUEPR8NT_CANDIDATE / BP_WATCH / NOT_BP
+    close_vs_pm_open_pct:  float = 0.0   # (pm_open - close) / pm_open * 100 at entry
 
 
 SIG_COLOR = {'HIGH_VALUE':GRN+BOLD,'ENTER_E':GRN,'ENTER_A':CYN,
@@ -1460,8 +1486,6 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
         filings = _sec_get_filings(cik, ticker, cache)
         if not filings:
             return empty
-        ts_key = f'filings_ts_{ticker.upper()}'
-        cache_age_hrs = round((datetime.now().timestamp() - cache.get(ts_key, datetime.now().timestamp())) / 3600, 2)
 
         d424 = None
         n3 = n6 = n12 = 0
@@ -1505,7 +1529,7 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
                'LATE_PHASE': s_lat},
             score_boost=boost,
             regime_override='DILUTION_DUMP' if s424 else None,
-            cache_age_hrs=cache_age_hrs,
+            cache_age_hrs=round((datetime.now().timestamp() - cache.get(f'filings_ts_{ticker.upper()}', datetime.now().timestamp())) / 3600, 2),
         )
     except Exception:
         return empty
@@ -1583,7 +1607,6 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
                          and sig.signal_tier == 'TIER_1'
                          and sig.section == 'S1')
     g5 = g5_standard or g5_slightly_early
-
     if any('PREMATURE_RISK' in d for d in disqualifiers):
         t2 = 'PREMATURE_RISK'
     elif g5_standard:
@@ -1750,6 +1773,11 @@ def run_classification(ticker: str, bars: List[Bar],
     # ââ Gap-fill features (backtest alignment) ââââââââââââââââââââââââââââ
     near_miss_ct   = compute_near_miss_count(bars, vwaps)
     path_eff       = compute_price_path_efficiency(bars)
+    # close_vs_pm_open_pct: 93% A win rate at 20-40% below PM open (n=32 â)
+    _cvo_pm_bars   = [b for b in bars if b.session == 'pre']
+    _cvo_pm_open   = _cvo_pm_bars[0].open if _cvo_pm_bars else 0.0
+    close_vs_pm_open = ((_cvo_pm_open - bars[-1].close) / _cvo_pm_open * 100
+                        if _cvo_pm_open > 0 and bars else 0.0)
 
 
     contested      = (flips > 8) and (
@@ -1819,6 +1847,7 @@ def run_classification(ticker: str, bars: List[Bar],
             price_path_efficiency=path_eff,
             margin_lean=margin_lean_val,
             contested_day=signals.get('CONTESTED_SESSION', False),
+            close_vs_pm_open_pct=close_vs_pm_open,
             last_bar_time=bars[-1].ts[:5] if bars else '',
             sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
         )
@@ -1831,6 +1860,10 @@ def run_classification(ticker: str, bars: List[Bar],
         sig.disqualifiers    = dq
         sig.bias             = bv
         sig.t2_entry_type    = t2
+        _wc = evaluate_winners_circle(sig)
+        sig.wc_score = _wc['score'];  sig.wc_tier = _wc['tier']
+        _bp = evaluate_bluepr8nt(sig)
+        sig.bp_score = _bp['score'];  sig.bp_tier = _bp['tier']
         return sig
 
     # ââ Build reasons / warnings ââââââââââââââââââââââââââââââââââââââââââââââ
@@ -1852,6 +1885,11 @@ def run_classification(ticker: str, bars: List[Bar],
     # NEWS_CONTINUATION thin edge warning
     if regime == 'NEWS_CONTINUATION':
         warnings.append("NC regime: A edge thin (A=â3.3%). Prefer E. Apply â25% A size.")
+    # THESIS_PROVEN signal messaging
+    if signals.get('THESIS_PROVEN'):
+        reasons.append("THESIS_PROVEN: close 20-40% below PM open (93% A win rate, n=32 â)")
+    if signals.get('CLOSE_ABOVE_PM_OPEN'):
+        warnings.append("Close ABOVE PM open â stock going up, not down. Short thesis weakened.")
 
     q_sigs = [s for s in active_sigs if s in ALL_Q]
     if q_sigs:
@@ -1992,6 +2030,14 @@ def run_classification(ticker: str, bars: List[Bar],
         momentum_decay_rate=mom_dec,
         hod_set_pct=hod_sp,
         v3_gate_notes=ext.get('v3_gate_notes', []),
+        near_miss_count=near_miss_ct,
+        run_day=run_day_val,
+        price_path_efficiency=path_eff,
+        margin_lean=margin_lean_val,
+        contested_day=signals.get('CONTESTED_SESSION', False),
+        close_vs_pm_open_pct=close_vs_pm_open,
+        last_bar_time=bars[-1].ts[:5] if bars else '',
+        sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
     )
     sig.quality_score    = calc_quality(sig)
     sig.confidence_norm  = round(sig.confidence / 100.0, 4)
@@ -2393,10 +2439,17 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
     _nm_c = GRN if 5 <= _nm <= 14 else (YEL if _nm > 0 else DIM)
     _rd_c = GRN if _rd == 1 else (YEL if _rd == 2 else RED)
     _ppe_c= GRN if _ppe < 0.4 else (YEL if _ppe < 0.7 else DIM)
+    # close_vs_pm_open from stored field
+    _cvpm = getattr(sig, 'close_vs_pm_open_pct', 0.0)
+    _thesis_c = (GRN+BOLD if 20 <= _cvpm < 40 else
+                 GRN      if 10 <= _cvpm < 20 else
+                 YEL      if _cvpm >= 40      else
+                 RED      if _cvpm < 0        else DIM)
     print(f"          HOD@:{hod_c}{sig.hod_set_pct:.0f}%{RESET} elapsed  "
           f"SessionLow:{sig.session_low_vs_pm_open:.0f}% below open  "
           f"FloatTurn:{ft_c}{sig.float_turnover_pct:.1f}%{RESET}  "
-          f"EntryC:{'â' if sig.entry_c_fired else 'â'}")
+          f"EntryC:{'â' if sig.entry_c_fired else 'â'}  "
+          f"CloseVsPMOpen:{_thesis_c}{_cvpm:+.1f}%{RESET}")
     _rd_str = f"D{_rd}" if _rd > 0 else "D?"
     _con_str = f"{YEL}CONTESTED{RESET}" if _con else "clean"
     print(f"          NM:{_nm_c}{_nm:>3} near-misses{RESET}  "
