@@ -267,7 +267,6 @@ router.get('/signal-stack-report', async (req: Request, res: Response) => {
     }
 
     const tradierKey = process.env.TRADIER_API_KEY;
-    const PYTHON     = process.platform === 'win32' ? 'python' : 'python3';
 
     const results: Array<{
       ticker: string; date: string; signal_count: number; signals: string[];
