@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap } from 'lucide-react';
+import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText } from 'lucide-react';
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -26,7 +26,7 @@ export function BacktestPanel() {
   const [addTicker, setAddTicker]     = useState('');
   const [addDate, setAddDate]         = useState('');
   const [addStatus, setAddStatus]     = useState('');
-  const [showGuide, setShowGuide]     = useState(false);
+  const [activePanel, setActivePanel] = useState(null); // null | 'guide' | 'threshold'
   const [batchTickers, setBatchTickers] = useState(''); // space-separated override tickers
   const [snapTime, setSnapTime]       = useState('');   // HH:MM snapshot stop time
   const esRef   = useRef(null);
@@ -246,12 +246,19 @@ export function BacktestPanel() {
           </div>
 
           {/* Output pane */}
-          {showGuide ? (
+          {activePanel === 'guide' ? (
             <iframe
               src="/classifier_guide.html"
               className="flex-1 w-full border-0"
               style={{ minHeight: 0 }}
               title="Classifier Output Guide"
+            />
+          ) : activePanel === 'threshold' ? (
+            <iframe
+              src="/classifier_threshold_report.html"
+              className="flex-1 w-full border-0"
+              style={{ minHeight: 0 }}
+              title="Threshold Report"
             />
           ) : (
             <pre
@@ -317,15 +324,26 @@ export function BacktestPanel() {
               />
               <span className="text-border">|</span>
               <button
-                onClick={() => setShowGuide(s => !s)}
+                onClick={() => setActivePanel(p => p === 'guide' ? null : 'guide')}
                 className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors ${
-                  showGuide
+                  activePanel === 'guide'
                     ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
                     : 'border-border hover:bg-accent'
                 }`}
               >
-                {showGuide ? <X className="w-3 h-3" /> : <BookOpen className="w-3 h-3" />}
-                {showGuide ? 'Close Guide' : 'Guide'}
+                {activePanel === 'guide' ? <X className="w-3 h-3" /> : <BookOpen className="w-3 h-3" />}
+                {activePanel === 'guide' ? 'Close' : 'Guide'}
+              </button>
+              <button
+                onClick={() => setActivePanel(p => p === 'threshold' ? null : 'threshold')}
+                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors ${
+                  activePanel === 'threshold'
+                    ? 'border-violet-500 bg-violet-500/10 text-violet-400'
+                    : 'border-border hover:bg-accent'
+                }`}
+              >
+                {activePanel === 'threshold' ? <X className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                {activePanel === 'threshold' ? 'Close' : 'Threshold Report'}
               </button>
               <span className="text-border">|</span>
               <CmdButton

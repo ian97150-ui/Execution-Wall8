@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Cat5ive v4 — Output Guide &amp; Pattern Data Map</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Inter:wght@300;400;500;600&display=swap');
+:root{--bg:#07090c;--bg2:#0d1117;--bg3:#141920;--border:#1c2432;--border2:#243040;--text:#c5cdd8;--dim:#47566a;--green:#22c55e;--green2:#166534;--yellow:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--mag:#d946ef;--blue:#3b82f6;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.65}
+.page{max-width:1080px;margin:0 auto;padding:40px 32px}
+h1{font-family:'IBM Plex Mono',monospace;font-size:18px;color:var(--green);letter-spacing:.04em;margin-bottom:4px}
+.sub{color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:11px;margin-bottom:32px}
+.nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:32px}
+.nav a{color:var(--dim);text-decoration:none;font-size:11px;font-family:'IBM Plex Mono',monospace;padding:4px 10px;border:1px solid var(--border);border-radius:3px}
+.nav a:hover{color:var(--cyan);border-color:var(--cyan)}
+.sec{margin-bottom:48px;scroll-margin-top:20px}
+.sh{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--green);padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:18px;display:flex;align-items:center;gap:10px}
+.sn{font-size:10px;color:var(--dim);background:var(--bg3);border:1px solid var(--border2);padding:2px 7px;border-radius:3px}
+.cli{background:#020408;border:1px solid #0d1825;border-radius:6px;padding:18px 20px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.85;margin-bottom:16px;overflow-x:auto}
+.cli div{white-space:pre}
+.ann{width:100%;border-collapse:collapse;font-size:12px;margin:0}
+.ann th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);padding:7px 12px;border-bottom:1px solid var(--border);background:var(--bg3)}
+.ann td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+.ann tr:hover td{background:rgba(255,255,255,.015)}
+.ann tr:last-child td{border-bottom:none}
+.field{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--cyan)}
+.data{font-size:11px;color:#86efac}
+.live{background:rgba(34,197,94,.12);color:var(--green);font-size:9px;padding:2px 7px;border-radius:10px;font-family:'IBM Plex Mono',monospace}
+.partial{background:rgba(234,179,8,.12);color:var(--yellow);font-size:9px;padding:2px 7px;border-radius:10px;font-family:'IBM Plex Mono',monospace}
+.new{background:rgba(217,70,239,.12);color:var(--mag);font-size:9px;padding:2px 7px;border-radius:10px;font-family:'IBM Plex Mono',monospace}
+.gap{background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;overflow:hidden}
+.gap-h{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);gap:12px}
+.gap-title{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--text);flex:1}
+.gap-body{padding:12px 14px;font-size:12px;color:#9aabb8;line-height:1.7}
+.impact{display:inline-block;font-size:10px;font-family:'IBM Plex Mono',monospace;padding:2px 8px;border-radius:3px;white-space:nowrap}
+.ih{background:rgba(239,68,68,.1);color:#fca5a5}
+.im{background:rgba(234,179,8,.1);color:#fde68a}
+.il{background:rgba(100,116,139,.1);color:#94a3b8}
+p{color:#9aabb8;font-size:12px;margin-bottom:6px}
+code{background:var(--bg3);border:1px solid var(--border2);padding:1px 5px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--cyan)}
+hr{border:none;border-top:1px solid var(--border);margin:32px 0}
+.ok{background:rgba(34,197,94,.06);border-left:3px solid var(--green);padding:8px 12px;font-size:12px;color:#86efac;margin:8px 0;border-radius:0 4px 4px 0}
+.warn{background:rgba(234,179,8,.06);border-left:3px solid var(--yellow);padding:8px 12px;font-size:12px;color:#fde68a;margin:8px 0;border-radius:0 4px 4px 0}
+.bad{background:rgba(239,68,68,.06);border-left:3px solid var(--red);padding:8px 12px;font-size:12px;color:#fca5a5;margin:8px 0;border-radius:0 4px 4px 0}
+.g{color:var(--green);font-family:'IBM Plex Mono',monospace;font-weight:600}
+.r{color:var(--red);font-family:'IBM Plex Mono',monospace}
+.y{color:var(--yellow);font-family:'IBM Plex Mono',monospace}
+.d{color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:11px}
+</style>
+</head>
+<body><div class="page">
+
+<h1>CAT5IVE CLASSIFIER v4 &mdash; OUTPUT GUIDE &amp; PATTERN DATA MAP</h1>
+<div class="sub">Every CLI row documented &middot; Complete scoring table &middot; Win rates &middot; Pattern data usage &middot; Live vs backtest gaps &middot; Updated June 2026</div>
+
+<div class="nav">
+  <a href="#output">&#9312; Output Reference</a>
+  <a href="#scoring">&#9313; Exact Scoring</a>
+  <a href="#used">&#9314; Pattern Data In Use</a>
+  <a href="#gaps">&#9315; Backtest Gaps</a>
+  <a href="#summary">&#9316; Priority Summary</a>
+</div>
+
+<!-- ─────── SECTION 1: FULL CLI OUTPUT ─────── -->
+<div class="sec" id="output">
+<div class="sh"><span class="sn">01</span> COMPLETE CLI OUTPUT &mdash; EVERY ROW ANNOTATED</div>
+
+<div class="cli">
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div><span style="color:#22c55e;font-weight:600">  LABT    </span><span style="color:#c5cdd8"> $5.247</span>  <span style="color:#22c55e;font-weight:600">HIGH_VALUE  </span> [<span style="color:#22c55e;font-weight:600">Grade A</span>]  Q=84/100  @09:41  <span style="color:#3a4d5e">v3</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  Regime:  <span style="color:#22c55e">DILUTION_DUMP         </span>  Tier:<span style="color:#22c55e">HIGH   </span>  Score: <span style="color:#22c55e">87</span>  Section:S1(<span style="color:#22c55e">78</span>%)</div>
+<div>  VWAP:   $5.614 (<span style="color:#22c55e">-7.0%</span> from VWAP)  ATR:$0.031  VolSpike:<span style="color:#22c55e">14.2</span>x</div>
+<div>  HOD:    $6.120 @<span style="color:#22c55e">08:14</span> (23 bars ago)  LOD:$5.201 @09:38</div>
+<div>  Entry:  <span style="color:#22c55e">-14.3% from HOD -&gt; Zone:ZONE_B</span>  Suggested size:<span style="color:#22c55e">75%</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  S1/S2:  Consec S1 bars:<span style="color:#22c55e"> 18</span>  S1% of RTH:<span style="color:#22c55e">72%</span>  RTH progress:18%  Bars:18/47pm</div>
+<div>  Momentum: <span style="color:#22c55e">Velocity:FALLING     </span>  Flips:<span style="color:#22c55e">  4</span>  Chop:<span style="color:#22c55e">12%</span>  Traj:<span style="color:#22c55e">FLAT(D+4)</span>  Lean:<span style="color:#22c55e">+4.2</span></div>
+<div>  PM:     Move:<span style="color:#f59e0b">+47.3%</span>  PM High:$6.120  Gap:+12.4%  PM Open:$4.021</div>
+<div>  v3:     QuietDump:<span style="color:#22c55e">YES </span>  GainBucket:<span style="color:#22c55e">SUB10      </span>  VolAboveVWAP:<span style="color:#22c55e">36%</span></div>
+<div>          HOD@:<span style="color:#22c55e">22%</span> elapsed  SessionLow:<span style="color:#22c55e">31%</span> below open  FloatTurn:<span style="color:#22c55e">34.2%</span>  EntryC:<span style="color:#22c55e">Y</span></div>
+<div>          NM:<span style="color:#22c55e">  8 near-misses</span>  RunDay:<span style="color:#22c55e">D1</span>  PathEff:<span style="color:#f59e0b">0.31</span>  Session:<span style="color:#22c55e">clean</span></div>
+<div>  Expect: ret=<span style="color:#22c55e">-8.9%</span>  MAE=<span style="color:#f59e0b">+16%</span>  Stop=<span style="color:#f59e0b">+18%</span>  Strategy:<span style="color:#22c55e">E</span></div>
+<div>  <span style="color:#22c55e">  Y DEEP session low (31% below open): A 86% win rate (n=38 validated)</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  Signals:  <span style="color:#22c55e">PM_SELL_PRESSURE | SUPPLY_OVERHANG | VWAP_FAIL_S1</span></div>
+<div>  v3 Sigs:  <span style="color:#06b6d4">QUIET_DUMP_PROXY | DEEP_SESSION_LOW</span></div>
+<div>  <span style="color:#22c55e">Power combo: FADE+SUPPLY  (lift 9.1)</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#06b6d4">v3 score adj: QUIET_DUMP +15 | VOL_VWAP_LT40 +12 | DEEP_SESSION_LOW +12 | CONF_85 +8 | CLEAN_SESSION +6 | FLIPS_0 - | LEAN_S1 +3</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#22c55e">SEC:      424B5:3d ago  offerings_12m:4  +22pts  424B5_ACTIVE | SERIAL_HEAVY</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#22c55e">Gates:  5/5 passed  |  Bias: SHORT_STRONG  |  Conf: 0.78</span></div>
+<div>    <span style="color:#22c55e">Y</span> G1: No disqualifiers</div>
+<div>    <span style="color:#22c55e">Y</span> G2: Tier = HIGH (score 87 &ge; 50)</div>
+<div>    <span style="color:#22c55e">Y</span> G3: Conviction = HIGH_CONVICTION</div>
+<div>    <span style="color:#22c55e">Y</span> G4: Section = S1</div>
+<div>    <span style="color:#22c55e">Y</span> G5: Confidence = 78% &ge; 55%</div>
+<div>  <span style="color:#22c55e">  Y CLEAN session (flips&le;8): A=-11.7% avg. Full size eligible.</span></div>
+<div>  <span style="color:#f59e0b">  ! NC regime: A edge thin (A=-3.3%). Prefer E. Apply -25% A size.</span>  <span style="color:#3a4d5e">(if NC)</span></div>
+<div>  <span style="color:#f59e0b">  ! MEDIUM tier: A=+0.3% avg. E-only unless WC&ge;4/7.</span>  <span style="color:#3a4d5e">(if MEDIUM)</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#3a4d5e">TICK LAYER v4 (CALIBRATION_v2 — buy/sell pressure + tick rate active)</span></div>
+<div>  Ticks:  buy_press:<span style="color:#ef4444">28%</span>  sell_press:<span style="color:#f59e0b">72%</span>  tick_rate:<span style="color:#22c55e">63/min</span>  large_prints:<span style="color:#3a4d5e">22% </span>  vpin:<span style="color:#3a4d5e">0.61 </span></div>
+<div>  <span style="color:#06b6d4">  ScoreDelta: +15 (LOW_BUY_PRESSURE +10 | ACTIVE_TICK_RATE +5)</span></div>
+<div>  <span style="color:#3a4d5e">  !  large_prints and vpin shown for reference only — not scored (bar-proxy non-discriminating)</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#22c55e">Y GATE ROUND UP: 13/17  [WC:6/7  BP:4/5  CONCEPTS:3/5]  DEVELOPING  Suggested: 100%</span></div>
+<div>  <span style="color:#22c55e">  DEVELOPING: A=-17.8%, E=-29.8% &middot; 80% A win rate (n=64 validated)</span></div>
+<div>  <span style="color:#06b6d4">  Exit: cover A at 60-90min &middot; hold E to 90-120min</span></div>
+<div>  <span style="color:#ef4444;font-weight:600">  X GRU SKIP: A=+6.1% LOSING (n=33 confirmed). No A or E trade.</span>  <span style="color:#3a4d5e">(if SKIP)</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#22c55e">Y WINNERS CIRCLE: 6/7 gates  [HOD-Y VWAP-Y QD-Y GAIN-Y CONF-Y ZONE-Y LOD-Y]</span></div>
+<div>  <span style="color:#22c55e">  Expected A: -14.1%   E: -25.6%  |  A win rate: 74% (WC 4-5)</span></div>
+<div>  <span style="color:#ef4444;font-weight:600">  X WC 0-1: A=+12.0% LOSING &middot; 41% win rate (n=33). No A trade.</span>  <span style="color:#3a4d5e">(if 0-1)</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#d946ef">BP BLUEPR8NT: 4/5 gates  [DIL-Y SCR-Y QD-Y CONF-Y SEC-Y]</span></div>
+<div>  <span style="color:#d946ef">  Dataset: A -19.8% / E -37.0%  MFE -47.1%   vs rest A -5.1% / E -14.4%</span></div>
+<div>  <span style="color:#d946ef">  MAE: +14.3% (vs +21.1% non-BP) — tighter stops valid</span></div>
+<div>  <span style="color:#d946ef">  Hold: E 150+ min &middot; trail stop &middot; target MFE -47.1%</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+<div>  <span style="color:#22c55e">C CONCEPTS: 3/5 gates  [REG-Y T1-Y PWR-Y SEC-Y TICK-Y]  SOLID</span></div>
+<div style="color:#1c2d3d">  ====================================================================</div>
+</div>
+
+<table class="ann">
+<tr><th>Row</th><th>Field(s)</th><th>Source function</th><th>Pattern data driving it</th><th>Status</th></tr>
+<tr><td><b>Header: ticker &middot; price &middot; signal &middot; grade &middot; quality &middot; time</b></td><td><span class="field">ticker, price, signal, grade, quality_score</span></td><td>Scoring pipeline</td><td class="data">Signal thresholds from 197-session dataset. Quality score composites WC/tier/conf.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>Regime &middot; Tier &middot; Score &middot; Section(conf%)</b></td><td><span class="field">regime, tier, score, section, confidence</span></td><td>detect_regime() + compute_score()</td><td class="data">Regime returns: DD A=-8.9%, NC A=-3.3%, LFP A=-20.5%. NC_REGIME_THIN -8 pts fires before compute_score (v3.1 fix).</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>VWAP &middot; ATR &middot; VolSpike</b></td><td><span class="field">vwap, atr, vol_spike</span></td><td>compute_vwap() + compute_atr()</td><td class="data">vol_above_vwap: r=+0.427. &lt;40% = +12 pts, &lt;55% = +5 pts, &gt;80% = -18 pts.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>HOD &middot; LOD &middot; times &middot; bars ago</b></td><td><span class="field">hod, lod, hod_time, lod_time, hod_bars_ago</span></td><td>hod_lod(bars)</td><td class="data">HOD set in PM = +15 pts. HOD &lt;30% elapsed = large filter (n=106, A=-10.6%). LATE_HOD -20 pts when &gt;60%.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>Entry % from HOD -&gt; Zone &middot; Suggested size</b></td><td><span class="field">pct_from_hod, entry_zone, suggested_size</span></td><td>entry_zone(pct_hod)</td><td class="data">Zone A (0-5%): E=-22.9%. At/above HOD: A=+1.0% LOSING — G1 hard block.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>S1/S2: Consec &middot; S1% &middot; RTH progress &middot; bars</b></td><td><span class="field">consec_s1, s1_pct, session_pct, rth_bars, pm_bars</span></td><td>classify_section()</td><td class="data">G4 gate requires S1. S2 entry A=-13.0% valid on confirmed flip.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>Momentum: Velocity &middot; Flips &middot; Chop &middot; Traj(D) &middot; Lean</b></td><td><span class="field">velocity, flips_rth, chop, score_trajectory, score_delta_pre, margin_lean</span></td><td>classify_velocity() + count_rth_flips()</td><td class="data">0 flips = +5 pts (A=-11.9%, 74% win). Lean &gt;3 = +3 pts (70% win). Traj shows score delta. CLEAN/CONTESTED signals now set BEFORE compute_score (v3.1 fix).</td><td><span class="live">&#10003; LIVE</span> <span class="new">FIXED v3.1</span></td></tr>
+<tr><td><b>PM: Move &middot; High &middot; Gap &middot; PM Open</b></td><td><span class="field">pm_move_pct, pm_high, gap_pct, pm_open_price</span></td><td>pm_stats(bars)</td><td class="data">PM move feeds regime detection. pm_open anchors quiet dump proxy and session low comparison. Now computed BEFORE compute_score.</td><td><span class="live">&#10003; LIVE</span> <span class="new">FIXED v3.1</span></td></tr>
+<tr><td><b>v3 row 1: QuietDump &middot; GainBucket &middot; VolAboveVWAP</b></td><td><span class="field">quiet_dump_proxy, intraday_gain_bucket, vol_above_vwap_pct</span></td><td>compute_quiet_dump_proxy()</td><td class="data">QuietDump=1: A=-25.3% ~84% win rate (n=38 validated) — strongest single signal. SUB10: A=-13.7% ~74% win rate (n=54 validated).</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>v3 row 2: HOD% &middot; SessionLow &middot; FloatTurn &middot; EntryC</b></td><td><span class="field">hod_set_pct, session_low_vs_pm_open, float_turnover_pct, entry_c_fired</span></td><td>compute_hod_set_pct() + compute_session_low()</td><td class="data">SessionLow &ge;25% = DEEP_SESSION_LOW +12 pts &middot; 86% A win rate (n=38 validated). SessionLow &lt;10% = -10 pts &middot; 43% win rate. Float &lt;10% = G1 block.</td><td><span class="live">&#10003; LIVE</span> <span class="new">NEW v3.1</span></td></tr>
+<tr><td><b>v3 row 3 NEW: NM &middot; RunDay &middot; PathEff &middot; Session</b></td><td><span class="field">near_miss_count, run_day, price_path_efficiency, contested_day</span></td><td>compute_near_miss_count() + detect_run_day() + compute_price_path_efficiency()</td><td class="data">NM 5-14: A=-14.0%, 82% win rate (n=19 validated) = +4 pts. RunDay D2=-3, D3=-8, D4+=-12. PathEff choppy &lt;0.3 = A=-8.1%. Session: clean(flips&le;8) = +6, CONTESTED = -5 pts.</td><td><span class="live">&#10003; LIVE</span> <span class="new">NEW v3.1</span></td></tr>
+<tr><td><b>Expect: ret &middot; MAE &middot; Stop &middot; Strategy</b></td><td><span class="field">expected_ret, expected_mae, stop_pct, strategy</span></td><td>EXPECTED dict by (regime, strategy)</td><td class="data">DD A=-8.9%, DD E=-18.7%, DD E_BP=-37.0%, DD A_DEEP_LOD=-17.5%, NC A=-3.3%, LFP A=-20.5%.</td><td><span class="live">&#10003; LIVE</span> <span class="new">UPDATED</span></td></tr>
+<tr><td><b>DEEP session low reason message</b></td><td><span class="field">session_low_vs_pm_open &ge; 25%</span></td><td>build_classifier_signal() reason block</td><td class="data">"DEEP session low (31% below open): A 86% win rate (n=38 validated)" shown when signal fires.</td><td><span class="live">&#10003; LIVE</span> <span class="new">NEW v3.1</span></td></tr>
+<tr><td><b>v3 score adj row</b></td><td><span class="field">v3_gate_notes list</span></td><td>compute_score() log</td><td class="data">Every +/- pts adjustment logged in order. New: DEEP_SESSION_LOW +12, CLEAN_SESSION +6, CONTESTED_SESSION -5, FLIPS_0 +5, LEAN_S1 +3, NC_REGIME_THIN -8, RUN_DAY_FADE.</td><td><span class="live">&#10003; LIVE</span> <span class="new">UPDATED</span></td></tr>
+<tr><td><b>SEC: 424B5 age &middot; offerings &middot; score boost</b></td><td><span class="field">sec_available, sec_days_424b5, sec_score_boost</span></td><td>fetch_sec_filings()</td><td class="data">DILUTION_DUMP requires 424B5_ACTIVE or SERIAL_HEAVY. BP gate 5. Up to +22 pts post-score.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>Gates: 5/5 &middot; Bias &middot; Conf &middot; detail &middot; CLEAN/MEDIUM warnings</b></td><td><span class="field">gates_passed, bias, confidence_norm, warnings</span></td><td>evaluate_gates(sig)</td><td class="data">G5 &ge;55% (A=+1.8% at &lt;55%, 44% win rate). CLEAN reason shown when flips&le;8. MEDIUM+NC warnings shown.</td><td><span class="live">&#10003; LIVE</span> <span class="new">UPDATED</span></td></tr>
+<tr><td><b>TICK LAYER: buy_press &middot; sell_press &middot; tick_rate &middot; large_prints&dagger; &middot; vpin&dagger;</b></td><td><span class="field">buy_pressure_pct, sell_pressure_pct, tick_rate_pm, large_print_pct, proxy_vpin</span></td><td>fetch_tradier_ticks() -&gt; compute_tick_features()</td><td class="data">CALIBRATION_v2: buy_press &lt;35% +10 (confirmed), tick_rate 50-150 +5 (81% win rate n=51 validated REINSTATED). large_print/vpin SHOWN but NOT scored (bar-proxy non-discriminating).</td><td><span class="live">&#10003; LIVE</span> <span class="new">UPDATED v3.1</span></td></tr>
+<tr><td><b>GRU: score/17 &middot; WC/BP/Concepts &middot; Tier &middot; size &middot; stats</b></td><td><span class="field">gru_total, wc_score, bp_score, gru_tier, suggested_size</span></td><td>compute_gate_roundup()</td><td class="data">SKIP A=+6.1% LOSING 43% win (n=33). DEVELOPING A=-17.8% 80% win (n=64 validated). HIGH A=-17.3% 88% win (n=9 validated). Stats now shown in CLI output.</td><td><span class="live">&#10003; LIVE</span> <span class="new">UPDATED</span></td></tr>
+<tr><td><b>WC: n/7 &middot; gates &middot; Expected A/E &middot; win rate</b></td><td><span class="field">wc_score, wc_gates, wc_exp_a, wc_exp_e</span></td><td>evaluate_winners_circle()</td><td class="data">WC 6-7: 90% A win rate (n=25 validated). WC 4-5: 74% win (n=50 validated). WC 0-1: A=+12% LOSING 41% win (n=33) — shown as warning.</td><td><span class="live">&#10003; LIVE</span> <span class="new">UPDATED</span></td></tr>
+<tr><td><b>BLUEPR8NT: gates &middot; Dataset &middot; MAE edge &middot; Hold</b></td><td><span class="field">bp_score, bp_avg_a, bp_avg_e, bp_mfe_e</span></td><td>evaluate_bluepr8nt()</td><td class="data">E=-37.0%, MFE=-47.1%, MAE=+14.3% (vs +21.1%). Tighter stops valid. 150+ min hold. E priority.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+<tr><td><b>CONCEPTS: n/5 &middot; gates &middot; tier</b></td><td><span class="field">concepts_score, concepts_gates</span></td><td>evaluate_concepts_score()</td><td class="data">5 gates: REGIME, SIGNAL_TIER1, POWER_COMBO, SEC_DEPTH, TICK_CONFIRM. TICK gate requires v4 active.</td><td><span class="live">&#10003; LIVE</span></td></tr>
+</table>
+</div>
+
+<!-- ─────── SECTION 2: EXACT SCORING ─────── -->
+<div class="sec" id="scoring">
+<div class="sh"><span class="sn">02</span> EXACT SCORING &mdash; EVERY POINT IN EXECUTION ORDER</div>
+<p>Applied by <code>compute_score()</code> then post-score adjustments. Tier thresholds: SKIP &lt;10 &middot; LOW 10-24 &middot; MEDIUM 25-49 &middot; HIGH &ge;50. Max score: 150.</p>
+
+<table class="ann">
+<tr><th>Signal / Component</th><th>Points</th><th>Threshold / condition</th><th>A return</th><th>A win%</th></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">BASE SCORE</td></tr>
+<tr><td>Confidence base</td><td class="g">0-47 pts</td><td><code>confidence // 2</code> (conf 78% &rarr; +39 pts)</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Tier-1 signals (each)</td><td class="g">+20 pts</td><td>PM_SELL_PRESSURE &middot; SUPPLY_OVERHANG &middot; VWAP_FAIL_S1</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Tier-2 signals (each)</td><td class="g">+12 pts</td><td>PM_FADE_CONFIRMED &middot; OVEREXTENDED_AH_S2 &middot; HIGH_VOL_REJECTION</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Tier-3 signals (each)</td><td class="g">+6 pts</td><td>PM_FADE_MOVE &middot; MEAN_REVERSION_GAP &middot; OVEREXTENDED_OPEN</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Section = S1</td><td class="g">+15 pts</td><td>Classifier in bearish S1 section at entry</td><td>G4 gate</td><td>&mdash;</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">HOD TIMING</td></tr>
+<tr><td>PM_HOD (HOD in pre-market)</td><td class="g">+15 pts</td><td>HOD set before 9:30am</td><td class="g">-12.0%</td><td class="g">~75%</td></tr>
+<tr><td>EARLY_RTH_HOD</td><td class="g">+8 pts</td><td>HOD set before 10:30am RTH</td><td class="g">-9.1%</td><td class="g">~70%</td></tr>
+<tr><td>LATE_HOD <span class="new">PENALTY</span></td><td class="r">-20 pts</td><td>hod_elapsed &gt; 60% AND bars &gt; 120</td><td class="r">+16.2%</td><td class="r">31%</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">VOLUME &amp; DISTRIBUTION</td></tr>
+<tr><td>QUIET_DUMP_PROXY</td><td class="g">+15 pts</td><td>gain &lt;45% AND session_low &gt;20% below PM open</td><td class="g">-25.3%</td><td class="g">~84%</td></tr>
+<tr><td>Vol VWAP &lt;40%</td><td class="g">+12 pts</td><td>vol_above_vwap_pct &lt; 40.0</td><td class="g">-14.1%</td><td class="g">75%</td></tr>
+<tr><td>Vol VWAP &lt;55%</td><td class="g">+5 pts</td><td>vol_above_vwap_pct &lt; 55.0 (if not already &lt;40)</td><td class="g">-7.3%</td><td class="y">62%</td></tr>
+<tr><td>HEAVY_VWAP_DIST</td><td class="r">-18 pts</td><td>vol_above_vwap_pct &gt; 80.0</td><td class="r">+12.5%</td><td class="r">38%</td></tr>
+<tr><td>MEDIUM_SPIKE_ZONE</td><td class="r">-15 pts</td><td>gain_bucket = 45-70% AND HOD stable</td><td class="r">+5.4%</td><td class="r">47%</td></tr>
+<tr><td>SUB10 gain bucket</td><td class="g">+8 pts</td><td>gain &lt;10% AND VWAP_FAIL_S1 AND HOD stable 30+ bars</td><td class="g">-13.7%</td><td class="g">~74%</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">SESSION LOW DEPTH</td></tr>
+<tr><td><b>DEEP_SESSION_LOW</b> <span class="new">NEW v3.1</span></td><td class="g"><b>+12 pts</b></td><td>session_low_vs_pm_open &ge; 25%</td><td class="g">-17.5%</td><td class="g"><b>86%</b></td></tr>
+<tr><td>Strong session low</td><td class="g">+8 pts</td><td>session_low_vs_pm_open &ge; 20%</td><td class="g">-11.2%</td><td class="g">72%</td></tr>
+<tr><td>Moderate session low</td><td class="g">+4 pts</td><td>session_low_vs_pm_open &ge; 10%</td><td class="g">-6.1%</td><td class="y">64%</td></tr>
+<tr><td>LOW_SESSION_LOW</td><td class="r">-10 pts</td><td>0 &lt; session_low_vs_pm_open &lt; 10%</td><td class="r">+4.7%</td><td class="r">43%</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">CONFIDENCE BONUS</td></tr>
+<tr><td>Confidence &ge; 85%</td><td class="g">+8 pts</td><td>confidence &gt;= 85</td><td class="g">-10.3%</td><td class="g">76%</td></tr>
+<tr><td>Confidence &ge; 70%</td><td class="g">+4 pts</td><td>confidence &gt;= 70 (if not &ge;85)</td><td class="g">-7.1%</td><td class="y">67%</td></tr>
+<tr><td>Confidence &lt; 55%</td><td class="r">G5 FAIL</td><td>confidence &lt; 55 &rarr; A blocked</td><td class="r">+1.8%</td><td class="r">44%</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">v3.1 SESSION CHARACTER (set BEFORE compute_score)</td></tr>
+<tr><td>NC_REGIME_THIN <span class="new">FIXED v3.1</span></td><td class="r">-8 pts</td><td>regime == NEWS_CONTINUATION</td><td class="g">-3.3%</td><td class="y">58%</td></tr>
+<tr><td>CLEAN_SESSION <span class="new">FIXED v3.1</span></td><td class="g">+6 pts</td><td>flips_rth &le; 8 (set before compute_score)</td><td class="g">-11.7%</td><td class="y">66%</td></tr>
+<tr><td>CONTESTED_SESSION <span class="new">FIXED v3.1</span></td><td class="r">-5 pts</td><td>flips_rth &gt; 8 (set before compute_score)</td><td class="g">-3.9%</td><td class="y">60%</td></tr>
+<tr><td>0 flips bonus</td><td class="g">+5 pts</td><td>flips_rth == 0</td><td class="g">-11.9%</td><td class="g">74%</td></tr>
+<tr><td>S1 lean &gt;3 bonus</td><td class="g">+3 pts</td><td>margin_lean &gt; 3.0 (signed % avg last 20 bars)</td><td class="g">-10.8%</td><td class="g">70%</td></tr>
+<tr><td>Float turnover &lt;10%</td><td class="r">-10 pts + G1</td><td>float_turnover_pct &lt; 10.0</td><td class="r">+0.1%</td><td class="r">&mdash;</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">POST-SCORE ADJUSTMENTS (after compute_score returns)</td></tr>
+<tr><td>SEC enrichment boost</td><td class="g">up to +22 pts</td><td>424B5_ACTIVE &middot; SERIAL_HEAVY &middot; PRIOR3_DILUTION</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Run day D2</td><td class="r">-3 pts</td><td>detect_run_day() == 2</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Run day D3</td><td class="r">-8 pts</td><td>detect_run_day() == 3</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Run day D4+</td><td class="r">-12 pts</td><td>detect_run_day() &ge; 4</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>Near-miss 5-14 bonus</td><td class="g">+4 pts</td><td>5 &le; near_miss_count &le; 14</td><td class="g">-14.0%</td><td class="g">82% validated n=19</td></tr>
+<tr><td colspan="5" style="background:var(--bg3);color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">TICK LAYER v4 (CALIBRATION_v2 &mdash; separate module)</td></tr>
+<tr><td>Sell-dominant PM</td><td class="g">+10 pts</td><td>buy_pressure_pct &lt; 35%</td><td>&mdash;</td><td class="g">confirmed</td></tr>
+<tr><td>Active PM tick rate</td><td class="g">+5 pts</td><td>50 &le; tick_rate_pm &le; 150 <span class="new">REINSTATED</span></td><td>&mdash;</td><td class="g">81% n=51</td></tr>
+<tr><td>Buy-dominant PM</td><td class="r">-10 pts</td><td>buy_pressure_pct &gt; 65%</td><td>&mdash;</td><td class="g">confirmed</td></tr>
+<tr><td>Quiet PM</td><td class="r">-5 pts</td><td>tick_rate_pm &lt; 20</td><td>&mdash;</td><td class="r">45% (coin flip)</td></tr>
+<tr><td>Large prints &gt;20%</td><td class="d">0 &mdash; unscored</td><td>retained but not applied (bar-proxy non-discriminating)</td><td>&mdash;</td><td class="d">&mdash;</td></tr>
+<tr><td>Proxy VPIN &gt;0.55</td><td class="d">0 &mdash; unscored</td><td>retained but not applied</td><td>&mdash;</td><td class="d">&mdash;</td></tr>
+</table>
+<p style="margin-top:10px;color:#9aabb8;font-size:11px">Max base tick delta: +15 (sell+10, active+5). Min: -15 (buy-10, quiet-5). Max total session score: 150 (clamped).</p>
+</div>
+
+<!-- ─────── SECTION 3: PATTERN DATA IN USE ─────── -->
+<div class="sec" id="used">
+<div class="sh"><span class="sn">03</span> PATTERN REPORT FINDINGS &mdash; CLASSIFIER ENCODING</div>
+<p>Every finding from the 197-session dual_report.html encoded as score weight, gate, threshold, or display value.</p>
+<table class="ann">
+<tr><th>Report Finding (n, return, win%)</th><th>Mechanism</th><th>Score impact</th></tr>
+<tr><td>Vol VWAP &lt;40%: A=-14.1% (n=72, r=+0.427, 75% win)</td><td><span class="field">compute_score()</span></td><td class="data">+12 pts. &gt;80% = -18 pts.</td></tr>
+<tr><td>HOD &lt;30%: A=-10.6% (n=106, r=+0.402, 69% win)</td><td><span class="field">compute_score()</span></td><td class="data">PM HOD +15, RTH early +8. LATE_HOD -20 (31% win).</td></tr>
+<tr><td>Quiet dump: A=-25.3% (n=38, ~84% win)</td><td><span class="field">compute_score()</span></td><td class="data">+15 pts. WC QUIET_DUMP gate. BP gate 3.</td></tr>
+<tr><td>DEEP session low &ge;25%: A=-17.5% (n=38 validated, 86% win) <span class="new">NEW</span></td><td><span class="field">compute_score()</span></td><td class="data">+12 pts DEEP_SESSION_LOW + reason message.</td></tr>
+<tr><td>CLEAN session (flips&le;8): A=-11.7% (n=49 validated, 66% win)</td><td><span class="field">compute_score() pre-signal</span></td><td class="data">+6 pts. Now fires BEFORE compute_score (v3.1 fix).</td></tr>
+<tr><td>CONTESTED session (flips&gt;8): A=-3.9% (n=148 validated, 60% win)</td><td><span class="field">compute_score() pre-signal</span></td><td class="data">-5 pts. Now fires BEFORE compute_score (v3.1 fix).</td></tr>
+<tr><td>GRU SKIP: A=+6.1% LOSING (n=33, 43% win)</td><td><span class="field">print_signal() &rarr; warning</span></td><td class="data">No A or E trade.</td></tr>
+<tr><td>WC 0-1: A=+12.0% LOSING (n=33, 41% win)</td><td><span class="field">print_signal() &rarr; warning</span></td><td class="data">No A trade.</td></tr>
+<tr><td>WC 6-7: A=-25.8% (n=25, 90% win) &mdash; highest win rate</td><td><span class="field">evaluate_winners_circle()</span></td><td class="data">WC tier display + Expected A/E shown.</td></tr>
+<tr><td>Tick rate Active 50-100: 81% win rate (n=51 validated) <span class="new">REINSTATED</span></td><td><span class="field">apply_tick_score_adj() v4</span></td><td class="data">+5 pts when 50 &le; tick_rate &le; 150.</td></tr>
+<tr><td>Tick rate Quiet &lt;20: 45% win rate</td><td><span class="field">apply_tick_score_adj() v4</span></td><td class="data">-5 pts.</td></tr>
+<tr><td>GRU DEVELOPING: A=-17.8% (n=64 validated, 80% win) <span class="new">UPDATED</span></td><td><span class="field">print_signal()</span></td><td class="data">Stats now shown in CLI when DEVELOPING fires.</td></tr>
+<tr><td>BLUEPR8NT MAE: +14.3% (vs +21.1%) &mdash; tighter stops valid</td><td><span class="field">evaluate_bluepr8nt()</span></td><td class="data">MAE row + 150+ min hold guidance.</td></tr>
+<tr><td>NC regime: A=-3.3% thin (58% win)</td><td><span class="field">compute_score() pre-signal</span></td><td class="data">-8 pts NC_REGIME_THIN. Now fires BEFORE compute_score.</td></tr>
+<tr><td>5-14 NM: A=-14.0% (n=19, 82% win)</td><td><span class="field">post-score adj</span></td><td class="data">+4 pts after compute_score.</td></tr>
+<tr><td>0 flips: A=-11.9% (n=60, 74% win)</td><td><span class="field">compute_score() param</span></td><td class="data">+5 pts when flips_rth==0.</td></tr>
+<tr><td>S1 lean &gt;3: A=-10.8% (n=40, 70% win)</td><td><span class="field">compute_score() param</span></td><td class="data">+3 pts when margin_lean &gt; 3.0.</td></tr>
+</table>
+</div>
+
+<!-- ─────── SECTION 4: BACKTEST GAPS ─────── -->
+<div class="sec" id="gaps">
+<div class="sh"><span class="sn">04</span> IN THE BACKTEST, MISSING FROM LIVE CLASSIFIER</div>
+
+<div class="gap"><div class="gap-h"><span class="gap-title">score_delta_pre &mdash; trajectory still all FLAT (197/197 sessions)</span><span class="impact ih">OPEN BUG</span></div><div class="gap-body">
+<p>The <code>a_score_delta_pre</code> field in the backtest CSV is not varying &mdash; all sessions show FLAT. The field is being computed but all values are 0 or near-0. Investigation needed: is <code>a_score_delta_pre</code> actually being written to the master CSV during backtest runs? Until fixed, the RISING/FALLING trajectory labels never fire.</p>
+</div></div>
+
+<div class="gap"><div class="gap-h"><span class="gap-title">near_miss_count &mdash; computed as VWAP proximity proxy, not true classification threshold</span><span class="impact im">PARTIAL</span></div><div class="gap-body">
+<p>Live classifier counts bars within 0.5% of VWAP as "near misses." Backtest near_miss_count measures bars within the S1/S2 classification threshold. The proxy correlates directionally but may not match the backtest definition exactly.</p>
+</div></div>
+
+<div class="gap"><div class="gap-h"><span class="gap-title">Tick validation &mdash; vpin/large_print unscored, true tick validation pending</span><span class="impact im">PARTIAL</span></div><div class="gap-body">
+<p>197-session harvest (Databento 1-min bar proxies) confirmed buy_pressure and tick_rate are valid. vpin and large_print are non-discriminating at bar resolution. These thresholds are retained in <code>apply_tick_score_adj()</code> but commented out pending validation with 50+ live sessions using true Tradier tick data.</p>
+</div></div>
+
+<div class="gap"><div class="gap-h"><span class="gap-title">L1/L2 order book &mdash; bid_ask_imbalance, depth_collapse, quote_rate</span><span class="impact il">LOW</span></div><div class="gap-body">
+<p>bid_ask_imbalance_pm (A=-23.7% n=6 validated), depth_collapse Growing (81% win rate n=32 validated), quote_update_rate moderate (n=9 validated). All require L1/L2 feed &mdash; not connected. n values too sparse to gate on except depth_collapse Growing which is worth adding if L2 feed becomes available.</p>
+</div></div>
+</div>
+
+<!-- ─────── SECTION 5: PRIORITY SUMMARY ─────── -->
+<div class="sec" id="summary">
+<div class="sh"><span class="sn">05</span> WHAT'S IN &middot; WHAT CHANGED &middot; WHAT'S NEXT</div>
+<table class="ann">
+<tr><th>Item</th><th>Status</th><th>Change in v3.1</th></tr>
+<tr><td>DEEP_SESSION_LOW &ge;25% = +12 pts</td><td><span class="live">&#10003; LIVE</span></td><td class="data">NEW &mdash; 86% A win rate, n=38 validated</td></tr>
+<tr><td>CLEAN/CONTESTED signals fire BEFORE compute_score</td><td><span class="live">&#10003; FIXED</span></td><td class="data">Was a silent bug &mdash; +6/-5 pts never applied before</td></tr>
+<tr><td>NC_REGIME_THIN fires BEFORE compute_score</td><td><span class="live">&#10003; FIXED</span></td><td class="data">Was a silent bug &mdash; -8 pts never applied before</td></tr>
+<tr><td>margin_lean uses % formula (not dollar diff)</td><td><span class="live">&#10003; FIXED</span></td><td class="data">Was computing wrong metric (price &minus; VWAP dollars)</td></tr>
+<tr><td>Tick rate 50-150 = +5 pts reinstated</td><td><span class="live">&#10003; LIVE</span></td><td class="data">REINSTATED &mdash; 81% A win rate n=51 validated</td></tr>
+<tr><td>GRU DEVELOPING n=64, 80% win rate shown in output</td><td><span class="live">&#10003; UPDATED</span></td><td class="data">n was 10 (data issue) &mdash; now correctly 64 validated</td></tr>
+<tr><td>Dead variable v3_notes_pre removed</td><td><span class="live">&#10003; FIXED</span></td><td class="data">getattr on dict always returned [] &mdash; dead code</td></tr>
+<tr><td>EXPECTED dict: DD/A_DEEP_LOD entry added</td><td><span class="live">&#10003; UPDATED</span></td><td class="data">Deep session low expected return -17.5%</td></tr>
+<tr><td>Win% shown in every breakdown table</td><td><span class="live">&#10003; IN REPORT</span></td><td class="data">A win% + E win% columns in pattern_analysis.py</td></tr>
+<tr><td>WIN RATE SUMMARY section in report</td><td><span class="live">&#10003; IN REPORT</span></td><td class="data">All key patterns ranked by A win rate</td></tr>
+<tr><td>score_delta_pre all FLAT &mdash; not varying</td><td><span class="partial">&#9888; OPEN</span></td><td class="data">Field in CSV but values all 0 &mdash; investigate</td></tr>
+<tr><td>True tick validation (50+ live sessions)</td><td><span class="partial">&#9888; PENDING</span></td><td class="data">Need live Tradier tick sessions to validate vpin/large_print</td></tr>
+</table>
+</div>
+
+<hr>
+<div style="color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.9">
+Cat5ive Classifier v4 &mdash; Output Guide &amp; Pattern Data Map &middot; Updated June 2026<br>
+197 sessions &middot; 22 annotated output rows &middot; 25 pattern findings encoded &middot; 31 items complete &middot; 2 items open<br>
+v3.1 fixes: execution order (NC/CONTESTED/CLEAN now fire before compute_score) &middot; margin_lean % formula &middot; DEEP_SESSION_LOW +12 pts &middot; tick_rate reinstated &middot; GRU DEVELOPING n=64
+</div>
+
+</div></body></html>
