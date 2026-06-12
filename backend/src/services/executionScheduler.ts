@@ -116,6 +116,11 @@ async function getSettingsSafe() {
  * - ENTRY orders: CANCELLED when delay expires without swiped_on approval — never auto-executed
  * - EXIT orders: Auto-execute when delay expires (fail-safe: always close positions)
  *
+ * Mode V Short (auto_sub_mode='mode_v_short') Behavior:
+ * - Same delay and validation flow as safe mode
+ * - ENTRY orders that are swiped_on (auto-approved by signal stack): auto-execute when delay expires
+ *   instead of waiting for manual Execute button press
+ *
  * Full Mode Behavior:
  * - ENTRY orders: Forwarded to broker immediately in handleOrderSignal (never reaches scheduler)
  * - EXIT orders: Same auto-execute as safe mode
@@ -174,15 +179,20 @@ async function processExpiredDelays() {
           });
 
           if (linkedIntent && linkedIntent.status === 'swiped_on') {
-            // Intent is approved but manual execution is required — clear the delay timer
-            // so this order is no longer picked up by the scheduler.
-            // It stays pending until the user hits Execute in the UI.
-            await prisma.execution.update({
-              where: { id: execution.id },
-              data: { delay_expires_at: null }
-            });
-            console.log(`   ⏳ ${execution.ticker} intent approved — waiting for manual execution`);
-            continue;
+            // Mode V Short: auto-execute when delay expires (same delay flow as safe mode,
+            // but no manual Execute button required — signal stack already confirmed).
+            const isModeV = settings?.auto_sub_mode === 'mode_v_short';
+            if (!isModeV) {
+              // Safe mode: clear the delay timer and wait for user to hit Execute.
+              await prisma.execution.update({
+                where: { id: execution.id },
+                data: { delay_expires_at: null }
+              });
+              console.log(`   ⏳ ${execution.ticker} intent approved — waiting for manual execution`);
+              continue;
+            }
+            // Mode V: fall through to auto-execute below
+            console.log(`   ⚡ ${execution.ticker} Mode V — auto-executing after delay (swiped_on)`);
           }
 
           // Intent is not approved — cancel
@@ -246,14 +256,22 @@ async function processExpiredDelays() {
 
           if (existingIntent) {
             if (existingIntent.status === 'swiped_on') {
-              // Found an approved intent — late-link it, then clear the delay timer.
-              // Order stays pending until the user manually executes it.
+              const isModeVLate = settings?.auto_sub_mode === 'mode_v_short';
+              if (!isModeVLate) {
+                // Safe mode: late-link + clear delay, wait for manual Execute.
+                await prisma.execution.update({
+                  where: { id: execution.id },
+                  data: { intent_id: existingIntent.id, delay_expires_at: null }
+                });
+                console.log(`   ⏳ Late-linked ${execution.ticker} to approved intent ${existingIntent.id} — waiting for manual execution`);
+                continue;
+              }
+              // Mode V: late-link then fall through to auto-execute.
               await prisma.execution.update({
                 where: { id: execution.id },
-                data: { intent_id: existingIntent.id, delay_expires_at: null }
+                data: { intent_id: existingIntent.id }
               });
-              console.log(`   ⏳ Late-linked ${execution.ticker} to approved intent ${existingIntent.id} — waiting for manual execution`);
-              continue;
+              console.log(`   ⚡ ${execution.ticker} Mode V late-link — auto-executing after delay`);
             } else if (existingIntent.status === 'swiped_off' || existingIntent.status === 'swiped_deny') {
               // User explicitly rejected this ticker - cancel the execution
               const reasonText = existingIntent.status === 'swiped_deny' ? 'denied' : 'blocked';
