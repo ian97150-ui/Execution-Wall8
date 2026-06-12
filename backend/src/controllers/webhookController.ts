@@ -1846,7 +1846,7 @@ export async function getWebhookLogs(req: Request, res: Response) {
     if (source) where.source = source;
     if (status) where.status = status;
     // ticker and date filter against the payload JSON string
-    if (ticker) where.payload = { contains: (ticker as string).toUpperCase() };
+    if (ticker) where.payload = { contains: (ticker as string).toUpperCase(), mode: 'insensitive' };
     if (date) {
       const d = new Date(date as string);
       const next = new Date(d);

@@ -973,8 +973,6 @@ def compute_score(signals: dict, section: str,
 
     # ââ New findings from guidelines v3 ââââââââââââââââââââââââââââââââââââââ
     # 0 flips: cleanest session (A=â11.9%, n=60 â). Reward unambiguous sessions.
-    if flips_rth == 0:
-        score += 5
     # S1 lean >3: best margin lean bucket (A=â10.8%, n=40 â).
     if margin_lean > 3.0:
         score += 3
@@ -1831,6 +1829,10 @@ def run_classification(ticker: str, bars: List[Bar],
         sig.disqualifiers    = dq
         sig.bias             = bv
         sig.t2_entry_type    = t2
+        _wc = evaluate_winners_circle(sig)
+        sig.wc_score = _wc['score'];  sig.wc_tier = _wc['tier']
+        _bp = evaluate_bluepr8nt(sig)
+        sig.bp_score = _bp['score'];  sig.bp_tier = _bp['tier']
         return sig
 
     # ââ Build reasons / warnings ââââââââââââââââââââââââââââââââââââââââââââââ
@@ -1992,6 +1994,14 @@ def run_classification(ticker: str, bars: List[Bar],
         momentum_decay_rate=mom_dec,
         hod_set_pct=hod_sp,
         v3_gate_notes=ext.get('v3_gate_notes', []),
+        # Gap-fill fields
+        near_miss_count=near_miss_ct,
+        run_day=run_day_val,
+        price_path_efficiency=path_eff,
+        margin_lean=margin_lean_val,
+        contested_day=signals.get('CONTESTED_SESSION', False),
+        last_bar_time=bars[-1].ts[:5] if bars else '',
+        sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
     )
     sig.quality_score    = calc_quality(sig)
     sig.confidence_norm  = round(sig.confidence / 100.0, 4)

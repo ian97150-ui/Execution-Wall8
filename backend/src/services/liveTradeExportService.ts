@@ -109,6 +109,10 @@ function buildRecord(cls: ClassifierSignal, capturedAt: Date, intentId: string |
       float_turnover_pct:  cls.float_turnover_pct   ?? null,
       hod_set_pct:         cls.hod_set_pct          ?? null,
       v3_gate_notes:       cls.v3_gate_notes        ?? [],
+      wc_score:            cls.wc_score             ?? null,
+      wc_tier:             cls.wc_tier              ?? null,
+      bp_score:            cls.bp_score             ?? null,
+      bp_tier:             cls.bp_tier              ?? null,
     },
     flags: computeFlags(cls, capturedAt),
     backtest_entry: {
@@ -179,6 +183,10 @@ export function buildRecordFromSnapshot(
       sec_cache_age_hours: null,
       signal_tier:         snap.signal_tier      ?? null,
       hod_bars_ago:        null,
+      wc_score:            (snap as any).wc_score ?? null,
+      wc_tier:             (snap as any).wc_tier  ?? null,
+      bp_score:            (snap as any).bp_score ?? null,
+      bp_tier:             (snap as any).bp_tier  ?? null,
     },
     flags: {
       data_lag:              false,
