@@ -6,7 +6,7 @@ import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runChecklist } from '../services/secChecklistService';
 import { captureGradeSnapshot } from '../services/gradeSnapshotService';
-import { tryAutoApproveForModeVShort, registerWaitWatch } from '../services/modeVShortService';
+import { tryAutoApproveForModeVShort, registerWaitWatch, revalidateModeVOnOrder } from '../services/modeVShortService';
 import { captureSignal } from '../services/liveTradeExportService';
 
 /**
@@ -1015,6 +1015,14 @@ async function handleOrderSignal(data: {
     }
 
     linkedIntentId = pendingIntent.id;
+
+    // Mode V: re-evaluate signal gates with fresh data at ORDER time (non-blocking).
+    // If conditions have degraded since the WALL approval, the intent is reverted to
+    // 'pending' so the scheduler won't auto-execute without manual confirmation.
+    const intentIsApproved = isFullMode || pendingIntent.status === 'swiped_on';
+    if (intentIsApproved) {
+      revalidateModeVOnOrder(pendingIntent.id, tickerUpper).catch(() => {});
+    }
   } else {
     // No prior WALL intent — create a synthetic wall card so the order shows in the UI
     const syntheticIntent = await prisma.tradeIntent.create({

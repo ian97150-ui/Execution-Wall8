@@ -26,7 +26,7 @@
 import { prisma } from '../index';
 import { ScoreSnapshot } from './scoringEngineService';
 import type { SecChecklist } from './secChecklistService';
-import { runClassifierWithTicks, type ClassifierSignal } from './classifierService';
+import { runClassifier, runClassifierWithTicks, type ClassifierSignal } from './classifierService';
 import { captureSignal } from './liveTradeExportService';
 import { recordConsidered } from './liveConsideredService';
 import { PushoverNotifications } from './pushoverService';
@@ -307,4 +307,111 @@ export async function handleWaitUpgrade(
   }
 
   console.log(`[WaitUpgrade] ${cls.ticker} WAIT→${cls.signal} (was ${prevT2Type}, score ${cls.score}, gates ${cls.gates_passed ?? 0}/5, $${cls.price})`);
+}
+
+// ─── ORDER-Time Re-validation ─────────────────────────────────────────────────
+
+/**
+ * Called fire-and-forget when an ORDER arrives for a Mode V-approved intent.
+ * Re-evaluates the full 8-signal stack with fresh data. If conditions have
+ * degraded below the strict threshold, reverts the intent to 'pending' so the
+ * user must manually approve instead of allowing the auto-execute to proceed.
+ *
+ * Non-blocking — never called with await from the webhook path.
+ */
+export async function revalidateModeVOnOrder(
+  intentId: string,
+  ticker:   string,
+): Promise<void> {
+  let settings: any;
+  try { settings = await prisma.executionSettings.findFirst(); } catch { return; }
+  if (settings?.auto_sub_mode !== 'mode_v_short') return;
+  if (settings?.execution_mode !== 'full') return;
+
+  // Intent may have been manually changed between WALL and ORDER
+  const intent = await prisma.tradeIntent
+    .findUnique({ where: { id: intentId } })
+    .catch(() => null);
+  if (!intent || intent.status !== 'swiped_on') return;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Fast OHLCV re-check (no tick layer yet)
+  let cls: ClassifierSignal | null = null;
+  try {
+    cls = await runClassifier(ticker, today);
+  } catch (err) {
+    console.warn(`[ModeV:Order] ${ticker} OHLCV re-eval failed:`, err instanceof Error ? err.message : err);
+  }
+  if (!cls) {
+    console.log(`[ModeV:Order] ${ticker} — classifier unavailable on re-eval, keeping approval`);
+    return;
+  }
+
+  // Recompute OHLCV signal stack
+  const ohlcvSignals: string[] = [];
+  if ((cls.vol_above_vwap_pct    ?? 100) < 40)  ohlcvSignals.push('VOL_LT40');
+  if ((cls.hod_set_pct           ?? 100) < 30)  ohlcvSignals.push('HOD_LT30');
+  if (cls.quiet_dump_proxy       === true)        ohlcvSignals.push('QUIET_DUMP');
+  if ((cls.session_low_vs_pm_open ?? 0)  > 10)  ohlcvSignals.push('DEEP_LOD');
+  if (cls.entry_c_fired          === true)        ohlcvSignals.push('ENTRY_C');
+  if ((cls.wc_score              ?? 0)   >= 4)  ohlcvSignals.push('WC_GTE4');
+
+  let allSignals     = [...ohlcvSignals];
+  let ticks_available = false;
+
+  // If OHLCV count is still healthy (≥5), fetch ticks for the full 8-signal check
+  if (ohlcvSignals.length >= 5) {
+    try {
+      const tickCls = await runClassifierWithTicks(ticker, today);
+      if (tickCls?.ticks_available) {
+        ticks_available = true;
+        const rate = tickCls.tick_rate_pm ?? 0;
+        if (rate >= 50 && rate <= 150)               allSignals.push('TICK_ACTIVE');
+        if ((tickCls.buy_pressure_pct ?? 100) < 35)  allSignals.push('SELL_DOM');
+      }
+    } catch (err) {
+      console.warn(`[ModeV:Order] ${ticker} tick re-eval failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  const totalCount    = allSignals.length;
+  const disqualifiers = cls.disqualifiers ?? [];
+  const section       = cls.section ?? '';
+  const confidence    = (cls.confidence ?? 0) / 100;
+
+  const stillPasses = disqualifiers.length === 0
+    && section === 'S1'
+    && confidence >= 0.55
+    && ticks_available
+    && totalCount >= 7;
+
+  console.log(
+    `[ModeV:Order] ${ticker} re-eval — stack=${totalCount}/8 [${allSignals.join(',')}] ` +
+    `ticks=${ticks_available} disq=${disqualifiers.length} section=${section} ` +
+    `conf=${Math.round(confidence * 100)}% → ${stillPasses ? 'CONFIRMED ✅' : 'DEGRADED ⚠️'}`
+  );
+
+  if (stillPasses) return;
+
+  // Conditions degraded — revoke auto-approval
+  await prisma.tradeIntent.update({
+    where: { id: intentId },
+    data:  { status: 'pending' },
+  }).catch(err => console.warn(`[ModeV:Order] ${ticker} revoke update failed:`, err instanceof Error ? err.message : err));
+
+  console.log(`[ModeV:Order] ${ticker} auto-approval REVOKED (${totalCount}/8 signals at ORDER time) — reverted to pending`);
+
+  PushoverNotifications.modeVShortSignal(ticker, {
+    score:       cls.score,
+    tier:        cls.tier,
+    bias:        cls.bias,
+    confidence:  `${Math.round(confidence * 100)}%`,
+    section,
+    signals:     ohlcvSignals.slice(0, 3).join(', ') || 'none',
+    strategy:    'N/A',
+    auto_stack:  `${totalCount}/8`,
+    tick_status: ticks_available ? 'tick-confirmed' : 'ohlcv-only',
+    verified:    'REVOKED — manual approval required',
+  }).catch(() => {});
 }
