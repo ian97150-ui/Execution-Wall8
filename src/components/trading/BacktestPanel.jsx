@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X } from 'lucide-react';
+import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap } from 'lucide-react';
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -19,14 +19,16 @@ async function apiFetch(path, opts = {}) {
 
 export function BacktestPanel() {
   const qc = useQueryClient();
-  const [selected, setSelected]     = useState(null); // { ticker, spike_date }
-  const [lines, setLines]           = useState([]);
-  const [running, setRunning]       = useState(false);
-  const [showAdd, setShowAdd]       = useState(false);
-  const [addTicker, setAddTicker]   = useState('');
-  const [addDate, setAddDate]       = useState('');
-  const [addStatus, setAddStatus]   = useState('');
-  const [showGuide, setShowGuide]   = useState(false);
+  const [selected, setSelected]       = useState(null); // { ticker, spike_date }
+  const [lines, setLines]             = useState([]);
+  const [running, setRunning]         = useState(false);
+  const [showAdd, setShowAdd]         = useState(false);
+  const [addTicker, setAddTicker]     = useState('');
+  const [addDate, setAddDate]         = useState('');
+  const [addStatus, setAddStatus]     = useState('');
+  const [showGuide, setShowGuide]     = useState(false);
+  const [batchTickers, setBatchTickers] = useState(''); // space-separated override tickers
+  const [snapTime, setSnapTime]       = useState('');   // HH:MM snapshot stop time
   const esRef   = useRef(null);
   const termRef = useRef(null);
 
@@ -56,15 +58,22 @@ export function BacktestPanel() {
     setRunning(false);
   }, []);
 
-  const runCmd = useCallback((cmd) => {
+  const runCmd = useCallback((cmd, opts = {}) => {
     stopStream();
     setLines([]);
     setRunning(true);
 
     const params = new URLSearchParams({ cmd });
-    if (selected && (cmd === 'flips' || cmd === 'replay' || cmd === 'classify')) {
-      params.set('ticker', selected.ticker);
-      params.set('date',   selected.spike_date);
+    if (cmd === 'classify') {
+      // Batch tickers override selected; date always from selected session
+      const tickerStr = batchTickers.trim() || (selected ? selected.ticker : '');
+      const dateStr   = selected?.spike_date || '';
+      if (!tickerStr || !dateStr) { setRunning(false); return; }
+      params.set('ticker', tickerStr);
+      params.set('date',   dateStr);
+      if (opts.highValueOnly) params.set('highValueOnly', 'true');
+      if (opts.fast)          params.set('noSec', 'true');
+      if (snapTime.trim())    params.set('time', snapTime.trim());
     }
 
     const es = new EventSource(`${API}/run?${params}`);
@@ -90,7 +99,7 @@ export function BacktestPanel() {
       es.close(); esRef.current = null;
       setRunning(false);
     };
-  }, [selected, stopStream]);
+  }, [selected, stopStream, batchTickers, snapTime]);
 
   // Cleanup on unmount
   useEffect(() => () => stopStream(), [stopStream]);
@@ -258,73 +267,87 @@ export function BacktestPanel() {
             </pre>
           )}
 
-          {/* Command buttons */}
-          <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 flex-wrap">
-            <CmdButton
-              label="Classify"
-              icon={<Play className="w-3 h-3" />}
-              disabled={running || !selected}
-              onClick={() => runCmd('classify')}
-              primary
-            />
-            <span className="text-border">|</span>
-            <CmdButton
-              label="Flip Analysis"
-              disabled={running || !selected}
-              onClick={() => runCmd('flips')}
-            />
-            <CmdButton
-              label="Flip All"
-              disabled={running}
-              onClick={() => runCmd('flips-all')}
-            />
-            <CmdButton
-              label="Replay"
-              disabled={running || !selected}
-              onClick={() => runCmd('replay')}
-            />
-            <CmdButton
-              label="Patterns"
-              disabled={running}
-              onClick={() => runCmd('patterns')}
-            />
-            <CmdButton
-              label="Backtest"
-              disabled={running}
-              onClick={() => runCmd('backtest')}
-            />
-            <span className="text-border">|</span>
-            <button
-              onClick={() => setShowGuide(s => !s)}
-              className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors ${
-                showGuide
-                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
-                  : 'border-border hover:bg-accent'
-              }`}
-            >
-              {showGuide ? <X className="w-3 h-3" /> : <BookOpen className="w-3 h-3" />}
-              {showGuide ? 'Close Guide' : 'Guide'}
-            </button>
-            <span className="text-border">|</span>
-            <CmdButton
-              label="Health"
-              disabled={running}
-              onClick={() => {
-                setLines([`[fetch] GET ${API}/health ...`]);
-                fetch(`${API}/health`)
-                  .then(r => { setLines(prev => [...prev, `[http] status ${r.status}`]); return r.text(); })
-                  .then(t => setLines(prev => [...prev, t]))
-                  .catch(e => setLines(prev => [...prev, `[error] ${e.message}`]));
-              }}
-            />
-            {lines.length > 0 && !running && (
+          {/* Command area */}
+          <div className="border-t border-border bg-muted/10">
+            {/* Optional inputs row */}
+            <div className="flex items-center gap-3 px-3 pt-2 pb-1">
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Batch tickers</label>
+                <input
+                  value={batchTickers}
+                  onChange={e => setBatchTickers(e.target.value)}
+                  placeholder="LABT SCNI IQST  (overrides selection)"
+                  className="h-6 w-52 px-2 text-xs font-mono rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
+                />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Snapshot time</label>
+                <input
+                  value={snapTime}
+                  onChange={e => setSnapTime(e.target.value)}
+                  placeholder="HH:MM"
+                  maxLength={5}
+                  className="h-6 w-20 px-2 text-xs font-mono rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
+                />
+              </div>
+            </div>
+
+            {/* Buttons row */}
+            <div className="flex items-center gap-2 px-3 pb-2 flex-wrap">
+              <CmdButton
+                label="Classify"
+                icon={<Play className="w-3 h-3" />}
+                disabled={running || (!selected && !batchTickers.trim())}
+                onClick={() => runCmd('classify')}
+                primary
+              />
+              <CmdButton
+                label="Entry Only"
+                icon={<Filter className="w-3 h-3" />}
+                disabled={running || (!selected && !batchTickers.trim())}
+                onClick={() => runCmd('classify', { highValueOnly: true })}
+                title="--high-value-only: show ENTER_E / HIGH_VALUE signals only"
+              />
+              <CmdButton
+                label="Fast"
+                icon={<Zap className="w-3 h-3" />}
+                disabled={running || (!selected && !batchTickers.trim())}
+                onClick={() => runCmd('classify', { fast: true })}
+                title="--no-sec --no-float: skip EDGAR + float fetch for speed"
+              />
+              <span className="text-border">|</span>
               <button
-                onClick={() => setLines([])}
-                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setShowGuide(s => !s)}
+                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors ${
+                  showGuide
+                    ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
+                    : 'border-border hover:bg-accent'
+                }`}
               >
-                Clear
+                {showGuide ? <X className="w-3 h-3" /> : <BookOpen className="w-3 h-3" />}
+                {showGuide ? 'Close Guide' : 'Guide'}
               </button>
-            )}
+              <span className="text-border">|</span>
+              <CmdButton
+                label="Health"
+                disabled={running}
+                onClick={() => {
+                  setLines([`[fetch] GET ${API}/health ...`]);
+                  fetch(`${API}/health`)
+                    .then(r => { setLines(prev => [...prev, `[http] status ${r.status}`]); return r.text(); })
+                    .then(t => setLines(prev => [...prev, t]))
+                    .catch(e => setLines(prev => [...prev, `[error] ${e.message}`]));
+                }}
+              />
+              {lines.length > 0 && !running && (
+                <button
+                  onClick={() => setLines([])}
+                  className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -332,11 +355,12 @@ export function BacktestPanel() {
   );
 }
 
-function CmdButton({ label, icon, disabled, onClick, primary = false }) {
+function CmdButton({ label, icon, disabled, onClick, primary = false, title }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         primary
           ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
