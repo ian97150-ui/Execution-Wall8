@@ -141,24 +141,46 @@ export async function performDailyReset(): Promise<void> {
   }
 }
 
-/**
- * Check if it's midnight (within a 5-minute window)
- */
-function isMidnight(): boolean {
-  const now = new Date();
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-
-  // Check if it's between 00:00 and 00:05
-  return hours === 0 && minutes < 5;
+// Re-evaluated on every call — no caching so day transitions are always correct
+function isWeekendET(): boolean {
+  const day = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+  });
+  return day === 'Sat' || day === 'Sun';
 }
 
 let resetSchedulerInterval: NodeJS.Timeout | null = null;
 
 /**
+ * Schedule the next daily reset at UTC midnight.
+ * Self-rescheduling: fires exactly once per day instead of polling every minute.
+ * Skips on weekends (Sat/Sun ET) — startup handles any missed reset via shouldPerformDailyReset().
+ */
+function scheduleNextReset(): void {
+  const now = new Date();
+  const nextMidnight = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    0, 0, 30  // 30s past midnight avoids boundary edge cases
+  ));
+  const msUntil = nextMidnight.getTime() - now.getTime();
+
+  resetSchedulerInterval = setTimeout(async () => {
+    if (!isWeekendET()) {
+      await performDailyReset();
+    }
+    scheduleNextReset();  // always reschedule for the next day
+  }, msUntil);
+
+  console.log(`🕐 Daily reset scheduled in ${Math.round(msUntil / 60000)} min`);
+}
+
+/**
  * Start the daily reset scheduler
  * - Runs immediately on startup to check if reset is needed
- * - Then checks every minute for midnight reset
+ * - Then fires exactly at UTC midnight each day (self-rescheduling setTimeout)
  */
 export function startDailyResetScheduler(): void {
   if (resetSchedulerInterval) {
@@ -168,15 +190,10 @@ export function startDailyResetScheduler(): void {
 
   console.log('🕐 Starting daily reset scheduler');
 
-  // Run immediately on startup
+  // Run immediately on startup to catch any missed resets
   performDailyReset();
 
-  // Check every minute for midnight
-  resetSchedulerInterval = setInterval(async () => {
-    if (isMidnight()) {
-      await performDailyReset();
-    }
-  }, 60 * 1000); // Check every minute
+  scheduleNextReset();
 }
 
 /**
@@ -184,7 +201,7 @@ export function startDailyResetScheduler(): void {
  */
 export function stopDailyResetScheduler(): void {
   if (resetSchedulerInterval) {
-    clearInterval(resetSchedulerInterval);
+    clearTimeout(resetSchedulerInterval);
     resetSchedulerInterval = null;
     console.log('🛑 Daily reset scheduler stopped');
   }

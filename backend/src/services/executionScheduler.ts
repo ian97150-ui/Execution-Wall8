@@ -2,6 +2,15 @@ import { prisma } from '../index';
 import { forwardToBroker } from './brokerWebhook';
 import { PushoverNotifications } from './pushoverService';
 
+// Re-evaluated on every call — no caching so day transitions are always correct
+function isWeekendET(): boolean {
+  const day = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+  });
+  return day === 'Sat' || day === 'Sun';
+}
+
 // Smart scheduler state: two modes
 // IDLE  — cheap COUNT query every 60s (near-zero CPU when no trades active)
 // ACTIVE — full logic every 10s (when pending orders or blocked tickers exist)
@@ -56,10 +65,12 @@ function deactivateToIdle(): void {
   }
 
   currentMode = 'idle';
-  console.log('💤 Execution scheduler IDLE (60s heartbeat)');
+  console.log('💤 Execution scheduler IDLE (5min heartbeat)');
 
-  // Safety heartbeat: re-activate if work appears (catches any missed webhook activations)
+  // Safety heartbeat: re-activate if work appears (catches any missed webhook activations).
+  // Skips on weekends — no trading activity, keeps Neon from staying awake unnecessarily.
   idleInterval = setInterval(async () => {
+    if (isWeekendET()) return;
     try {
       const hasPending = await checkHasPendingWork();
       if (hasPending) {
@@ -69,7 +80,7 @@ function deactivateToIdle(): void {
     } catch (err: any) {
       console.error('❌ Idle heartbeat check error:', err.message);
     }
-  }, 60 * 1000);
+  }, 5 * 60 * 1000);
 }
 
 /**

@@ -52,10 +52,22 @@ function isTimeInRange(currentTime: string, startTime: string, endTime: string):
   return currentTime >= startTime && currentTime < endTime;
 }
 
+// Re-evaluated on every call — no caching so day transitions are always correct
+function isWeekendET(): boolean {
+  const day = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+  });
+  return day === 'Sat' || day === 'Sun';
+}
+
 /**
  * Check schedules and update execution mode if needed
  */
 async function checkAndUpdateMode() {
+  // Skip on weekends — no schedules apply, avoids unnecessary DB query
+  if (isWeekendET()) return;
+
   try {
     const settings = await prisma.executionSettings.findFirst();
 
