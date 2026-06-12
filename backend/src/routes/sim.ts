@@ -8,7 +8,8 @@ import fs from 'fs';
 const router = Router();
 
 const PYTHON_DIR      = path.join(__dirname, '../../..', 'python');
-const CLASSIFIER_PATH = path.join(PYTHON_DIR, 'cat5ive_classifier.py');
+const CLASSIFIER_PATH    = path.join(PYTHON_DIR, 'cat5ive_classifier.py');
+const CLASSIFIER_V4_PATH = path.join(PYTHON_DIR, 'cat5ive_classifier_v4.py');
 
 // Resolve python binary: try python3, fall back to python
 function getPythonBin(): string {
@@ -35,18 +36,21 @@ router.get('/health', async (_req: Request, res: Response) => {
     } catch (e) { return `error: ${String(e)}`; }
   })();
 
-  const classifierExists = fs.existsSync(CLASSIFIER_PATH);
+  const classifierExists   = fs.existsSync(CLASSIFIER_PATH);
+  const classifierV4Exists = fs.existsSync(CLASSIFIER_V4_PATH);
   let dbCount = -1;
   try { dbCount = await prisma.simTicker.count(); } catch {}
 
   res.json({
-    python_bin:         PYTHON_BIN,
-    python_version:     pyVersion,
-    classifier_path:    CLASSIFIER_PATH,
-    classifier_exists:  classifierExists,
-    python_dir:         PYTHON_DIR,
-    db_rows:            dbCount,
-    __dirname:          __dirname,
+    python_bin:            PYTHON_BIN,
+    python_version:        pyVersion,
+    classifier_path:       CLASSIFIER_PATH,
+    classifier_exists:     classifierExists,
+    classifier_v4_path:    CLASSIFIER_V4_PATH,
+    classifier_v4_exists:  classifierV4Exists,
+    python_dir:            PYTHON_DIR,
+    db_rows:               dbCount,
+    __dirname:             __dirname,
   });
 });
 
@@ -179,12 +183,18 @@ router.get('/run', async (req: Request, res: Response) => {
     }
     // Support space-separated multiple tickers (batch mode)
     const tickerList = (ticker as string).trim().split(/\s+/).map(t => t.toUpperCase()).filter(Boolean);
-    const classArgs = [CLASSIFIER_PATH, ...tickerList, '--date', date, '--once', '--no-float'];
+    // Use v4 — auto-fetches Tradier tick layer when TRADIER_API_KEY is present.
+    // --tick-only-once: prefetch all PM ticks before classification (one call per ticker).
+    const useV4 = fs.existsSync(CLASSIFIER_V4_PATH);
+    const classifierScript = useV4 ? CLASSIFIER_V4_PATH : CLASSIFIER_PATH;
+    const classArgs = [classifierScript, ...tickerList, '--date', date, '--once', '--no-float'];
+    if (useV4) classArgs.push('--tick-only-once');
     if (req.query.highValueOnly === 'true') classArgs.push('--high-value-only');
     if (req.query.noSec === 'true') classArgs.push('--no-sec');
     if (req.query.time) classArgs.push('--time', req.query.time as string);
     const tradierKey2 = process.env.TRADIER_API_KEY;
-    res.write(`data: ${JSON.stringify(`> python3 cat5ive_classifier.py ${classArgs.slice(1).join(' ')}`)}\n\n`);
+    const scriptLabel = useV4 ? 'cat5ive_classifier_v4.py' : 'cat5ive_classifier.py';
+    res.write(`data: ${JSON.stringify(`> python3 ${scriptLabel} ${classArgs.slice(1).join(' ')}`)}\n\n`);
     const proc2 = spawn(PYTHON_BIN, classArgs, {
       cwd: path.join(__dirname, '../../..'),
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
