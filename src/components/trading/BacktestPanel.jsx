@@ -68,6 +68,12 @@ export function BacktestPanel() {
     setGatesRunning(false);
   }, []);
 
+  const normalizeSnapTime = (raw) => {
+    const s = raw.trim();
+    if (/^\d{4}$/.test(s)) return `${s.slice(0, 2)}:${s.slice(2)}`;
+    return s;
+  };
+
   const runGatesTest = useCallback(() => {
     if (gatesRunning) { stopGatesTest(); return; }
     if (!selected) return;
@@ -78,7 +84,7 @@ export function BacktestPanel() {
     setActivePanel('gates');
 
     const params = new URLSearchParams({ ticker: selected.ticker, date: selected.spike_date });
-    if (snapTime.trim()) params.set('time', snapTime.trim());
+    if (snapTime.trim()) params.set('time', normalizeSnapTime(snapTime));
 
     const es = new EventSource(`${API}/signal-stack-report?${params}`);
     gatesEsRef.current = es;
@@ -123,7 +129,7 @@ export function BacktestPanel() {
       params.set('date',   dateStr);
       if (opts.highValueOnly) params.set('highValueOnly', 'true');
       if (opts.fast)          params.set('noSec', 'true');
-      if (snapTime.trim())    params.set('time', snapTime.trim());
+      if (snapTime.trim())    params.set('time', normalizeSnapTime(snapTime));
     }
 
     const es = new EventSource(`${API}/run?${params}`);
@@ -349,7 +355,7 @@ export function BacktestPanel() {
                 <input
                   value={snapTime}
                   onChange={e => setSnapTime(e.target.value)}
-                  placeholder="HH:MM"
+                  placeholder="HH:MM or HHMM"
                   maxLength={5}
                   className="h-6 w-20 px-2 text-xs font-mono rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
                 />

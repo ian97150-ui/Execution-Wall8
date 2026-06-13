@@ -305,7 +305,7 @@ def compute_tick_features(ticks: List[TickPrint],
     # Filter to requested window
     pm_ticks = [t for t in ticks if start_et <= t.et_sec < end_et]
     if len(pm_ticks) < 3:
-        return TickFeatures(ticks_available=len(ticks) > 0)
+        return TickFeatures(ticks_available=False)
 
     # ââ Order flow classification via bulk-volume method ââââââââââââââââââââââ
     buy_vol = sell_vol = neutral_vol = 0
