@@ -1634,7 +1634,8 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
 
 def run_classification(ticker: str, bars: List[Bar],
                        session_date: str = None, no_sec: bool = False,
-                       float_shares: int = 0) -> 'ClassifierSignal':
+                       float_shares: int = 0,
+                       tradier_key: str = '') -> 'ClassifierSignal':
     now_str = datetime.now().strftime('%H:%M:%S')
     reasons = []
     warnings = []
@@ -1786,7 +1787,7 @@ def run_classification(ticker: str, bars: List[Bar],
                          True)  # computed properly in build phase below
     # run_day: fetch prior history (async-safe via separate call)
     run_day_val    = detect_run_day(ticker, session_date or date.today().isoformat(),
-                                    os.environ.get('TRADIER_API_KEY', ''))
+                                    tradier_key or os.environ.get('TRADIER_API_KEY', ''))
     # Apply run_day score penalty
     _rd_adj = _RUN_DAY_SCORE_ADJ.get(run_day_val, -12 if run_day_val >= 4 else 0)
     if _rd_adj != 0:
@@ -2799,7 +2800,8 @@ def main():
                     sig = run_classification(tkr, bars,
                                              session_date=session_date,
                                              no_sec=args.no_sec,
-                                             float_shares=fs)
+                                             float_shares=fs,
+                                             tradier_key=tradier_key)
                     log_signal(sig, log_dir)
 
                     # Apply filters

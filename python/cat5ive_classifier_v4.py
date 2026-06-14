@@ -466,7 +466,8 @@ def run_classification_v4(ticker: str, bars: List[Bar],
                            ticks: List[TickPrint] = None,
                            session_date: str = None,
                            no_sec: bool = False,
-                           float_shares: int = 0) -> tuple:
+                           float_shares: int = 0,
+                           tradier_key: str = '') -> tuple:
     """
     Full v4 classification: v3 OHLCV + optional tick score adjustment.
 
@@ -486,7 +487,8 @@ def run_classification_v4(ticker: str, bars: List[Bar],
     sig = run_classification(ticker, bars,
                              session_date=session_date,
                              no_sec=no_sec,
-                             float_shares=float_shares)
+                             float_shares=float_shares,
+                             tradier_key=tradier_key)
 
     # ââ Tick feature computation âââââââââââââââââââââââââââââââââââââââââââââââ
     if ticks:
@@ -712,6 +714,7 @@ def main():
                         session_date = session_date,
                         no_sec       = args.no_sec,
                         float_shares = fs,
+                        tradier_key  = tradier_key,
                     )
 
                     log_signal(sig, log_dir)
