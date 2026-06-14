@@ -385,6 +385,23 @@ export function BacktestPanel() {
                 onClick={() => runCmd('classify', { fast: true })}
                 title="--no-sec --no-float: skip EDGAR + float fetch for speed"
               />
+              <button
+                onClick={activePanel === 'gates' && !gatesRunning ? () => setActivePanel(null) : runGatesTest}
+                disabled={running || !selected}
+                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${
+                  activePanel === 'gates'
+                    ? gatesRunning
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-400 animate-pulse'
+                      : 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                    : 'border-border hover:bg-accent'
+                }`}
+                title={selected
+                  ? `Grade ${selected.ticker} ${selected.spike_date}${snapTime.trim() ? ' @ ' + snapTime.trim() : ''}`
+                  : 'Select a session first'}
+              >
+                <ShieldCheck className="w-3 h-3" />
+                {gatesRunning ? 'Running…' : activePanel === 'gates' ? 'Close' : 'Mode V Gates Test'}
+              </button>
               <span className="text-border">|</span>
               <button
                 onClick={() => setActivePanel(p => p === 'guide' ? null : 'guide')}
@@ -407,23 +424,6 @@ export function BacktestPanel() {
               >
                 {activePanel === 'threshold' ? <X className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
                 {activePanel === 'threshold' ? 'Close' : 'Threshold Report'}
-              </button>
-              <button
-                onClick={activePanel === 'gates' && !gatesRunning ? () => setActivePanel(null) : runGatesTest}
-                disabled={running || !selected}
-                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${
-                  activePanel === 'gates'
-                    ? gatesRunning
-                      ? 'border-amber-500 bg-amber-500/10 text-amber-400 animate-pulse'
-                      : 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                    : 'border-border hover:bg-accent'
-                }`}
-                title={selected
-                  ? `Grade ${selected.ticker} ${selected.spike_date}${snapTime.trim() ? ' @ ' + snapTime.trim() : ''}`
-                  : 'Select a session first'}
-              >
-                <ShieldCheck className="w-3 h-3" />
-                {gatesRunning ? 'Running…' : activePanel === 'gates' ? 'Close' : 'Mode V Gates Test'}
               </button>
               <span className="text-border">|</span>
               <CmdButton
