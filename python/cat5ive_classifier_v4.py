@@ -538,12 +538,12 @@ def run_classification_v4(ticker: str, bars: List[Bar],
 # TICK DISPLAY
 # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-def print_tick_features(tf: TickFeatures):
+def print_tick_features(tf: TickFeatures, ticks_attempted: bool = False):
     """Print tick layer summary row in the classifier output."""
     if not tf.ticks_available:
-        # Only print unavailable if ticks were explicitly expected
-        # (i.e., --ticks flag was set but data didn't come back)
-        # Suppress silently when running OHLCV-only mode
+        if ticks_attempted:
+            print(f"  {'─'*68}")
+            print(f"  {DIM}TICK:  no data (Tradier tick history unavailable for this date){RESET}")
         return
 
     vpin_c  = RED if (tf.proxy_vpin or 0) > 0.55 else (
@@ -734,8 +734,7 @@ def main():
                         # Store tf on sig so print_signal can access it
                         sig._tick_features = tf
                         print_signal(sig, verbose=not args.quiet)
-                        if tf.ticks_available:
-                            print_tick_features(tf)
+                        print_tick_features(tf, ticks_attempted=bool(_use_ticks))
 
                 except Exception as e:
                     if not args.json:
