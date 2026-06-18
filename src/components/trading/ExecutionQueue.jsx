@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock, TrendingUp, TrendingDown, Send, X,
-  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp
+  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp, Snowflake
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -16,6 +16,7 @@ export default function ExecutionQueue({
   onApprove,
   onEditLimit,
   onRetry,
+  onFreeze,
   onCreateDemo,
   isDemoLoading,
   executionMode = "safe"
@@ -61,6 +62,7 @@ export default function ExecutionQueue({
           const sideLabel = exec.dir?.toUpperCase();
           const isActive = ["pending", "executing"].includes(exec.status);
           const isFailed = exec.status === "failed";
+          const isFrozen = !!exec.frozen;
 
           return (
             <motion.div
@@ -71,6 +73,7 @@ export default function ExecutionQueue({
               transition={{ delay: index * 0.05 }}
               className={cn(
                 "rounded-xl border overflow-hidden",
+                isFrozen ? "bg-slate-800/80 border-cyan-500/50" :
                 isActive ? "bg-slate-800/80 border-slate-600" : "bg-slate-800/40 border-slate-700/50"
               )}
             >
@@ -99,11 +102,36 @@ export default function ExecutionQueue({
                       {statusBadge.label}
                     </span>
                   </div>
-                  <span className="text-xs text-slate-500">
-                    {(exec.created_at || exec.created_date) && format(new Date(exec.created_at || exec.created_date), "HH:mm:ss")}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">
+                      {(exec.created_at || exec.created_date) && format(new Date(exec.created_at || exec.created_date), "HH:mm:ss")}
+                    </span>
+                    {isActive && (
+                      <button
+                        onClick={() => onFreeze?.(exec)}
+                        title={isFrozen ? "Unfreeze order" : "Freeze order (pause timer)"}
+                        className={cn(
+                          "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                          isFrozen
+                            ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 hover:bg-cyan-500/30"
+                            : "bg-slate-700/50 text-slate-400 border border-slate-600/40 hover:bg-slate-600/50 hover:text-slate-200"
+                        )}
+                      >
+                        <Snowflake className="w-3 h-3" />
+                        {isFrozen ? "Frozen" : "Freeze"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Frozen banner */}
+              {isFrozen && (
+                <div className="px-4 py-1.5 bg-cyan-500/10 border-b border-cyan-500/20 flex items-center gap-2">
+                  <Snowflake className="w-3 h-3 text-cyan-400" />
+                  <span className="text-xs text-cyan-400 font-medium">Timer paused — order held until you act</span>
+                </div>
+              )}
 
               {/* Details */}
               <div className="p-4 space-y-4">
@@ -157,7 +185,6 @@ export default function ExecutionQueue({
                 {/* Actions - only show in safe mode */}
                 {isActive && executionMode === "safe" && (
                   <div className="space-y-2 pt-2">
-                    {/* Approve button - only show if order has linked intent awaiting approval */}
                     {exec.intent_id && (
                       <Button
                         onClick={() => onApprove?.(exec)}
@@ -181,7 +208,7 @@ export default function ExecutionQueue({
                     )}
                     <div className="flex gap-2">
                       <Button
-                        onClick={() => onCancel?.(exec)}
+                        onClick={() => { onCancel?.(exec); }}
                         variant="outline"
                         size="sm"
                         className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/20"
@@ -190,7 +217,7 @@ export default function ExecutionQueue({
                         Cancel
                       </Button>
                       <Button
-                        onClick={() => onForceExecute?.(exec)}
+                        onClick={() => { onForceExecute?.(exec); }}
                         size="sm"
                         className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
                       >

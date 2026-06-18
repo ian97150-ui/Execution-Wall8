@@ -780,4 +780,24 @@ router.post('/demo', async (req: Request, res: Response) => {
   }
 });
 
+// Toggle freeze on a pending execution
+router.post('/:id/freeze', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const execution = await prisma.execution.findUnique({ where: { id } });
+    if (!execution) return res.status(404).json({ error: 'Execution not found' });
+
+    const updated = await prisma.execution.update({
+      where: { id },
+      data: { frozen: !execution.frozen }
+    });
+
+    console.log(`🧊 Execution ${id} (${execution.ticker}) frozen=${updated.frozen}`);
+    res.json({ frozen: updated.frozen });
+  } catch (error: any) {
+    console.error('Error toggling freeze:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

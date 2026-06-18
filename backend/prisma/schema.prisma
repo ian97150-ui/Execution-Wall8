@@ -175,6 +175,7 @@ model Execution {
   limit_price      Decimal?
   status             String    @default("pending") // pending, executing, executed, partially_filled, confirmed, unmatched_confirm, failed, cancelled
   delay_expires_at   DateTime?
+  frozen             Boolean   @default(false) // if true, delay timer will not auto-fire
   executed_at        DateTime?
   fill_price         Decimal?  // Actual fill price from CONFIRMED webhook
   confirmed_at       DateTime? // When first CONFIRMED webhook was received

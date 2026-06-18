@@ -369,6 +369,17 @@ export default function Dashboard() {
     }
   });
 
+  const freezeExecutionMutation = useMutation({
+    mutationFn: async (exec) => {
+      const res = await api.post(`/executions/${exec.id}/freeze`);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+      toast.success(data.frozen ? 'Order frozen — timer paused' : 'Order unfrozen');
+    }
+  });
+
   const cancelExecutionMutation = useMutation({
     mutationFn: async (exec) => {
       await api.post(`/executions/${exec.id}/cancel`);
@@ -1075,6 +1086,7 @@ export default function Dashboard() {
                 onApprove={(exec) => approveExecutionMutation.mutate(exec)}
                 onRetry={(exec) => retryExecutionMutation.mutate(exec)}
                 onEditLimit={handleEditLimit}
+                onFreeze={(exec) => freezeExecutionMutation.mutate(exec)}
                 onCreateDemo={() => createDemoMutation.mutate()}
                 isDemoLoading={createDemoMutation.isPending}
               />

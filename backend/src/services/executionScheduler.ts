@@ -142,6 +142,7 @@ async function processExpiredDelays() {
     const expiredExecutions = await prisma.execution.findMany({
       where: {
         status: 'pending',
+        frozen: false,
         delay_expires_at: {
           lte: now // delay_expires_at <= now (expired)
         }
