@@ -153,7 +153,7 @@ export async function tryAutoApproveForModeVShort(
 
   const strictPass = meetsModeVShortThreshold(snap);
 
-  const ncTag = (snap!.regime === 'NEWS_CONTINUATION') ? ' ⚠️ NC regime (thin edge)' : '';
+  const ncTag = (snap!.regime?.regime === 'NEWS_CONTINUATION') ? ' ⚠️ NC regime (thin edge)' : '';
   const notifDetails = {
     score:      snap!.pre_fall_score,
     tier:       snap!.pre_fall_tier,
