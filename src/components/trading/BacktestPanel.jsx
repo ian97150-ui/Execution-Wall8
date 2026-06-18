@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText, ShieldCheck } from 'lucide-react';
+import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText, ShieldCheck, Clock } from 'lucide-react';
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -34,6 +34,11 @@ export function BacktestPanel() {
   const [gatesSummary, setGatesSummary] = useState(null);
   const [gatesProgress, setGatesProgress] = useState('');
   const gatesEsRef = useRef(null);
+  const [scanRunning,  setScanRunning]  = useState(false);
+  const [scanBars,     setScanBars]     = useState([]);
+  const [scanCrossing, setScanCrossing] = useState(null);
+  const [scanProgress, setScanProgress] = useState('');
+  const scanEsRef = useRef(null);
   const esRef   = useRef(null);
   const termRef = useRef(null);
 
@@ -67,6 +72,49 @@ export function BacktestPanel() {
     if (gatesEsRef.current) { gatesEsRef.current.close(); gatesEsRef.current = null; }
     setGatesRunning(false);
   }, []);
+
+  const stopNotifyScan = useCallback(() => {
+    if (scanEsRef.current) { scanEsRef.current.close(); scanEsRef.current = null; }
+    setScanRunning(false);
+  }, []);
+
+  const runNotifyScan = useCallback(() => {
+    if (scanRunning) { stopNotifyScan(); return; }
+    if (!selected) return;
+    setScanBars([]);
+    setScanCrossing(null);
+    setScanProgress('Connecting…');
+    setScanRunning(true);
+    setActivePanel('notify-scan');
+
+    const params = new URLSearchParams({ ticker: selected.ticker, date: selected.spike_date });
+    const es = new EventSource(`${API}/notify-scan?${params}`);
+    scanEsRef.current = es;
+
+    es.addEventListener('progress', (e) => {
+      try { setScanProgress(JSON.parse(e.data).message); } catch {}
+    });
+    es.addEventListener('bar', (e) => {
+      try { setScanBars(prev => [...prev, JSON.parse(e.data)]); } catch {}
+    });
+    es.addEventListener('crossing', (e) => {
+      try { setScanCrossing(JSON.parse(e.data)); } catch {}
+    });
+    es.addEventListener('error', (e) => {
+      try { setScanProgress('Error: ' + JSON.parse(e.data).message); } catch {}
+    });
+    es.addEventListener('done', () => {
+      es.close(); scanEsRef.current = null;
+      setScanRunning(false);
+      setScanProgress('');
+    });
+    es.onerror = () => {
+      es.close(); scanEsRef.current = null;
+      setScanRunning(false);
+    };
+  }, [scanRunning, stopNotifyScan, selected]);
+
+  useEffect(() => () => stopNotifyScan(), [stopNotifyScan]);
 
   const normalizeSnapTime = (raw) => {
     const s = raw.trim();
@@ -323,6 +371,15 @@ export function BacktestPanel() {
               progress={gatesProgress}
               running={gatesRunning}
             />
+          ) : activePanel === 'notify-scan' ? (
+            <NotifyScanPanel
+              bars={scanBars}
+              crossing={scanCrossing}
+              progress={scanProgress}
+              running={scanRunning}
+              ticker={selected?.ticker}
+              date={selected?.spike_date}
+            />
           ) : (
             <pre
               ref={termRef}
@@ -401,6 +458,21 @@ export function BacktestPanel() {
               >
                 <ShieldCheck className="w-3 h-3" />
                 {gatesRunning ? 'Running…' : activePanel === 'gates' ? 'Close' : 'Mode V Gates Test'}
+              </button>
+              <button
+                onClick={activePanel === 'notify-scan' && !scanRunning ? () => setActivePanel(null) : runNotifyScan}
+                disabled={running || !selected}
+                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${
+                  activePanel === 'notify-scan'
+                    ? scanRunning
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-400 animate-pulse'
+                      : 'border-sky-500 bg-sky-500/10 text-sky-400'
+                    : 'border-border hover:bg-accent'
+                }`}
+                title={selected ? `Scan entry time for ${selected.ticker} ${selected.spike_date}` : 'Select a session first'}
+              >
+                <Clock className="w-3 h-3" />
+                {scanRunning ? 'Scanning…' : activePanel === 'notify-scan' ? 'Close' : 'Notify Scan'}
               </button>
               <span className="text-border">|</span>
               <button
@@ -557,6 +629,102 @@ function GatesTestPanel({ rows, summary, progress, running }) {
 
       {rows.length === 0 && !running && !progress && (
         <div className="px-3 py-4 text-slate-500">No results yet. Click Mode V Gates Test to run.</div>
+      )}
+    </div>
+  );
+}
+
+function NotifyScanPanel({ ticker, date, running, progress, bars, crossing }) {
+  if (!running && bars.length === 0 && !crossing) {
+    return (
+      <div className="px-3 py-4 text-slate-500 text-xs">
+        No scan run yet. Select a session and click Notify Scan.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      {/* Header */}
+      <div className="px-3 pt-2 text-[11px] font-semibold text-slate-300 tracking-wide uppercase">
+        Notify Scan{ticker ? ` — ${ticker}` : ''}{date ? ` ${date}` : ''}
+      </div>
+
+      {/* Progress */}
+      {running && progress && (
+        <div className="px-3 text-slate-400 animate-pulse">{progress}</div>
+      )}
+
+      {/* Crossing banner */}
+      {crossing ? (
+        <div className="mx-3 px-3 py-2 rounded bg-emerald-500/10 border border-emerald-500/30">
+          <div className="font-bold text-emerald-400 text-[11px] mb-1">
+            ✅ FIRST CROSSING: {crossing.time} &nbsp; signals={crossing.signal_count}/8 &nbsp; conf={crossing.confidence}%
+          </div>
+          <div className="flex flex-wrap gap-1 mb-1">
+            {(crossing.signals ?? []).map(s => (
+              <span key={s} className={`px-1 rounded text-[9px] font-semibold ${
+                ['TICK_ACTIVE','SELL_DOM'].includes(s)
+                  ? 'bg-cyan-500/20 text-cyan-300'
+                  : 'bg-emerald-500/20 text-emerald-300'
+              }`}>
+                {SIGNAL_LABELS[s] ?? s}
+              </span>
+            ))}
+          </div>
+          {crossing.signal && (
+            <div className="text-slate-400 text-[10px]">
+              Grade: <span className="text-slate-200">{crossing.signal}</span>
+              {crossing.section && <> &nbsp; Section: <span className="text-slate-200">{crossing.section}</span></>}
+            </div>
+          )}
+        </div>
+      ) : (!running && bars.length > 0) && (
+        <div className="mx-3 px-3 py-2 rounded bg-slate-800/50 border border-slate-700 text-slate-400">
+          No threshold crossing found for this session.
+        </div>
+      )}
+
+      {/* Timeline */}
+      {bars.length > 0 && (
+        <div className="px-3 pb-2">
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Timeline</div>
+          <div className="flex flex-col gap-0.5">
+            {bars.map((bar, i) => {
+              const isCross = crossing && bar.time === crossing.time;
+              return (
+                <div key={i} className={`flex items-center gap-2 rounded px-1 py-0.5 ${isCross ? 'bg-emerald-500/10' : ''}`}>
+                  <span className={`w-10 font-mono text-[10px] ${isCross ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                    {bar.time}
+                  </span>
+                  <span className={`w-8 text-center font-mono text-[10px] ${stackColor(bar.signal_count ?? 0)}`}>
+                    {bar.signal_count}/8
+                  </span>
+                  <div className="flex-1 max-w-[80px] h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${(bar.signal_count ?? 0) >= 6 ? 'bg-emerald-500' : (bar.signal_count ?? 0) >= 4 ? 'bg-amber-500' : (bar.signal_count ?? 0) >= 3 ? 'bg-yellow-600' : 'bg-slate-600'}`}
+                      style={{ width: `${((bar.signal_count ?? 0) / 8) * 100}%` }}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-0.5 flex-1">
+                    {(bar.signals ?? []).map(s => (
+                      <span key={s} className={`px-1 rounded text-[9px] ${
+                        isCross
+                          ? (['TICK_ACTIVE','SELL_DOM'].includes(s) ? 'bg-cyan-500/20 text-cyan-300' : 'bg-emerald-500/20 text-emerald-300')
+                          : 'bg-slate-700/60 text-slate-500'
+                      }`}>
+                        {SIGNAL_LABELS[s] ?? s}
+                      </span>
+                    ))}
+                  </div>
+                  {isCross && (
+                    <span className="text-emerald-400 font-bold text-[10px]">★CROSS</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );

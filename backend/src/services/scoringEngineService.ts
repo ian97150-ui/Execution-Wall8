@@ -868,7 +868,7 @@ function _computeAutoStack(
   if ((cls.vol_above_vwap_pct    ?? 100)  < 40)  active.push('VOL_LT40');
   if ((cls.hod_set_pct           ?? 100)  < 30)  active.push('HOD_LT30');
   if (cls.quiet_dump_proxy       === true)        active.push('QUIET_DUMP');
-  if ((cls.session_low_vs_pm_open ?? 0)   > 10)  active.push('DEEP_LOD');
+  if ((cls.session_low_vs_pm_open ?? 0)   >= 20) active.push('DEEP_LOD');
   if (cls.entry_c_fired          === true)        active.push('ENTRY_C');
   if ((cls.wc_score              ?? 0)    >= 4)  active.push('WC_GTE4');
 

@@ -93,7 +93,11 @@ export default function Settings() {
         pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false,
         pushover_on_sec: settings.pushover_on_sec !== 0 && settings.pushover_on_sec !== false,
         pushover_on_mode_v_short: settings.pushover_on_mode_v_short !== 0 && settings.pushover_on_mode_v_short !== false,
-        auto_sub_mode: settings.auto_sub_mode || null
+        auto_sub_mode: settings.auto_sub_mode || null,
+        // Mode V notify thresholds
+        mode_v_notify_min_signals:    settings.mode_v_notify_min_signals    ?? 3,
+        mode_v_notify_min_conf:       settings.mode_v_notify_min_conf       ?? 45,
+        mode_v_notify_s2_min_signals: settings.mode_v_notify_s2_min_signals ?? 4,
       });
     }
   }, [settings]);
@@ -737,6 +741,55 @@ export default function Settings() {
                   </Button>
                 </div>
               </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Mode V Short — Notify Thresholds */}
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white text-base">
+              <span className="text-emerald-400">⚡</span>
+              Mode V Short — Notify Thresholds
+            </CardTitle>
+            <p className="text-xs text-slate-400 mt-1">
+              Controls when a Mode V Short alert fires. Thresholds apply to the 8-signal auto stack (VOL, HOD, Quiet Dump, Deep LOD, Entry C, WC, Tick Active, Sell Dom).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formData && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-300">Min signals — S1 section</label>
+                  <input
+                    type="number" min={1} max={8}
+                    value={formData.mode_v_notify_min_signals}
+                    onChange={e => setFormData(f => ({ ...f, mode_v_notify_min_signals: Number(e.target.value) }))}
+                    className="w-full h-8 px-2 text-sm rounded border border-slate-700 bg-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <p className="text-xs text-slate-500">Alert fires when this many of 8 signals pass (S1). Default: 3</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-300">Min confidence %</label>
+                  <input
+                    type="number" min={0} max={100}
+                    value={formData.mode_v_notify_min_conf}
+                    onChange={e => setFormData(f => ({ ...f, mode_v_notify_min_conf: Number(e.target.value) }))}
+                    className="w-full h-8 px-2 text-sm rounded border border-slate-700 bg-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <p className="text-xs text-slate-500">Classifier confidence floor. Below this = no alert. Default: 45</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-300">Min signals — S2 section</label>
+                  <input
+                    type="number" min={1} max={8}
+                    value={formData.mode_v_notify_s2_min_signals}
+                    onChange={e => setFormData(f => ({ ...f, mode_v_notify_s2_min_signals: Number(e.target.value) }))}
+                    className="w-full h-8 px-2 text-sm rounded border border-slate-700 bg-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <p className="text-xs text-slate-500">Higher bar for S2 setups (weaker section). Default: 4</p>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

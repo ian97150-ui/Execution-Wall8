@@ -136,6 +136,11 @@ model ExecutionSettings {
   use_time_schedules   Boolean @default(false)
   timezone             String  @default("America/New_York")
 
+  // Mode V Short — notify threshold knobs (editable from Settings UI)
+  mode_v_notify_min_signals    Int @default(3)  // min auto_signal_count for S1 notification
+  mode_v_notify_min_conf       Int @default(45) // min confidence % (45 = 45%)
+  mode_v_notify_s2_min_signals Int @default(4)  // min signals when section = S2
+
   // TradingView integration
   tradingview_chart_id String?  // Chart layout ID (e.g., "0v6Deawb")
 

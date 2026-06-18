@@ -51,15 +51,22 @@ export function meetsModeVShortThreshold(
 
 /**
  * Loose threshold for push notifications only.
- * Fires at ≥3 auto signals (AUTO ZONE per report — 55%+ win rate).
+ * Defaults: S1 ≥3 signals, S2 ≥4 signals, confidence ≥45%.
+ * Thresholds are configurable via ExecutionSettings (mode_v_notify_* fields).
  */
 export function meetsModeVShortNotifyThreshold(
-  snap: ScoreSnapshot | null | undefined
+  snap: ScoreSnapshot | null | undefined,
+  settings?: { mode_v_notify_min_signals?: number; mode_v_notify_min_conf?: number; mode_v_notify_s2_min_signals?: number }
 ): boolean {
   if (!snap) return false;
+  const minSig   = settings?.mode_v_notify_min_signals    ?? 3;
+  const minConf  = (settings?.mode_v_notify_min_conf      ?? 45) / 100;
+  const s2MinSig = settings?.mode_v_notify_s2_min_signals ?? 4;
   if ((snap.disqualifiers ?? []).length > 0) return false;
   if (snap.section !== 'S1' && snap.section !== 'S2') return false;
-  if ((snap.auto_signal_count ?? 0) < 3) return false;
+  if ((snap.confidence ?? 0) < minConf) return false;
+  const minSignals = snap.section === 'S2' ? s2MinSig : minSig;
+  if ((snap.auto_signal_count ?? 0) < minSignals) return false;
   return true;
 }
 
@@ -98,8 +105,8 @@ export async function tryAutoApproveForModeVShort(
   const strategyId: string = (intent as any).strategy_id ?? '';
   let snap = (checklist as any).score_snapshot as ScoreSnapshot | undefined;
 
-  // Check loose threshold (≥3 auto signals) — fires notification in SAFE and FULL mode
-  if (!meetsModeVShortNotifyThreshold(snap)) return false;
+  // Check loose threshold — fires notification in SAFE and FULL mode
+  if (!meetsModeVShortNotifyThreshold(snap, settings)) return false;
 
   const ohlcvCount = snap?.auto_signal_count ?? 0;
 
@@ -146,6 +153,7 @@ export async function tryAutoApproveForModeVShort(
 
   const strictPass = meetsModeVShortThreshold(snap);
 
+  const ncTag = (snap!.regime === 'NEWS_CONTINUATION') ? ' ⚠️ NC regime (thin edge)' : '';
   const notifDetails = {
     score:      snap!.pre_fall_score,
     tier:       snap!.pre_fall_tier,
@@ -154,7 +162,7 @@ export async function tryAutoApproveForModeVShort(
     section:    snap!.section,
     signals:    (snap!.overrides_fired ?? []).slice(0, 3).join(', ') || 'none',
     strategy:   strategyId || 'N/A',
-    auto_stack: `${snap!.auto_signal_count ?? 0}/8`,
+    auto_stack: `${snap!.auto_signal_count ?? 0}/8${ncTag}`,
     tick_status: snap!.ticks_available ? 'tick-confirmed' : 'ohlcv-only',
     verified:   strictPass ? 'AUTO-EXEC GRADE' : 'REVIEW NEEDED',
   };
@@ -276,7 +284,7 @@ export async function handleWaitUpgrade(
     if ((cls.vol_above_vwap_pct    ?? 100)  < 40)  _autoSignals.push('VOL_LT40');
     if ((cls.hod_set_pct           ?? 100)  < 30)  _autoSignals.push('HOD_LT30');
     if (cls.quiet_dump_proxy       === true)        _autoSignals.push('QUIET_DUMP');
-    if ((cls.session_low_vs_pm_open ?? 0)   > 10)  _autoSignals.push('DEEP_LOD');
+    if ((cls.session_low_vs_pm_open ?? 0)   >= 20) _autoSignals.push('DEEP_LOD');
     if (cls.entry_c_fired          === true)        _autoSignals.push('ENTRY_C');
     if ((cls.wc_score              ?? 0)    >= 4)  _autoSignals.push('WC_GTE4');
     const fakeSnap = {
@@ -353,7 +361,7 @@ export async function revalidateModeVOnOrder(
   if ((cls.vol_above_vwap_pct    ?? 100) < 40)  ohlcvSignals.push('VOL_LT40');
   if ((cls.hod_set_pct           ?? 100) < 30)  ohlcvSignals.push('HOD_LT30');
   if (cls.quiet_dump_proxy       === true)        ohlcvSignals.push('QUIET_DUMP');
-  if ((cls.session_low_vs_pm_open ?? 0)  > 10)  ohlcvSignals.push('DEEP_LOD');
+  if ((cls.session_low_vs_pm_open ?? 0)  >= 20) ohlcvSignals.push('DEEP_LOD');
   if (cls.entry_c_fired          === true)        ohlcvSignals.push('ENTRY_C');
   if ((cls.wc_score              ?? 0)   >= 4)  ohlcvSignals.push('WC_GTE4');
 

@@ -230,7 +230,7 @@ function computeAutoStack(sig: Record<string, unknown>): { count: number; signal
   if (((sig.vol_above_vwap_pct   as number) ?? 100)  < 40)  active.push('VOL_LT40');
   if (((sig.hod_set_pct          as number) ?? 100)  < 30)  active.push('HOD_LT30');
   if (sig.quiet_dump_proxy       === true)                   active.push('QUIET_DUMP');
-  if (((sig.session_low_vs_pm_open as number) ?? 0)  > 10)  active.push('DEEP_LOD');
+  if (((sig.session_low_vs_pm_open as number) ?? 0)  >= 20) active.push('DEEP_LOD');
   if (sig.entry_c_fired          === true)                   active.push('ENTRY_C');
   if (((sig.wc_score             as number) ?? 0)    >= 4)  active.push('WC_GTE4');
 
@@ -340,6 +340,144 @@ router.get('/signal-stack-report', async (req: Request, res: Response) => {
     send('error', { message: String(err) });
   }
 
+  clearInterval(keepalive);
+  try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+});
+
+// ─── Mode V Notify Threshold Scanner ─────────────────────────────────────────
+// GET /api/sim/notify-scan?ticker=MULN&date=2024-01-15
+// Scans bar-by-bar from 09:31 in 5-min steps, finds the first bar where the
+// Mode V notify threshold would have been crossed with current DB settings.
+
+router.get('/notify-scan', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
+  const send = (type: string, data: unknown) => {
+    try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
+
+  const ticker = (req.query.ticker as string | undefined)?.trim().toUpperCase();
+  const date   = (req.query.date   as string | undefined)?.trim();
+
+  if (!ticker || !date) {
+    send('error', { message: 'ticker and date query params are required' });
+    clearInterval(keepalive);
+    try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+    return;
+  }
+
+  if (!fs.existsSync(CLASSIFIER_V4_PATH)) {
+    send('error', { message: 'cat5ive_classifier_v4.py not found' });
+    clearInterval(keepalive);
+    try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+    return;
+  }
+
+  // Load notify threshold settings from DB (fall back to defaults)
+  let notifySettings = { mode_v_notify_min_signals: 3, mode_v_notify_min_conf: 45, mode_v_notify_s2_min_signals: 4 };
+  try {
+    const dbSettings = await prisma.executionSettings.findFirst();
+    if (dbSettings) {
+      notifySettings = {
+        mode_v_notify_min_signals:    (dbSettings as any).mode_v_notify_min_signals    ?? 3,
+        mode_v_notify_min_conf:       (dbSettings as any).mode_v_notify_min_conf       ?? 45,
+        mode_v_notify_s2_min_signals: (dbSettings as any).mode_v_notify_s2_min_signals ?? 4,
+      };
+    }
+  } catch {}
+
+  const tradierKey = process.env.TRADIER_API_KEY;
+  const minConf    = notifySettings.mode_v_notify_min_conf / 100;
+
+  // Build list of bar times: 09:31 to 16:00 in 5-minute steps
+  const times: string[] = [];
+  for (let h = 9; h <= 16; h++) {
+    const startMin = h === 9 ? 31 : 0;
+    const endMin   = h === 16 ? 1 : 60; // only 16:00
+    for (let m = startMin; m < endMin; m += 5) {
+      times.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+
+  let firstCrossing: string | null = null;
+  let barsCanned = 0;
+  let aborted = false;
+  req.on('close', () => { aborted = true; });
+
+  for (const snapTime of times) {
+    if (aborted) break;
+
+    send('progress', { message: `Scanning ${ticker} @ ${snapTime}…` });
+
+    const args = [
+      CLASSIFIER_V4_PATH, ticker,
+      '--date', date,
+      '--time', snapTime,
+      '--json', '--once', '--no-float', '--tick-only-once',
+    ];
+
+    const output = await new Promise<string>((resolve) => {
+      let buf = '';
+      const proc = spawn(PYTHON_BIN, args, {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+               ...(tradierKey ? { TRADIER_API_KEY: tradierKey } : {}) },
+      });
+      proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+      proc.stderr.on('data', () => {});
+      proc.on('close', () => resolve(buf));
+      setTimeout(() => { proc.kill(); resolve(buf); }, 30_000);
+    });
+
+    barsCanned++;
+
+    const jsonLine = output.trim().split('\n').reverse().find((l: string) => l.trimStart().startsWith('{'));
+    if (!jsonLine) continue;
+
+    let sig: Record<string, unknown>;
+    try { sig = JSON.parse(jsonLine); } catch { continue; }
+
+    const { count, signals } = computeAutoStack(sig);
+    const section    = (sig.section    as string) ?? '';
+    const confidence = (sig.confidence_norm as number) ?? 0;
+    const disq       = (sig.disqualifiers  as string[]) ?? [];
+
+    // Evaluate notify threshold using DB settings
+    const minSignals = section === 'S2'
+      ? notifySettings.mode_v_notify_s2_min_signals
+      : notifySettings.mode_v_notify_min_signals;
+    const wouldNotify = disq.length === 0
+      && (section === 'S1' || section === 'S2')
+      && confidence >= minConf
+      && count >= minSignals;
+
+    const barEvent = {
+      time:             snapTime,
+      signal_count:     count,
+      signals,
+      confidence:       Math.round(confidence * 100),
+      section,
+      classifier_signal: (sig.signal as string) ?? 'N/A',
+      would_notify:     wouldNotify,
+    };
+
+    send('bar', barEvent);
+
+    if (wouldNotify && !firstCrossing) {
+      firstCrossing = snapTime;
+      send('crossing', barEvent);
+      break;
+    }
+  }
+
+  send('done', { first_crossing: firstCrossing, bars_scanned: barsCanned });
   clearInterval(keepalive);
   try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
 });
