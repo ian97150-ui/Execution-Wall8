@@ -64,6 +64,16 @@ export default function ExecutionQueue({
           const isFailed = exec.status === "failed";
           const isFrozen = !!exec.frozen;
 
+          // Derive strategy label from grade_snapshot or raw_payload
+          let strategyLabel = null;
+          try {
+            const gs = exec.grade_snapshot ? JSON.parse(exec.grade_snapshot) : null;
+            const rp = exec.raw_payload ? JSON.parse(exec.raw_payload) : null;
+            const strat = gs?.strategy || rp?.strategy_id?.replace('Strat ', '') || null;
+            if (strat) strategyLabel = `Strategy ${strat}`;
+          } catch (_) {}
+
+
           return (
             <motion.div
               key={exec.id}
@@ -82,6 +92,11 @@ export default function ExecutionQueue({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-xl font-bold text-white">{exec.ticker}</span>
+                    {strategyLabel && (
+                      <span className="px-2 py-0.5 rounded text-xs font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                        {strategyLabel}
+                      </span>
+                    )}
                     <span className={cn(
                       "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium",
                       isLong ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
