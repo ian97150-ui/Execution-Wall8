@@ -888,6 +888,34 @@ function PretradeStatePanel({ ticker, date, time, running, error, result }) {
               </div>
             </div>
           )}
+
+          {result.first_met && (
+            <div className="pt-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
+                First time each condition was satisfied today
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {PRETRADE_CONDITION_NAMES.map(name => {
+                  const fm = result.first_met[name];
+                  return (
+                    <div key={name} className="flex items-center justify-between text-[10px]">
+                      <span className={fm ? 'text-slate-300' : 'text-slate-600'}>{name}</span>
+                      {fm ? (
+                        <span className="font-mono text-slate-400">
+                          {fm.time?.slice(11, 16) || fm.time} &nbsp;
+                          <span className="text-slate-500">
+                            ({fm.move_pct >= 0 ? '+' : ''}{fm.move_pct.toFixed(1)}%)
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">never</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -893,6 +893,44 @@ def compute_velocity_bucket(elapsed_min: float, spike_pct: float) -> str:
 # MAIN ASSESSMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _first_met_conditions(bars: List[dict], ref: float) -> Dict[str, dict]:
+    """
+    Walk forward bar-by-bar from the start of the session (same `bars` list
+    assess_pretrade() already has - no extra fetch needed) and record the
+    first bar at which each of the 7 named pretrade conditions became true,
+    along with the move_pct (off `ref`) at that moment. Single-bar counts,
+    no debounce - this answers "when did X first flip true today", not
+    "when did X first hold for N consecutive bars" (that's state_run_length,
+    computed separately and only for DISTRIBUTION).
+    """
+    names = ('AT_SESSION_LOW', 'LIQUIDITY_VACUUM', 'DISTRIBUTION', 'FAILED_BREAKOUT',
+             'ABSORPTION', 'EXHAUSTION', 'CONTINUATION')
+    first_met: Dict[str, dict] = {}
+    for i in range(3, len(bars) + 1):
+        if len(first_met) == len(names):
+            break
+        window = bars[:i]
+        lm = compute_live_metrics(window, ref, None)
+        if not lm:
+            continue
+        deriv = compute_derivatives(lm.get('bars_post', window), current_price=lm['current'])
+        conds = _spike_conditions(lm['spike_pct'],
+                                  lm.get('recent_hwm_pct', lm['hwm_pct']),
+                                  lm.get('recent_hwm_drawdown', lm['hwm_drawdown']),
+                                  deriv['price_vel'], deriv['price_accel'],
+                                  deriv['vol_vel'], deriv['vol_accel'],
+                                  deriv['price_vel_pct'], deriv['price_accel_pct'],
+                                  lm.get('local_swing_pct'))
+        if 'DOWNSIDE_PRESSURE' in conds:
+            conds = {('AT_SESSION_LOW' if k == 'DOWNSIDE_PRESSURE' else k): v
+                    for k, v in conds.items()}
+        bar_time = window[-1].get('time', '')
+        for name in names:
+            if name not in first_met and conds.get(name):
+                first_met[name] = {'time': bar_time, 'move_pct': lm['spike_pct']}
+    return first_met
+
+
 def assess_pretrade(ticker: str, bars: List[dict], ref_price: float = None) -> Dict:
     """
     Pre-trade snapshot - Layer 4 (momentum) and Layer 5 (state) only.
@@ -991,6 +1029,11 @@ def assess_pretrade(ticker: str, bars: List[dict], ref_price: float = None) -> D
     else:
         state_run = 1  # current bar counts even without the full trailing check
 
+    # When each named condition first flipped true today - a full bar-by-bar
+    # walk over the same `bars` list, so it's only ever computed once per
+    # pretrade request (not on every live-monitor poll).
+    first_met = _first_met_conditions(bars, ref)
+
     return {
         'ticker': ticker, 'ref_price': ref, 'current': current,
         'move_pct': lm['spike_pct'], 'bars_since_low': len(lm.get('bars_post', bars)),
@@ -998,6 +1041,7 @@ def assess_pretrade(ticker: str, bars: List[dict], ref_price: float = None) -> D
         'price_velocity': deriv['price_vel'], 'price_accel': deriv['price_accel'],
         'volume_velocity': deriv['vol_vel'], 'volume_accel': deriv['vol_accel'],
         'state': state, 'conditions': conds, 'state_run_length': state_run,
+        'first_met': first_met,
     }
 
 
@@ -1084,6 +1128,19 @@ def print_pretrade(p: Dict):
         print(f"  {DIM}None of the above are true right now - that's exactly why "
               f"SPIKE_INITIATION is showing as the State above.{RST}")
 
+    first_met = p.get('first_met', {})
+    print(f"\n  {BOLD}First time each condition was satisfied today{RST}")
+    print(f"  {DIM}(single-bar counts, no debounce){RST}\n")
+    all_names = ('AT_SESSION_LOW','LIQUIDITY_VACUUM','DISTRIBUTION',
+                 'FAILED_BREAKOUT','ABSORPTION','EXHAUSTION','CONTINUATION')
+    for name in all_names:
+        fm = first_met.get(name)
+        col = cond_col.get(name, DIM)
+        if fm:
+            print(f"  {col}{name:<18}{RST} first true at {_extract_hhmm(fm['time'])}  "
+                 f"{DIM}(move was {fm['move_pct']:+.2f}%){RST}")
+        else:
+            print(f"  {DIM}{name:<18} never satisfied this session{RST}")
     print()
 
 
