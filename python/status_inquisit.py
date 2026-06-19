@@ -1084,19 +1084,6 @@ def print_pretrade(p: Dict):
         print(f"  {DIM}None of the above are true right now - that's exactly why "
               f"SPIKE_INITIATION is showing as the State above.{RST}")
 
-    first_met = p.get('first_met', {})
-    print(f"\n  {BOLD}First time each condition was satisfied today{RST}")
-    print(f"  {DIM}(single-bar counts, no debounce){RST}\n")
-    all_names = ('AT_SESSION_LOW','LIQUIDITY_VACUUM','DISTRIBUTION',
-                 'FAILED_BREAKOUT','ABSORPTION','EXHAUSTION','CONTINUATION')
-    for name in all_names:
-        fm = first_met.get(name)
-        col = cond_col.get(name, DIM)
-        if fm:
-            print(f"  {col}{name:<18}{RST} first true at {_extract_hhmm(fm['time'])}  "
-                 f"{DIM}(move was {fm['move_pct']:+.2f}%){RST}")
-        else:
-            print(f"  {DIM}{name:<18} never satisfied this session{RST}")
     print()
 
 
@@ -1168,11 +1155,36 @@ def assess(ticker: str, entry_price: float,
                            price_accel_pct=deriv['price_accel_pct'],
                            local_swing_pct=lm.get('local_swing_pct'))
 
-    # Layer 5 - State run length (DISTRIBUTION only, single-bar approximation -
-    # full multi-bar trailing scan was part of the dropped --replay tooling;
-    # the live monitor instead just reports 1 here and relies on repeated
-    # polls for the user to see persistence build up naturally over time).
-    state_run = 1 if state == 'DISTRIBUTION' else 0
+    # Layer 5 - State run length (DISTRIBUTION only) - same trailing-bar
+    # lookback technique as assess_pretrade(), mirrored here so DIST_CONFIRM
+    # (>=3 bars, in _determine_action) can actually be reached in live mode
+    # instead of being capped at 1 forever.
+    if state == 'DISTRIBUTION':
+        state_run = 1  # current bar already counts
+        for lookback in range(1, min(5, len(bars))):
+            window = bars[:len(bars) - lookback]
+            if len(window) < 3:
+                break
+            sub_lm = compute_live_metrics(window, entry_price, entry_time)
+            if not sub_lm:
+                break
+            sub_deriv = compute_derivatives(sub_lm.get('bars_post', window),
+                                           current_price=sub_lm['current'])
+            sub_state = classify_state(sub_lm['spike_pct'],
+                                       sub_lm.get('recent_hwm_pct', sub_lm['hwm_pct']),
+                                       sub_lm.get('recent_hwm_drawdown', sub_lm['hwm_drawdown']),
+                                       sub_deriv['price_vel'], sub_deriv['price_accel'],
+                                       sub_deriv['vol_vel'], sub_deriv['vol_accel'],
+                                       sub_lm['elapsed_min'],
+                                       price_vel_pct=sub_deriv['price_vel_pct'],
+                                       price_accel_pct=sub_deriv['price_accel_pct'],
+                                       local_swing_pct=sub_lm.get('local_swing_pct'))
+            if sub_state == state:
+                state_run += 1
+            else:
+                break
+    else:
+        state_run = 0
 
     # Layer 7 - Forward metrics
     fwd = profiles['fwd'].get(fixed_t)
