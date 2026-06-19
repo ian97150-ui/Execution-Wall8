@@ -10,6 +10,7 @@ const router = Router();
 const PYTHON_DIR      = path.join(__dirname, '../../..', 'python');
 const CLASSIFIER_PATH    = path.join(PYTHON_DIR, 'cat5ive_classifier.py');
 const CLASSIFIER_V4_PATH = path.join(PYTHON_DIR, 'cat5ive_classifier_v4.py');
+const STATUS_INQUISIT_PATH = path.join(PYTHON_DIR, 'status_inquisit.py');
 
 // Resolve python binary: try python3, fall back to python
 function getPythonBin(): string {
@@ -480,6 +481,91 @@ router.get('/notify-scan', async (req: Request, res: Response) => {
   send('done', { first_crossing: firstCrossing, bars_scanned: barsCanned });
   clearInterval(keepalive);
   try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+});
+
+// GET /api/sim/pretrade-state — single point-in-time spike-state read
+// (status_inquisit.py --pretrade) for the selected backtester session,
+// truncated at an optional snapshot time. Single-shot, not a polling loop.
+router.get('/pretrade-state', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
+  const send = (type: string, data: unknown) => {
+    try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
+  const finish = () => {
+    clearInterval(keepalive);
+    try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+  };
+
+  const ticker = (req.query.ticker as string | undefined)?.trim().toUpperCase();
+  const date   = (req.query.date   as string | undefined)?.trim();
+  const time   = (req.query.time   as string | undefined)?.trim();
+
+  if (!ticker || !date) {
+    send('error', { message: 'ticker and date query params are required' });
+    finish();
+    return;
+  }
+  if (!fs.existsSync(STATUS_INQUISIT_PATH)) {
+    send('error', { message: 'status_inquisit.py not found' });
+    finish();
+    return;
+  }
+
+  const tradierKey = process.env.TRADIER_API_KEY;
+  if (!tradierKey) {
+    send('error', { message: 'TRADIER_API_KEY not configured on server' });
+    finish();
+    return;
+  }
+
+  let aborted = false;
+  req.on('close', () => { aborted = true; });
+
+  const args = [
+    STATUS_INQUISIT_PATH,
+    '--ticker', ticker,
+    '--pretrade',
+    '--date', date,
+    ...(time ? ['--time', time] : []),
+    '--once', '--json',
+  ];
+
+  const output = await new Promise<string>((resolve) => {
+    let buf = '';
+    const proc = spawn(PYTHON_BIN, args, {
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+             TRADIER_API_KEY: tradierKey },
+    });
+    proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+    proc.stderr.on('data', () => {});
+    proc.on('close', () => resolve(buf));
+    setTimeout(() => { proc.kill(); resolve(buf); }, 30_000);
+  });
+
+  if (aborted) { finish(); return; }
+
+  const jsonLine = output.trim().split('\n').reverse().find((l: string) => l.trimStart().startsWith('{'));
+  if (!jsonLine) {
+    send('error', { message: 'No data returned for this session/time' });
+    finish();
+    return;
+  }
+  try {
+    const parsed = JSON.parse(jsonLine);
+    send('result', parsed);
+  } catch {
+    send('error', { message: 'Failed to parse classifier output' });
+  }
+  finish();
 });
 
 export default router;

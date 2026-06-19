@@ -1,9 +1,28 @@
 import React from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, ShieldOff, Shield, Flag, Target, X } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldOff, Shield, Flag, Target, X, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/positions';
+
+const STATE_COLOR = {
+  CONTINUATION:      'text-rose-400 bg-rose-500/15 border-rose-500/30',
+  EXHAUSTION:        'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+  ABSORPTION:        'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+  FAILED_BREAKOUT:   'text-emerald-300 bg-emerald-500/15 border-emerald-500/30',
+  DISTRIBUTION:      'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+  LIQUIDITY_VACUUM:  'text-amber-400 bg-amber-500/15 border-amber-500/30',
+  SPIKE_INITIATION:  'text-amber-400 bg-amber-500/15 border-amber-500/30',
+  DOWNSIDE_PRESSURE: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30',
+};
+
+const ACTION_COLOR = {
+  HOLD: 'text-emerald-400', 'HOLD/MONITOR': 'text-emerald-400',
+  'HOLD - WAIT': 'text-amber-400', MONITOR: 'text-amber-400',
+  CAUTION: 'text-amber-400', 'COVER PARTIAL': 'text-rose-400', EXIT: 'text-rose-400',
+};
 
 export default function PositionsList({
   positions = [],
@@ -17,6 +36,40 @@ export default function PositionsList({
   const [cooldownTimers, setCooldownTimers] = React.useState({});
   const [ttpInputOpen, setTtpInputOpen] = React.useState({});
   const [ttpInputValue, setTtpInputValue] = React.useState({});
+  const [monitoring, setMonitoring] = React.useState({});       // { [positionId]: true }
+  const [liveState, setLiveState] = React.useState({});         // { [positionId]: parsed update }
+  const esRefs = React.useRef({});                              // { [positionId]: EventSource }
+
+  const stopMonitor = React.useCallback((positionId) => {
+    esRefs.current[positionId]?.close();
+    delete esRefs.current[positionId];
+    setMonitoring(prev => ({ ...prev, [positionId]: false }));
+  }, []);
+
+  const startMonitor = React.useCallback((positionId) => {
+    if (esRefs.current[positionId]) return;
+    setMonitoring(prev => ({ ...prev, [positionId]: true }));
+    setLiveState(prev => ({ ...prev, [positionId]: null }));
+
+    const es = new EventSource(`${API}/${positionId}/monitor`);
+    esRefs.current[positionId] = es;
+
+    es.addEventListener('update', (e) => {
+      try { setLiveState(prev => ({ ...prev, [positionId]: JSON.parse(e.data) })); } catch {}
+    });
+    es.addEventListener('error', (e) => {
+      try {
+        const data = JSON.parse(e.data || '{}');
+        if (data.message) setLiveState(prev => ({ ...prev, [positionId]: { error: data.message } }));
+      } catch {}
+    });
+    es.addEventListener('done', () => stopMonitor(positionId));
+    es.onerror = () => stopMonitor(positionId);
+  }, [stopMonitor]);
+
+  React.useEffect(() => () => {
+    Object.values(esRefs.current).forEach(es => es.close());
+  }, []);
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -83,6 +136,8 @@ export default function PositionsList({
           const isBlocked = tickerConfig?.enabled === false;
           const hasTTP = position.ttp_exit_price != null;
           const isTtpInputOpen = !!ttpInputOpen[position.id];
+          const isMonitoring = !!monitoring[position.id];
+          const live = liveState[position.id];
 
           return (
             <motion.div
@@ -145,6 +200,53 @@ export default function PositionsList({
                 </div>
               )}
 
+              {/* Live spike-state panel */}
+              {isMonitoring && (
+                <div className="mb-3 p-3 rounded-lg bg-slate-900/60 border border-slate-700/50 text-xs space-y-1.5">
+                  {!live && (
+                    <p className="text-slate-500 animate-pulse">Connecting to live monitor…</p>
+                  )}
+                  {live?.error && (
+                    <p className="text-red-400">{live.error}</p>
+                  )}
+                  {live && !live.error && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[11px] font-bold border",
+                          STATE_COLOR[live.state] || 'text-slate-400 bg-slate-700/30 border-slate-600/40'
+                        )}>
+                          {live.state}
+                        </span>
+                        <span className="font-mono text-slate-300">
+                          {live.spike_pct != null ? `${live.spike_pct >= 0 ? '+' : ''}${live.spike_pct.toFixed(2)}%` : '—'}
+                        </span>
+                      </div>
+                      {live.fixed_tier && (
+                        <p className="text-slate-500">
+                          Tier: <span className="text-slate-300">{live.fixed_tier}</span>
+                          {live.hwm_pct != null && (
+                            <> &nbsp; HWM: <span className="text-slate-300">{live.hwm_pct.toFixed(1)}%</span>
+                            &nbsp; Drawdown: <span className="text-slate-300">{live.hwm_drawdown?.toFixed(1)}%</span></>
+                          )}
+                        </p>
+                      )}
+                      {live.price_velocity != null && (
+                        <p className="text-slate-500">
+                          Velocity: <span className="text-slate-300">{live.price_velocity >= 0 ? '+' : ''}{live.price_velocity.toFixed(4)}$/min</span>
+                          &nbsp; Vol: <span className="text-slate-300">{live.volume_velocity?.toFixed(2)}x avg</span>
+                        </p>
+                      )}
+                      {live.action_verb && (
+                        <p className={cn("font-semibold", ACTION_COLOR[live.action_verb] || 'text-slate-300')}>
+                          {live.action_verb} — <span className="font-normal text-slate-400">{live.action_detail}</span>
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* TTP inline price input */}
               {isTtpInputOpen && (
                 <div className="flex items-center gap-2 mb-3">
@@ -177,6 +279,22 @@ export default function PositionsList({
 
               {/* Action buttons */}
               <div className="space-y-2">
+                {/* Live State toggle */}
+                <Button
+                  onClick={() => isMonitoring ? stopMonitor(position.id) : startMonitor(position.id)}
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "w-full transition-all",
+                    isMonitoring
+                      ? "border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+                      : "border-slate-600/50 text-slate-400 hover:bg-slate-700/30"
+                  )}
+                >
+                  <Activity className="w-4 h-4 mr-1" />
+                  {isMonitoring ? 'Stop Live State' : 'Live State'}
+                </Button>
+
                 {/* Flatten */}
                 <Button
                   onClick={() => handleMarkFlat(position)}

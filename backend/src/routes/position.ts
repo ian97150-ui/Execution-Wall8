@@ -1,7 +1,25 @@
 import express, { Request, Response } from 'express';
+import { spawn, spawnSync } from 'child_process';
+import path from 'path';
 import { prisma } from '../index';
 
 const router = express.Router();
+
+const PYTHON_DIR = path.join(__dirname, '../../..', 'python');
+const STATUS_INQUISIT_PATH = path.join(PYTHON_DIR, 'status_inquisit.py');
+
+function getPythonBin(): string {
+  try {
+    const r = spawnSync('python3', ['--version'], { timeout: 3000 });
+    if (r.status === 0) return 'python3';
+  } catch {}
+  try {
+    const r = spawnSync('python', ['--version'], { timeout: 3000 });
+    if (r.status === 0) return 'python';
+  } catch {}
+  return 'python3';
+}
+const PYTHON_BIN = getPythonBin();
 
 /**
  * Helper to safely get positions without failing on missing columns
@@ -206,6 +224,115 @@ router.post('/:id/ttp', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error setting TTP exit price:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Live spike-state monitor (SSE) — polls status_inquisit.py on an interval
+// for an open short position and streams tier/state/HWM/momentum/action.
+router.get('/:id/monitor', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
+  const send = (type: string, data: unknown) => {
+    try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
+
+  const finish = () => {
+    clearInterval(keepalive);
+    try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
+  };
+
+  const id = req.params.id as string;
+  const position = await getPositionByIdSafe(id).catch(() => null);
+
+  if (!position) {
+    send('error', { message: 'Position not found' });
+    finish();
+    return;
+  }
+  if (position.closed_at) {
+    send('error', { message: 'Position is closed — nothing to monitor' });
+    finish();
+    return;
+  }
+
+  const tradierKey = process.env.TRADIER_API_KEY;
+  if (!tradierKey) {
+    send('error', { message: 'TRADIER_API_KEY not configured on server' });
+    finish();
+    return;
+  }
+
+  const ticker = position.ticker as string;
+  const entryPrice = Number(position.entry_price);
+  // Derive entry time HH:MM in ET from opened_at — status_inquisit.py needs
+  // a clock time to anchor "bars since entry", not just a date.
+  const entryTime = new Date(position.opened_at).toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+
+  let aborted = false;
+  let loop: NodeJS.Timeout | null = null;
+  req.on('close', () => {
+    aborted = true;
+    if (loop) clearInterval(loop);
+    finish();
+  });
+
+  const POLL_INTERVAL_MS = 20_000; // matches status_inquisit.py's own --interval default of ~20-30s
+  const SPAWN_TIMEOUT_MS = 25_000;
+
+  const pollOnce = async () => {
+    if (aborted) return;
+
+    const args = [
+      STATUS_INQUISIT_PATH,
+      '--ticker', ticker,
+      '--entry', String(entryPrice),
+      '--entry-time', entryTime,
+      '--once', '--json',
+    ];
+
+    const output = await new Promise<string>((resolve) => {
+      let buf = '';
+      const proc = spawn(PYTHON_BIN, args, {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+               TRADIER_API_KEY: tradierKey },
+      });
+      proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+      proc.stderr.on('data', () => {});
+      proc.on('close', () => resolve(buf));
+      setTimeout(() => { proc.kill(); resolve(buf); }, SPAWN_TIMEOUT_MS);
+    });
+
+    if (aborted) return;
+
+    const jsonLine = output.trim().split('\n').reverse().find((l: string) => l.trimStart().startsWith('{'));
+    if (!jsonLine) {
+      send('error', { message: 'No data returned for this poll' });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(jsonLine);
+      send('update', parsed);
+    } catch {
+      send('error', { message: 'Failed to parse classifier output' });
+    }
+  };
+
+  await pollOnce();
+  if (!aborted) {
+    loop = setInterval(() => {
+      if (aborted) return;
+      pollOnce();
+    }, POLL_INTERVAL_MS);
   }
 });
 

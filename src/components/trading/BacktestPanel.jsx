@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText, ShieldCheck, Clock } from 'lucide-react';
+import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText, ShieldCheck, Clock, Activity } from 'lucide-react';
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -39,6 +39,10 @@ export function BacktestPanel() {
   const [scanCrossing, setScanCrossing] = useState(null);
   const [scanProgress, setScanProgress] = useState('');
   const scanEsRef = useRef(null);
+  const [pretradeRunning, setPretradeRunning] = useState(false);
+  const [pretradeResult,  setPretradeResult]  = useState(null);
+  const [pretradeError,   setPretradeError]   = useState('');
+  const pretradeEsRef = useRef(null);
   const esRef   = useRef(null);
   const termRef = useRef(null);
 
@@ -115,6 +119,43 @@ export function BacktestPanel() {
   }, [scanRunning, stopNotifyScan, selected]);
 
   useEffect(() => () => stopNotifyScan(), [stopNotifyScan]);
+
+  const stopPretradeState = useCallback(() => {
+    if (pretradeEsRef.current) { pretradeEsRef.current.close(); pretradeEsRef.current = null; }
+    setPretradeRunning(false);
+  }, []);
+
+  const runPretradeState = useCallback(() => {
+    if (pretradeRunning) { stopPretradeState(); return; }
+    if (!selected) return;
+    setPretradeResult(null);
+    setPretradeError('');
+    setPretradeRunning(true);
+    setActivePanel('pretrade-state');
+
+    const params = new URLSearchParams({ ticker: selected.ticker, date: selected.spike_date });
+    if (snapTime.trim()) params.set('time', normalizeSnapTime(snapTime));
+
+    const es = new EventSource(`${API}/pretrade-state?${params}`);
+    pretradeEsRef.current = es;
+
+    es.addEventListener('result', (e) => {
+      try { setPretradeResult(JSON.parse(e.data)); } catch {}
+    });
+    es.addEventListener('error', (e) => {
+      try { setPretradeError(JSON.parse(e.data).message); } catch {}
+    });
+    es.addEventListener('done', () => {
+      es.close(); pretradeEsRef.current = null;
+      setPretradeRunning(false);
+    });
+    es.onerror = () => {
+      es.close(); pretradeEsRef.current = null;
+      setPretradeRunning(false);
+    };
+  }, [pretradeRunning, stopPretradeState, selected, snapTime]);
+
+  useEffect(() => () => stopPretradeState(), [stopPretradeState]);
 
   const normalizeSnapTime = (raw) => {
     const s = raw.trim();
@@ -380,6 +421,15 @@ export function BacktestPanel() {
               ticker={selected?.ticker}
               date={selected?.spike_date}
             />
+          ) : activePanel === 'pretrade-state' ? (
+            <PretradeStatePanel
+              result={pretradeResult}
+              error={pretradeError}
+              running={pretradeRunning}
+              ticker={selected?.ticker}
+              date={selected?.spike_date}
+              time={snapTime.trim()}
+            />
           ) : (
             <pre
               ref={termRef}
@@ -473,6 +523,23 @@ export function BacktestPanel() {
               >
                 <Clock className="w-3 h-3" />
                 {scanRunning ? 'Scanning…' : activePanel === 'notify-scan' ? 'Close' : 'Notify Scan'}
+              </button>
+              <button
+                onClick={activePanel === 'pretrade-state' && !pretradeRunning ? () => setActivePanel(null) : runPretradeState}
+                disabled={running || !selected}
+                className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${
+                  activePanel === 'pretrade-state'
+                    ? pretradeRunning
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-400 animate-pulse'
+                      : 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
+                    : 'border-border hover:bg-accent'
+                }`}
+                title={selected
+                  ? `Pretrade spike-state read for ${selected.ticker} ${selected.spike_date}${snapTime.trim() ? ' @ ' + snapTime.trim() : ''}`
+                  : 'Select a session first'}
+              >
+                <Activity className="w-3 h-3" />
+                {pretradeRunning ? 'Reading…' : activePanel === 'pretrade-state' ? 'Close' : 'Pretrade State'}
               </button>
               <span className="text-border">|</span>
               <button
@@ -724,6 +791,103 @@ function NotifyScanPanel({ ticker, date, running, progress, bars, crossing }) {
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PRETRADE_STATE_COLOR = {
+  CONTINUATION:      'text-rose-400 bg-rose-500/15 border-rose-500/30',
+  EXHAUSTION:        'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+  ABSORPTION:        'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+  FAILED_BREAKOUT:   'text-emerald-300 bg-emerald-500/15 border-emerald-500/30',
+  DISTRIBUTION:      'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+  LIQUIDITY_VACUUM:  'text-amber-400 bg-amber-500/15 border-amber-500/30',
+  SPIKE_INITIATION:  'text-amber-400 bg-amber-500/15 border-amber-500/30',
+  AT_SESSION_LOW:    'text-slate-400 bg-slate-700/30 border-slate-600/40',
+};
+
+const PRETRADE_CONDITION_NAMES = [
+  'AT_SESSION_LOW', 'LIQUIDITY_VACUUM', 'DISTRIBUTION',
+  'FAILED_BREAKOUT', 'ABSORPTION', 'EXHAUSTION', 'CONTINUATION',
+];
+
+function PretradeStatePanel({ ticker, date, time, running, error, result }) {
+  if (!running && !error && !result) {
+    return (
+      <div className="px-3 py-4 text-slate-500 text-xs">
+        No pretrade read yet. Select a session and click Pretrade State.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 text-xs p-3">
+      <div className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">
+        Pretrade State{ticker ? ` — ${ticker}` : ''}{date ? ` ${date}` : ''}{time ? ` @ ${time}` : ''}
+      </div>
+
+      {running && (
+        <div className="text-slate-400 animate-pulse">Reading session low + momentum…</div>
+      )}
+
+      {error && (
+        <div className="px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-red-400">
+          {error}
+        </div>
+      )}
+
+      {result && !error && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-3 py-2 rounded bg-slate-800/50 border border-slate-700">
+            <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+              PRETRADE_STATE_COLOR[result.state] || 'text-slate-400 bg-slate-700/30 border-slate-600/40'
+            }`}>
+              {result.state || '—'}
+            </span>
+            <span className="font-mono text-slate-300">
+              {result.move_pct != null ? `${result.move_pct >= 0 ? '+' : ''}${result.move_pct.toFixed(2)}% off low` : '—'}
+            </span>
+          </div>
+
+          {result.ref_price != null && (
+            <div className="text-slate-400">
+              Session low: <span className="text-slate-200">${result.ref_price.toFixed(3)}</span>
+              &nbsp; Current: <span className="text-slate-200">${result.current?.toFixed(3)}</span>
+            </div>
+          )}
+
+          {result.price_velocity != null && (
+            <div className="text-slate-400">
+              Velocity: <span className="text-slate-200">{result.price_velocity >= 0 ? '+' : ''}{result.price_velocity.toFixed(4)}$/min</span>
+              &nbsp; Accel: <span className="text-slate-200">{result.price_accel?.toFixed(4)}</span>
+              &nbsp; Vol: <span className="text-slate-200">{result.volume_velocity?.toFixed(2)}x avg</span>
+            </div>
+          )}
+
+          {result.conditions && (
+            <div className="pt-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">All conditions, right now</div>
+              <div className="flex flex-wrap gap-1">
+                {PRETRADE_CONDITION_NAMES.map(name => {
+                  const met = !!result.conditions[name];
+                  return (
+                    <span
+                      key={name}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                        met
+                          ? (PRETRADE_STATE_COLOR[name] || 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30') + ' border'
+                          : 'text-slate-600 bg-slate-800/40'
+                      }`}
+                    >
+                      {name}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
