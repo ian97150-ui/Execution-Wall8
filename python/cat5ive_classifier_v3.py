@@ -463,6 +463,83 @@ def compute_session_low_vs_pm_open(bars: List[Bar]) -> float:
     return round((pm_open - lod_v) / pm_open * 100, 2)
 
 
+def compute_chop_adjusted_entry(bars: List[Bar], vwaps: List[float],
+                                 chop: float, current_price: float) -> dict:
+    """
+    Compute a chop-adjusted recommended entry zone based on session choppiness.
+
+    In choppy sessions the stock oscillates before making its directional move.
+    MAE data: chop 40-60% = +24% adverse before dump. A tighter entry reduces
+    this by waiting for a VWAP re-test rather than entering at the first signal.
+
+    Returns:
+        rec_entry_low   Lower bound of recommended short zone
+        rec_entry_high  Upper bound (at/just above VWAP)
+        wait_pct        How much current price is ABOVE the rec zone (0 = enter now)
+        confidence      'ENTER_NOW' / 'WAIT_VWAP' / 'WAIT_RETEST' / 'SKIP'
+        expected_mae_reduction  Estimated MAE reduction vs entering at market
+    """
+    if not vwaps or not bars:
+        return {}
+    vwap = vwaps[-1] if vwaps else 0
+    if vwap <= 0 or current_price <= 0:
+        return {}
+
+    pct_from_vwap = (current_price - vwap) / vwap * 100   # positive = below VWAP (good for short)
+
+    # Chop tiers: defines how tight the recommended zone is
+    if chop < 20:
+        # Clean session â enter at current price, any distance from VWAP is fine
+        zone_tight_pct = 3.0   # enter within 3% of VWAP
+        conf           = 'ENTER_NOW'
+        mae_reduction  = 0.0
+    elif chop < 40:
+        # Mild chop â enter within 2% of VWAP
+        zone_tight_pct = 2.0
+        conf           = 'ENTER_NOW' if abs(pct_from_vwap) <= 2.0 else 'WAIT_VWAP'
+        mae_reduction  = 3.0    # ~3% less adverse excursion
+    elif chop < 60:
+        # Moderate chop â wait for VWAP re-test (within 1.5%)
+        zone_tight_pct = 1.5
+        conf           = 'ENTER_NOW' if abs(pct_from_vwap) <= 1.5 else 'WAIT_VWAP'
+        mae_reduction  = 7.0    # ~7% less adverse excursion (MAE data shows 24% vs 16%)
+    elif chop < 80:
+        # Heavy chop â strict re-test required (within 0.8%)
+        zone_tight_pct = 0.8
+        conf           = 'ENTER_NOW' if abs(pct_from_vwap) <= 0.8 else 'WAIT_RETEST'
+        mae_reduction  = 12.0   # significant reduction â wait for proper re-test
+    else:
+        # CHOP_EXTREME â G1 should already block, but if here: skip
+        return {'confidence': 'SKIP', 'wait_pct': 0,
+                'rec_entry_high': vwap, 'rec_entry_low': vwap * 0.98,
+                'expected_mae_reduction': 0.0}
+
+    # Recommended zone: just above VWAP (for shorts, we want to enter as close
+    # to VWAP as possible â stocks fail VWAP â short that failure)
+    rec_high = vwap * (1 + zone_tight_pct / 100)    # top of zone (just above VWAP)
+    rec_low  = vwap * (1 - zone_tight_pct / 100)    # bottom of zone
+
+    # How far is current price ABOVE the recommended zone?
+    # Positive = price is above zone â stock may return to VWAP â wait
+    # Negative = price is within/below zone â enter now
+    wait_pct = max(0.0, (current_price - rec_high) / current_price * 100)
+
+    # Override to ENTER_NOW if price is already within zone
+    if wait_pct == 0:
+        conf = 'ENTER_NOW'
+
+    return {
+        'confidence':             conf,
+        'rec_entry_low':          round(rec_low, 4),
+        'rec_entry_high':         round(rec_high, 4),
+        'vwap':                   round(vwap, 4),
+        'wait_pct':               round(wait_pct, 2),
+        'chop_tier':              chop,
+        'zone_tight_pct':         zone_tight_pct,
+        'expected_mae_reduction': mae_reduction,
+    }
+
+
 def compute_quiet_dump_proxy(bars: List[Bar]) -> bool:
     """
     Live proxy for quiet_dump_flag.
@@ -1195,6 +1272,7 @@ class ClassifierSignal:
     margin_lean:           float = 0.0   # mean lean value across last 20 bars
     score_delta_pre:       int   = 0     # raw score change 5 bars before entry
     close_vs_pm_open_pct:  float = 0.0   # (pm_open - close) / pm_open * 100 at entry
+    chop_entry_zone:        dict  = None  # chop-adjusted entry rec from compute_chop_adjusted_entry()
 
 
 SIG_COLOR = {'HIGH_VALUE':GRN+BOLD,'ENTER_E':GRN,'ENTER_A':CYN,
@@ -1779,6 +1857,10 @@ def run_classification(ticker: str, bars: List[Bar],
     _cvo_pm_open   = _cvo_pm_bars[0].open if _cvo_pm_bars else 0.0
     close_vs_pm_open = ((_cvo_pm_open - bars[-1].close) / _cvo_pm_open * 100
                         if _cvo_pm_open > 0 and bars else 0.0)
+    # Chop-adjusted entry zone
+    chop_entry        = compute_chop_adjusted_entry(
+                            bars, vwaps, chop,
+                            bars[-1].close if bars else 0.0)
 
 
     contested      = (flips > 8) and (
@@ -1849,6 +1931,7 @@ def run_classification(ticker: str, bars: List[Bar],
             margin_lean=margin_lean_val,
             contested_day=signals.get('CONTESTED_SESSION', False),
             close_vs_pm_open_pct=close_vs_pm_open,
+            chop_entry_zone=chop_entry,
             last_bar_time=bars[-1].ts[:5] if bars else '',
             sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
         )
@@ -2037,6 +2120,7 @@ def run_classification(ticker: str, bars: List[Bar],
         margin_lean=margin_lean_val,
         contested_day=signals.get('CONTESTED_SESSION', False),
         close_vs_pm_open_pct=close_vs_pm_open,
+        chop_entry_zone=chop_entry,
         last_bar_time=bars[-1].ts[:5] if bars else '',
         sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
     )
@@ -2413,6 +2497,38 @@ def print_signal(sig: ClassifierSignal, verbose: bool = True):
           f"Chop:{cc}{sig.chop:.0f}%{RESET}  "
           f"Traj:{traj_c}{sig.score_trajectory}({_sd_c}Î{_sd:+d}{RESET})  "
           f"Lean:{_ln_c}{_lean:+.1f}{RESET}")
+
+    # Chop-adjusted entry recommendation
+    # Report finding: 4-8 flips before entry = +24.3% MAE (2x clean sessions)
+    _cez     = getattr(sig, 'chop_entry_zone', None) or {}
+    _cez_conf = _cez.get('confidence', '')
+    _flips = sig.flips_rth
+    if sig.chop >= 20:
+        _rl   = _cez.get('rec_entry_low',         0)
+        _rh   = _cez.get('rec_entry_high',         0)
+        _wp   = _cez.get('wait_pct',               0)
+        _mr   = _cez.get('expected_mae_reduction',  0)
+        _vwap = _cez.get('vwap',                   0)
+        _zt   = _cez.get('zone_tight_pct',          0)
+        _ez_c = (GRN+BOLD if _cez_conf == 'ENTER_NOW'   else
+                 YEL       if _cez_conf == 'WAIT_VWAP'   else
+                 RED       if _cez_conf == 'WAIT_RETEST'  else DIM)
+        if _cez_conf == 'ENTER_NOW':
+            if 4 <= _flips <= 8:
+                print(f"  {YEL}!  ENTRY ZONE: ${_rl:.3f}-${_rh:.3f} "
+                      f"but {_flips} flips -> HIGH MAE RISK (+24% avg). "
+                      f"Skip first Entry C -> wait for VWAP re-test{RESET}")
+            else:
+                print(f"  {GRN}> ENTRY ZONE: ${_rl:.3f}-${_rh:.3f}  "
+                      f"(price within {_zt:.1f}% of VWAP ${_vwap:.3f}){RESET}")
+        elif _cez_conf != 'SKIP':
+            _flip_note = (f" - {_flips} flips = HIGH MAE RISK" if 4 <= _flips <= 8
+                          else f" - {_flips} flips" if _flips > 0 else "")
+            print(f"  {_ez_c}!  CHOP ENTRY ({_cez_conf}):  "
+                  f"Wait for ${_rl:.3f}-${_rh:.3f}  "
+                  f"({_wp:.1f}% above zone{_flip_note}){RESET}")
+            print(f"  {_ez_c}  -> Skip first Entry C signal -> wait for "
+                  f"VWAP re-test (~{_mr:.0f}% less adverse excursion){RESET}")
 
     # Row 6: PM stats
     pm_c = RED if sig.pm_move_pct > 30 else YEL if sig.pm_move_pct > 15 else DIM
