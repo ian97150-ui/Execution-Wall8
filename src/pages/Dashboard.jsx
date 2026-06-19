@@ -564,6 +564,18 @@ export default function Dashboard() {
     onError: () => toast.error('Failed to clear TTP Exit SL')
   });
 
+  const createDemoPositionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/positions/demo');
+      return response.data;
+    },
+    onSuccess: (position) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      toast.success(`Demo position created — ${position.ticker} @ $${Number(position.entry_price).toFixed(2)}`);
+    },
+    onError: () => toast.error('Failed to create demo position')
+  });
+
   // Revive a blocked ticker (move back to candidates)
   const reviveTickerMutation = useMutation({
     mutationFn: async (intent) => {
@@ -1101,6 +1113,8 @@ export default function Dashboard() {
                 onSetTTP={(position, price) => setTTPMutation.mutate({ position, price })}
                 onClearTTP={(position) => clearTTPMutation.mutate(position)}
                 tickers={tickers}
+                onCreateDemo={() => createDemoPositionMutation.mutate()}
+                isDemoLoading={createDemoPositionMutation.isPending}
               />
             </TabsContent>
 

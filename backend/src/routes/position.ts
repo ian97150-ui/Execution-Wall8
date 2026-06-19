@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import { prisma } from '../index';
+import { fetchQuote } from '../services/tradierService';
 
 const router = express.Router();
 
@@ -223,6 +224,44 @@ router.post('/:id/ttp', async (req: Request, res: Response) => {
     res.json(normalizePosition(updatedPosition));
   } catch (error: any) {
     console.error('Error setting TTP exit price:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a demo open short position (ticker fixed to MULN, same convention as
+// the existing /trade-intents/demo and /executions/demo routes) so the
+// status_inquisit.py "Live State" monitor can be tried out without a real
+// signal/entry. Entry price is the live Tradier quote if available, so the
+// monitor starts near 0% spike instead of an arbitrary stale number.
+router.post('/demo', async (_req: Request, res: Response) => {
+  try {
+    const ticker = 'MULN';
+    const quote = await fetchQuote(ticker);
+    const entryPrice = quote && quote.last > 0 ? quote.last : 0.50;
+
+    const position = await prisma.position.create({
+      data: {
+        ticker,
+        side: 'Short',
+        quantity: 100,
+        entry_price: entryPrice,
+        opened_at: new Date(),
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        event_type: 'demo_position_created',
+        ticker,
+        details: JSON.stringify({ position_id: position.id, entry_price: entryPrice }),
+      },
+    });
+
+    console.log(`🧪 Demo position created: ${ticker} @ $${entryPrice}`);
+
+    res.status(201).json(normalizePosition(position));
+  } catch (error: any) {
+    console.error('Error creating demo position:', error);
     res.status(500).json({ error: error.message });
   }
 });

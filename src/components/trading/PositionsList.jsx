@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, ShieldOff, Shield, Flag, Target, X, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldOff, Shield, Flag, Target, X, Activity, FlaskConical, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 
@@ -31,7 +31,9 @@ export default function PositionsList({
   onMarkFlat,
   onSetTTP,
   onClearTTP,
-  tickers = []
+  tickers = [],
+  onCreateDemo,
+  isDemoLoading,
 }) {
   const [cooldownTimers, setCooldownTimers] = React.useState({});
   const [ttpInputOpen, setTtpInputOpen] = React.useState({});
@@ -116,18 +118,41 @@ export default function PositionsList({
     setTtpInputValue(prev => ({ ...prev, [id]: '' }));
   };
 
+  const demoButton = onCreateDemo && (
+    <Button
+      onClick={onCreateDemo}
+      disabled={isDemoLoading}
+      size="sm"
+      variant="outline"
+      className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+    >
+      {isDemoLoading ? (
+        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+      ) : (
+        <FlaskConical className="w-4 h-4 mr-1" />
+      )}
+      Demo Position (status.inquisit)
+    </Button>
+  );
+
   if (positions.length === 0) {
     return (
       <div className="text-center py-12 text-slate-500">
         <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-40" />
         <p className="font-medium">No open positions</p>
         <p className="text-xs mt-1">Executed trades will appear here</p>
+        {demoButton && <div className="mt-4 flex justify-center">{demoButton}</div>}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {demoButton && (
+        <div className="flex justify-end">
+          {demoButton}
+        </div>
+      )}
       <AnimatePresence>
         {positions.map((position) => {
           const isLong = position.side === "long";
