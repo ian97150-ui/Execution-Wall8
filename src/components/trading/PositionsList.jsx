@@ -262,6 +262,26 @@ export default function PositionsList({
                           &nbsp; Vol: <span className="text-slate-300">{live.volume_velocity?.toFixed(2)}x avg</span>
                         </p>
                       )}
+                      {live.term_class && live.term_class.n_total > 0 && (() => {
+                        const tc = live.term_class;
+                        const recov = ((tc.n_b + tc.n_c) / tc.n_total) * 100;
+                        const flag = tc.n_total < 10 ? ' ⛔' : tc.n_total < 30 ? ' ⚠' : '';
+                        return (
+                          <p className="text-slate-500">
+                            Historical @ {tc.tier} (n={tc.n_total}{flag}):
+                            <span className="text-slate-300"> {recov.toFixed(0)}% recovery</span>
+                            &nbsp; <span className="text-rose-400">{((tc.n_a / tc.n_total) * 100).toFixed(0)}% A</span>
+                            &nbsp; <span className="text-emerald-400">{((tc.n_b / tc.n_total) * 100).toFixed(0)}% B</span>
+                          </p>
+                        );
+                      })()}
+                      {live.forward && (live.forward.prob_reach_next_tier > 0 || live.forward.prob_stop_hit > 0) && (
+                        <p className="text-slate-500">
+                          Reach next: <span className="text-slate-300">{live.forward.prob_reach_next_tier.toFixed(0)}%</span>
+                          &nbsp; Stop hit: <span className="text-rose-400">{live.forward.prob_stop_hit.toFixed(0)}%</span>
+                          &nbsp; Peak: <span className="text-slate-300">~{live.forward.median_time_to_peak_min.toFixed(0)}m</span>
+                        </p>
+                      )}
                       {live.action_verb && (
                         <p className={cn("font-semibold", ACTION_COLOR[live.action_verb] || 'text-slate-300')}>
                           {live.action_verb} — <span className="font-normal text-slate-400">{live.action_detail}</span>
