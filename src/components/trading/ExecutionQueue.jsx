@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock, TrendingUp, TrendingDown, Send, X,
-  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp, Snowflake, Eye, EyeOff
+  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp, Snowflake, Eye, EyeOff, Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -130,6 +130,15 @@ export default function ExecutionQueue({
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/60">
                         <Eye className="w-3 h-3" />
                         WATCHING · {watchMinutesLeft}m
+                      </span>
+                    )}
+                    {exec.intent_pretrade_is_distribution && (
+                      <span
+                        title="Live pretrade state (status_inquisit.py): DISTRIBUTION"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-400/60"
+                      >
+                        <Layers className="w-3 h-3" />
+                        DISTRIBUTION
                       </span>
                     )}
                     <span className={cn(

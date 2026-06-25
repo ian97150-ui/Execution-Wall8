@@ -203,7 +203,7 @@ router.get('/', async (req: Request, res: Response) => {
     const intents = intentIds.length
       ? await prisma.tradeIntent.findMany({
           where: { id: { in: intentIds } },
-          select: { id: true, manual_watch: true, wait_watch_until: true },
+          select: { id: true, manual_watch: true, wait_watch_until: true, pretrade_is_distribution: true, pretrade_state: true },
         })
       : [];
     const intentMap = new Map(intents.map(i => [i.id, i]));
@@ -212,6 +212,8 @@ router.get('/', async (req: Request, res: Response) => {
       ...e,
       intent_manual_watch: e.intent_id ? intentMap.get(e.intent_id)?.manual_watch ?? false : false,
       intent_wait_watch_until: e.intent_id ? intentMap.get(e.intent_id)?.wait_watch_until ?? null : null,
+      intent_pretrade_is_distribution: e.intent_id ? intentMap.get(e.intent_id)?.pretrade_is_distribution ?? false : false,
+      intent_pretrade_state: e.intent_id ? intentMap.get(e.intent_id)?.pretrade_state ?? null : null,
     }));
 
     res.json(enriched);

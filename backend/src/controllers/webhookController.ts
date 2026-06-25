@@ -6,6 +6,7 @@ import { activateScheduler } from '../services/executionScheduler';
 import { checkSecFilings } from '../services/secCallbackService';
 import { runChecklist } from '../services/secChecklistService';
 import { captureGradeSnapshot } from '../services/gradeSnapshotService';
+import { checkPretradeStateOnce } from '../services/pretradeStateService';
 import { tryAutoApproveForModeVShort, registerWaitWatch, revalidateModeVOnOrder } from '../services/modeVShortService';
 import { captureSignal } from '../services/liveTradeExportService';
 
@@ -1048,6 +1049,10 @@ async function handleOrderSignal(data: {
     linkedIntentId = syntheticIntent.id;
     console.log(`📋 ORDER-only: created synthetic wall card for ${tickerUpper} (id: ${syntheticIntent.id})`);
   }
+
+  // Trigger 1: one-shot live DISTRIBUTION check on every incoming limit order.
+  // Fire-and-forget — never blocks order creation, mirrors captureGradeSnapshot above.
+  checkPretradeStateOnce(tickerUpper, linkedIntentId).catch(() => {});
 
     // Create audit log
     await prisma.auditLog.create({

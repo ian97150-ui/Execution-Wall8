@@ -62,6 +62,13 @@ model TradeIntent {
   wait_watch_until  DateTime?                 // set when WAIT classified as EARLY/VERY_EARLY; watcher ignores after this time
   manual_watch      Boolean   @default(false)  // user-initiated watch: bypasses T2 requirement in poller
 
+  // Live pretrade spike-state check (status_inquisit.py --pretrade), one-shot —
+  // fired on incoming ORDER webhook and proactively when score/signals look
+  // distribution-adjacent. Not a continuous poller.
+  pretrade_state          String?    // CONTINUATION/EXHAUSTION/DISTRIBUTION/ABSORPTION/etc, or null if never checked
+  pretrade_is_distribution Boolean   @default(false)
+  pretrade_checked_at      DateTime?
+
   expires_at     DateTime
   created_date   DateTime @default(now())
   updated_at     DateTime @updatedAt

@@ -11,6 +11,7 @@ import type { ClassifierSignal } from './classifierService';
 import { fetchAlpacaPhase3Fields } from './alpacaFlowService';
 import { handleWaitUpgrade } from './modeVShortService';
 import { recordConsidered } from './liveConsideredService';
+import { checkPretradeStateOnce, shouldProactivelyCheckPretrade } from './pretradeStateService';
 import { prisma } from '../index';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -372,7 +373,7 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
       sec_checklist: { not: null },
     },
     orderBy: { created_date: 'desc' },
-    select: { id: true, ticker: true, sec_checklist: true, status: true, wait_watch_until: true, manual_watch: true },
+    select: { id: true, ticker: true, sec_checklist: true, status: true, wait_watch_until: true, manual_watch: true, pretrade_checked_at: true },
   }).catch((err: any) => {
     console.warn(`[LiveScorePoller] DB lookup failed for ${upper}:`, err?.message ?? err);
     return null;
@@ -469,6 +470,14 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
         handleWaitUpgrade(intentId, cls, 'MANUAL_WATCH')
           .catch(err => console.warn(`[ManualWatch] ${upper} upgrade failed:`,
             err instanceof Error ? err.message : err));
+      }
+
+      // Trigger 2: proactive one-shot DISTRIBUTION check, before any order even
+      // arrives — fires when this candidate reaches HIGH tier or already shows
+      // the QUIET_DUMP_PROXY + VWAP_FAIL_S1 combo. Cooldown-gated so it doesn't
+      // re-spawn on every poll cycle for the same card.
+      if (shouldProactivelyCheckPretrade(intent, cls.tier, cls.active_signals ?? [])) {
+        checkPretradeStateOnce(upper, intentId).catch(() => {});
       }
     }
   );

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, ExternalLink, Clock,
   Power, PowerOff, Edit3, AlertTriangle, ChevronDown, X, CheckCircle2, FileText, ShieldOff,
-  BookMarked, BadgeCheck, Send, Loader2, Eye, EyeOff
+  BookMarked, BadgeCheck, Send, Loader2, Eye, EyeOff, Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GateProgress from "./GateProgress";
@@ -236,6 +236,15 @@ export default function TradeCard({
                   <span className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/60">
                     <Eye className="w-3 h-3" />
                     WATCHING · {minutesLeft}m
+                  </span>
+                )}
+                {intent.pretrade_is_distribution && (
+                  <span
+                    title="Live pretrade state (status_inquisit.py): DISTRIBUTION"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-400/60"
+                  >
+                    <Layers className="w-3 h-3" />
+                    DISTRIBUTION
                   </span>
                 )}
                 {dayPeakMove !== null && (
