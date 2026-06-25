@@ -1,6 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart2, Plus, Trash2, Play, Square, ChevronRight, BookOpen, X, Filter, Zap, FileText, ShieldCheck, Clock, Activity } from 'lucide-react';
+import Anser from 'anser';
+
+// Renders a single line of classifier output, converting ANSI color codes
+// (print_signal()'s green/yellow/red zones) into colored spans instead of
+// flattening everything to one terminal-green color.
+function AnsiLine({ text }) {
+  const chunks = Anser.ansiToJson(text, { use_classes: false, remove_empty: true });
+  if (chunks.length === 0) return <>{' '}</>;
+  return chunks.map((chunk, i) => (
+    <span
+      key={i}
+      style={{
+        color: chunk.fg ? `rgb(${chunk.fg})` : undefined,
+        backgroundColor: chunk.bg ? `rgb(${chunk.bg})` : undefined,
+        fontWeight: chunk.decoration === 'bold' ? 700 : undefined,
+      }}
+    >
+      {chunk.content}
+    </span>
+  ));
+}
 
 const API = ((import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/sim');
 
@@ -438,7 +459,9 @@ export function BacktestPanel() {
             >
               {lines.length === 0
                 ? <span className="text-muted-foreground">Ready. Select a command below.</span>
-                : lines.join('\n')
+                : lines.map((line, i) => (
+                    <div key={i}><AnsiLine text={line} /></div>
+                  ))
               }
               {running && <span className="animate-pulse">▋</span>}
             </pre>

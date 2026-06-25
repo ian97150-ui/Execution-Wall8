@@ -55,30 +55,29 @@ router.get('/health', async (_req: Request, res: Response) => {
   });
 });
 
-function stripAnsi(str: string): string {
+// Unicode normalization for classifier output, keeping ANSI color escape
+// codes intact so the frontend terminal can render print_signal()'s colors
+// (the v3/v4 classifier output is colorized: green/yellow/red zones, etc).
+function normalizeKeepAnsi(str: string): string {
   return str
     .replace(/﻿/g, '')                                // strip BOM
-    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')            // strip ANSI escape sequences (colors, cursor)
-    .replace(/\x1b[^[]/g, '')                          // strip other ESC sequences (e.g. ESC=, ESC>)
-    // Normalize common Unicode output chars to readable ASCII
-    .replace(/[═╒╕╘╛╞╡╤╧╪]/g, '=')                   // double-line box chars → =
-    .replace(/[─━┄┅┈┉┼┤├┬┴┼╫╪]/g, '-')               // single-line horizontal box chars → -
-    .replace(/[│┃┆┇┊┋]/g, '|')                        // vertical box chars → |
-    .replace(/[╔╗╚╝╠╣╦╩╬]/g, '+')                    // corner box chars → +
-    .replace(/→/g, '->')                               // rightwards arrow
-    .replace(/←/g, '<-')                               // leftwards arrow
-    .replace(/↑/g, '^')                                // upwards arrow
-    .replace(/↓/g, 'v')                                // downwards arrow
-    .replace(/✓/g, 'Y')                                // check mark
-    .replace(/✗/g, 'N')                                // ballot x
-    .replace(/⚠/g, '!')                               // warning sign (traj/warnings row)
-    .replace(/Δ/g, 'D')                               // delta (score trajectory delta)
-    .replace(/—/g, '-')                                // em dash
-    .replace(/–/g, '-')                                // en dash
-    .replace(/•/g, '*')                                // bullet
-    .replace(/△/g, '^')                                // triangle
-    .replace(/▼/g, 'v')                               // inverted triangle
-    .replace(/[^\x00-\x7F]/g, '');                    // strip any remaining non-ASCII (garbled UTF-8 bytes)
+    .replace(/[═╒╕╘╛╞╡╤╧╪]/g, '=')
+    .replace(/[─━┄┅┈┉┼┤├┬┴┼╫╪]/g, '-')
+    .replace(/[│┃┆┇┊┋]/g, '|')
+    .replace(/[╔╗╚╝╠╣╦╩╬]/g, '+')
+    .replace(/→/g, '->')
+    .replace(/←/g, '<-')
+    .replace(/↑/g, '^')
+    .replace(/↓/g, 'v')
+    .replace(/✓/g, 'Y')
+    .replace(/✗/g, 'N')
+    .replace(/⚠/g, '!')
+    .replace(/Δ/g, 'D')
+    .replace(/—/g, '-')
+    .replace(/–/g, '-')
+    .replace(/•/g, '*')
+    .replace(/△/g, '^')
+    .replace(/▼/g, 'v');
 }
 
 
@@ -188,7 +187,9 @@ router.get('/run', async (req: Request, res: Response) => {
     // --tick-only-once: prefetch all PM ticks before classification (one call per ticker).
     const useV4 = fs.existsSync(CLASSIFIER_V4_PATH);
     const classifierScript = useV4 ? CLASSIFIER_V4_PATH : CLASSIFIER_PATH;
-    const classArgs = [classifierScript, ...tickerList, '--date', date, '--once', '--no-float'];
+    // Float data included (no --no-float) so the EDGE MAP / float-based gates
+    // in print_signal() have real values instead of reading 0/unavailable.
+    const classArgs = [classifierScript, ...tickerList, '--date', date, '--once'];
     if (useV4) classArgs.push('--tick-only-once');
     if (req.query.highValueOnly === 'true') classArgs.push('--high-value-only');
     if (req.query.noSec === 'true') classArgs.push('--no-sec');
@@ -199,15 +200,20 @@ router.get('/run', async (req: Request, res: Response) => {
     const proc2 = spawn(PYTHON_BIN, classArgs, {
       cwd: path.join(__dirname, '../../..'),
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+             // _init_colors() in the classifier only emits ANSI codes when it
+             // detects a "capable" terminal (ANSICON/WT_SESSION/TERM_PROGRAM,
+             // or non-Windows). Force it on so colors reach the frontend
+             // terminal even though stdout here is piped, not a real TTY.
+             WT_SESSION: '1',
              ...(tradierKey2 ? { TRADIER_API_KEY: tradierKey2 } : {}) },
     });
     const dec2o = new StringDecoder('utf8');
     const dec2e = new StringDecoder('utf8');
-    proc2.stdout?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(dec2o.write(c)))}\n\n`); });
-    proc2.stderr?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(stripAnsi(dec2e.write(c)))}\n\n`); });
+    proc2.stdout?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(normalizeKeepAnsi(dec2o.write(c)))}\n\n`); });
+    proc2.stderr?.on('data', (c: Buffer) => { if (!streamDone) res.write(`data: ${JSON.stringify(normalizeKeepAnsi(dec2e.write(c)))}\n\n`); });
     proc2.on('close', (code) => {
-      const tail2o = dec2o.end(); if (tail2o && !streamDone) res.write(`data: ${JSON.stringify(stripAnsi(tail2o))}\n\n`);
-      const tail2e = dec2e.end(); if (tail2e && !streamDone) res.write(`data: ${JSON.stringify(stripAnsi(tail2e))}\n\n`);
+      const tail2o = dec2o.end(); if (tail2o && !streamDone) res.write(`data: ${JSON.stringify(normalizeKeepAnsi(tail2o))}\n\n`);
+      const tail2e = dec2e.end(); if (tail2e && !streamDone) res.write(`data: ${JSON.stringify(normalizeKeepAnsi(tail2e))}\n\n`);
       finish(undefined, code ?? 0);
     });
     proc2.on('error', (err) => { res.write(`data: ${JSON.stringify(`[error] ${err.message}`)}\n\n`); finish(undefined, -1); });
