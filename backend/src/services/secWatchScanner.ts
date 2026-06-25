@@ -342,7 +342,7 @@ export function stopSecWatchScanner(): void {
 
 // ─── Live Score Poller ────────────────────────────────────────────────────────
 // Refreshes price action + borrow for all active (non-swiped-off) intents that
-// have a cached checklist. Runs every 60s. Stops automatically when no intents
+// have a cached checklist. Runs every 2min. Stops automatically when no intents
 // are active. Does NOT re-call EDGAR — only fast market/borrow APIs.
 
 // Pre-market open (04:00 ET) through 2h after close (18:00 ET), weekdays only
@@ -379,9 +379,9 @@ export function startLiveScorePoller(): void {
         console.warn(`[LiveScorePoller] ${ticker} refresh failed:`, err instanceof Error ? err.message : err)
       );
     }
-  }, 60_000);
+  }, 120_000);
 
-  console.log('📡 Live score poller started — refreshing every 60s, weekdays 04:00–18:00 ET only');
+  console.log('📡 Live score poller started — refreshing every 2min, weekdays 04:00–18:00 ET only');
 }
 
 export function stopLiveScorePoller(): void {
