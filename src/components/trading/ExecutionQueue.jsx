@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock, TrendingUp, TrendingDown, Send, X,
-  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp, Snowflake
+  AlertTriangle, CheckCircle2, Loader2, Edit3, RefreshCw, ThumbsUp, Snowflake, Eye, EyeOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -17,6 +17,8 @@ export default function ExecutionQueue({
   onEditLimit,
   onRetry,
   onFreeze,
+  onStartWatch,
+  onStopWatch,
   onCreateDemo,
   isDemoLoading,
   executionMode = "safe"
@@ -69,6 +71,13 @@ export default function ExecutionQueue({
           // to the broker immediately (full mode / immediate-exit) with no
           // delay to pause, so showing Freeze there is a no-op that looks broken.
           const isFreezable = exec.status === "pending";
+          // Watch Threshold reuses the WALL card's TradeIntent-keyed watch
+          // mechanism via exec.intent_id - only possible for executions that
+          // trace back to a scored WALL signal (custom/manual orders with no
+          // intent_id have no TradeIntent row to attach watch state to).
+          const watchUntil  = exec.intent_wait_watch_until ? new Date(exec.intent_wait_watch_until) : null;
+          const isWatching  = !!exec.intent_manual_watch && !!watchUntil && new Date() <= watchUntil;
+          const watchMinutesLeft = isWatching ? Math.max(0, Math.round((watchUntil - new Date()) / 60000)) : 0;
 
           // Derive strategy label from grade_snapshot or raw_payload
           let strategyLabel = null;
@@ -140,6 +149,21 @@ export default function ExecutionQueue({
                       >
                         <Snowflake className="w-3 h-3" />
                         {isFrozen ? "Frozen" : "Freeze"}
+                      </button>
+                    )}
+                    {exec.intent_id && isActive && (
+                      <button
+                        onClick={() => isWatching ? onStopWatch?.(exec) : onStartWatch?.({ exec, minutes: 60 })}
+                        title={isWatching ? "Stop watching for entry threshold" : "Watch until entry threshold (60min)"}
+                        className={cn(
+                          "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                          isWatching
+                            ? "bg-violet-500/20 text-violet-300 border border-violet-500/40 hover:bg-violet-500/30"
+                            : "bg-slate-700/50 text-slate-400 border border-slate-600/40 hover:bg-slate-600/50 hover:text-slate-200"
+                        )}
+                      >
+                        {isWatching ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        {isWatching ? `Watching · ${watchMinutesLeft}m left` : "Watch Threshold"}
                       </button>
                     )}
                   </div>

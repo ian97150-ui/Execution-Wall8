@@ -383,6 +383,34 @@ export default function Dashboard() {
     }
   });
 
+  const startWatchExecutionMutation = useMutation({
+    mutationFn: async ({ exec, minutes }) => {
+      const res = await api.post(`/trade-intents/${exec.intent_id}/start-watch`, { minutes });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+      toast.success('Watching for entry threshold');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || 'Failed to start watch');
+    }
+  });
+
+  const stopWatchExecutionMutation = useMutation({
+    mutationFn: async (exec) => {
+      const res = await api.post(`/trade-intents/${exec.intent_id}/stop-watch`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+      toast.success('Stopped watching');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || 'Failed to stop watch');
+    }
+  });
+
   const cancelExecutionMutation = useMutation({
     mutationFn: async (exec) => {
       await api.post(`/executions/${exec.id}/cancel`);
@@ -1102,6 +1130,8 @@ export default function Dashboard() {
                 onRetry={(exec) => retryExecutionMutation.mutate(exec)}
                 onEditLimit={handleEditLimit}
                 onFreeze={(exec) => freezeExecutionMutation.mutate(exec)}
+                onStartWatch={({ exec, minutes }) => startWatchExecutionMutation.mutate({ exec, minutes })}
+                onStopWatch={(exec) => stopWatchExecutionMutation.mutate(exec)}
                 onCreateDemo={() => createDemoMutation.mutate()}
                 isDemoLoading={createDemoMutation.isPending}
               />

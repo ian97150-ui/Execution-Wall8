@@ -194,7 +194,27 @@ router.get('/', async (req: Request, res: Response) => {
       take: 100
     });
 
-    res.json(executions);
+    // intent_id has no Prisma @relation (just a plain string FK), so the
+    // linked TradeIntent's watch state isn't include-able - fetch the
+    // distinct set once and merge manual_watch/wait_watch_until onto each
+    // execution so the Watch Threshold button can show correct state
+    // without the frontend needing a second round-trip per card.
+    const intentIds = [...new Set(executions.map(e => e.intent_id).filter((id): id is string => !!id))];
+    const intents = intentIds.length
+      ? await prisma.tradeIntent.findMany({
+          where: { id: { in: intentIds } },
+          select: { id: true, manual_watch: true, wait_watch_until: true },
+        })
+      : [];
+    const intentMap = new Map(intents.map(i => [i.id, i]));
+
+    const enriched = executions.map(e => ({
+      ...e,
+      intent_manual_watch: e.intent_id ? intentMap.get(e.intent_id)?.manual_watch ?? false : false,
+      intent_wait_watch_until: e.intent_id ? intentMap.get(e.intent_id)?.wait_watch_until ?? null : null,
+    }));
+
+    res.json(enriched);
   } catch (error: any) {
     console.error('Error fetching executions:', error);
     res.status(500).json({ error: error.message });
