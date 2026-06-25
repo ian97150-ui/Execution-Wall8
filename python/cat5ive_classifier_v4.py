@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """
-cat5ive_classifier_v4.py â Real-Time Trade Classifier with Tick Layer
+cat5ive_classifier_v4.py — Real-Time Trade Classifier with Tick Layer
 =======================================================================
-v4.0 â Tradier timesales tick data integrated as optional scoring layer.
+v4.0 — Tradier timesales tick data integrated as optional scoring layer.
 
 Builds on v3 (all 8 temporal-contamination fixes applied) and adds:
 
-  TICK LAYER (optional â requires TRADIER_API_KEY + interval=tick):
-  â¦ fetch_tradier_ticks()     â pulls tick prints from Tradier timesales
-  â¦ TickFeatures dataclass    â holds all computed tick metrics
-  â¦ compute_tick_features()   â computes per-session tick signals:
-      â¢ proxy_vpin             Running order flow toxicity proxy
-      â¢ buy_pressure_pct       % of volume in up-ticks (buyer-initiated)
-      â¢ sell_pressure_pct      % of volume in down-ticks
-      â¢ large_print_pct        % of volume in prints > 5Ã avg size
-      â¢ tick_rate_pm           Prints per minute during PM (quote activity)
-      â¢ running_dp_proxy       Large-print ratio (dark pool proxy)
-      â¢ price_path_efficiency  Net move / total path from ticks
-  â¦ apply_tick_score_adj()    â adjusts classifier score from tick features
-  â¦ tick_safe gates           â all tick fields marked live-safe or calibration-only
+  TICK LAYER (optional — requires TRADIER_API_KEY + interval=tick):
+  ✦ fetch_tradier_ticks()     — pulls tick prints from Tradier timesales
+  ✦ TickFeatures dataclass    — holds all computed tick metrics
+  ✦ compute_tick_features()   — computes per-session tick signals:
+      • proxy_vpin             Running order flow toxicity proxy
+      • buy_pressure_pct       % of volume in up-ticks (buyer-initiated)
+      • sell_pressure_pct      % of volume in down-ticks
+      • large_print_pct        % of volume in prints > 5× avg size
+      • tick_rate_pm           Prints per minute during PM (quote activity)
+      • running_dp_proxy       Large-print ratio (dark pool proxy)
+      • price_path_efficiency  Net move / total path from ticks
+  ✦ apply_tick_score_adj()    — adjusts classifier score from tick features
+  ✦ tick_safe gates           — all tick fields marked live-safe or calibration-only
 
 TEMPORAL CONTAMINATION RULES (v4 enforces strictly):
   - No pre_hod anchored fields used in live scoring (all require future HOD time)
-  - Tick features computed from window [PM_open â current_bar] only
+  - Tick features computed from window [PM_open → current_bar] only
   - HOD stability guard: tick features that depend on HOD use 30+ bar confirmation
   - pm_open validation: tick features skip gracefully when PM data unavailable
 
@@ -52,14 +52,14 @@ TICK AVAILABILITY NOTE:
   manageable. Recommended: fetch PM ticks at RTH open (4am-9:30am window)
   as a one-time pull, then use 1-min bars for intraday updates.
 
-V3 â V4 SCORE ADJUSTMENTS (tick features, applied on top of v3 score):
-  buy_pressure_pct < 35%     â +10   (strong sell pressure in PM ticks)
-  large_print_pct > 20%      â +8    (institutional block prints)
-  proxy_vpin > 0.55          â +6    (elevated order flow toxicity)
-  tick_rate_pm > 50/min      â +5    (high quote activity = algo positioning)
-  running_dp_proxy > 25%     â +8    (dark pool volume proxy elevated)
-  buy_pressure_pct > 65%     â â10   (buyers dominating â don't short)
-  proxy_vpin < 0.2           â â5    (benign order flow â setup unclear)
+V3 → V4 SCORE ADJUSTMENTS (tick features, applied on top of v3 score):
+  buy_pressure_pct < 35%     → +10   (strong sell pressure in PM ticks)
+  large_print_pct > 20%      → +8    (institutional block prints)
+  proxy_vpin > 0.55          → +6    (elevated order flow toxicity)
+  tick_rate_pm > 50/min      → +5    (high quote activity = algo positioning)
+  running_dp_proxy > 25%     → +8    (dark pool volume proxy elevated)
+  buy_pressure_pct > 65%     → −10   (buyers dominating — don't short)
+  proxy_vpin < 0.2           → −5    (benign order flow — setup unclear)
 """
 
 import os, sys, time, json, argparse, math, statistics
@@ -67,8 +67,8 @@ from datetime import datetime, date, timedelta
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict
 
-# ââ Import everything from v3 âââââââââââââââââââââââââââââââââââââââââââââââââ
-# v4 is a thin wrapper â all OHLCV classification comes from v3
+# ── Import everything from v3 ─────────────────────────────────────────────────
+# v4 is a thin wrapper — all OHLCV classification comes from v3
 _V3_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         'cat5ive_classifier_v3.py')
 if not os.path.exists(_V3_PATH):
@@ -99,9 +99,9 @@ RED='\033[91m'; CYN='\033[96m'; MAG='\033[95m'; DIM='\033[2m'
 PM_START_ET = 4   * 3600   # 04:00 ET in seconds
 PM_END_ET   = 9.5 * 3600   # 09:30 ET
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 # TICK DATA LAYER
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class TickPrint:
@@ -118,43 +118,43 @@ class TickFeatures:
     """
     Tick-derived features computed from the PM session (04:00-09:30 ET).
 
-    ALL fields are computed from the window [PM open â decision bar].
+    ALL fields are computed from the window [PM open → decision bar].
     NO fields use pre_hod anchoring (future-contaminated).
-    All are marked live-safe (â) or calibration-only (â).
+    All are marked live-safe (✅) or calibration-only (❌).
 
     When tick data is unavailable, all fields default to None.
     The score adjustments skip gracefully when field is None.
     """
-    # ââ Order flow ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-    proxy_vpin:         Optional[float] = None  # â 0-1 toxicity proxy (PM window)
-    buy_pressure_pct:   Optional[float] = None  # â % vol in up-ticks PM
-    sell_pressure_pct:  Optional[float] = None  # â % vol in down-ticks PM
-    neutral_pct:        Optional[float] = None  # â % vol in flat ticks PM
+    # ── Order flow ──────────────────────────────────────────────────────────
+    proxy_vpin:         Optional[float] = None  # ✅ 0-1 toxicity proxy (PM window)
+    buy_pressure_pct:   Optional[float] = None  # ✅ % vol in up-ticks PM
+    sell_pressure_pct:  Optional[float] = None  # ✅ % vol in down-ticks PM
+    neutral_pct:        Optional[float] = None  # ✅ % vol in flat ticks PM
 
-    # ââ Institutional proxy ââââââââââââââââââââââââââââââââââââââââââââââââââ
-    large_print_pct:    Optional[float] = None  # â % vol in large prints (>5Ã avg)
-    running_dp_proxy:   Optional[float] = None  # â large-print ratio (DP proxy)
-    avg_print_size:     Optional[float] = None  # â mean volume per tick
+    # ── Institutional proxy ──────────────────────────────────────────────────
+    large_print_pct:    Optional[float] = None  # ✅ % vol in large prints (>5× avg)
+    running_dp_proxy:   Optional[float] = None  # ✅ large-print ratio (DP proxy)
+    avg_print_size:     Optional[float] = None  # ✅ mean volume per tick
 
-    # ââ Liquidity / activity âââââââââââââââââââââââââââââââââââââââââââââââââ
-    tick_rate_pm:       Optional[float] = None  # â prints per minute in PM
-    tick_count_pm:      Optional[int]   = None  # â total PM tick count
-    price_path_eff:     Optional[float] = None  # â net_move / total_path (0-1)
+    # ── Liquidity / activity ─────────────────────────────────────────────────
+    tick_rate_pm:       Optional[float] = None  # ✅ prints per minute in PM
+    tick_count_pm:      Optional[int]   = None  # ✅ total PM tick count
+    price_path_eff:     Optional[float] = None  # ✅ net_move / total_path (0-1)
 
-    # ââ Diagnostics ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-    pm_open_tick:       Optional[float] = None  # â first tick price (4am ET)
-    pm_close_tick:      Optional[float] = None  # â last PM tick price (9:30am ET)
-    pm_vol_total:       Optional[int]   = None  # â total PM volume from ticks
+    # ── Diagnostics ──────────────────────────────────────────────────────────
+    pm_open_tick:       Optional[float] = None  # ✅ first tick price (4am ET)
+    pm_close_tick:      Optional[float] = None  # ✅ last PM tick price (9:30am ET)
+    pm_vol_total:       Optional[int]   = None  # ✅ total PM volume from ticks
     ticks_available:    bool            = False  # True when tick data was fetched
 
-    # ââ Score adjustment (computed from above fields) âââââââââââââââââââââââââ
+    # ── Score adjustment (computed from above fields) ─────────────────────────
     tick_score_delta:   int             = 0     # net score change from tick layer
     tick_gate_notes:    List[str]       = field(default_factory=list)
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 # TRADIER TICK FETCHING
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_tradier_ticks(ticker: str, date_str: str,
                         tradier_key: str,
@@ -166,7 +166,7 @@ def fetch_tradier_ticks(ticker: str, date_str: str,
 
     Fetches in chunks of chunk_minutes (default 30 min) to avoid
     Tradier response-size limits for high-volume tickers.
-    SOAR had 8,350 ticks in 30 min â a full 5.5h window would exceed limits.
+    SOAR had 8,350 ticks in 30 min — a full 5.5h window would exceed limits.
     Chunks are concatenated into a single sorted list.
 
     Returns [] if API unavailable, key missing, or no data returned.
@@ -253,9 +253,9 @@ def _parse_tradier_time(ts_str: str) -> float:
             time_part = s[11:19]
             h, m, sec = int(time_part[0:2]), int(time_part[3:5]), int(time_part[6:8])
             utc_sec   = h * 3600 + m * 60 + sec
-            return (utc_sec - 4 * 3600) % 86400   # UTC â EDT
+            return (utc_sec - 4 * 3600) % 86400   # UTC → EDT
         elif len(s) >= 8 and ':' in s:
-            # Time only: '09:30:00' â assume already ET
+            # Time only: '09:30:00' — assume already ET
             parts = s.split(':')
             return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
         return 0.0
@@ -263,9 +263,9 @@ def _parse_tradier_time(ts_str: str) -> float:
         return 0.0
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 # TICK FEATURE COMPUTATION
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def compute_tick_features(ticks: List[TickPrint],
                           pm_open_price: float = 0.0,
@@ -289,14 +289,14 @@ def compute_tick_features(ticks: List[TickPrint],
 
       large_print_pct: % of volume in prints that are > 5x average print size.
                   Large prints = potential institutional block trades / dark pool bypass.
-                  Note: not a true DP detection (no routing info) â a proxy.
+                  Note: not a true DP detection (no routing info) — a proxy.
 
       running_dp_proxy: Same as large_print_pct but with 10x threshold.
                   Higher bar for calling a print 'institutional'.
 
       tick_rate_pm: Prints per minute in the PM window.
                   Calibration: compare to quote_update_rate from L1/L2 data.
-                  >50/min = active algo environment (Cat5ive data: A=â13.4%).
+                  >50/min = active algo environment (Cat5ive data: A=−13.4%).
 
       price_path_eff: |net PM move| / sum(|tick-to-tick changes|).
                   1.0 = perfectly directional (straight line up then down).
@@ -305,9 +305,9 @@ def compute_tick_features(ticks: List[TickPrint],
     # Filter to requested window
     pm_ticks = [t for t in ticks if start_et <= t.et_sec < end_et]
     if len(pm_ticks) < 3:
-        return TickFeatures(ticks_available=False)
+        return TickFeatures(ticks_available=len(ticks) > 0)
 
-    # ââ Order flow classification via bulk-volume method ââââââââââââââââââââââ
+    # ── Order flow classification via bulk-volume method ──────────────────────
     buy_vol = sell_vol = neutral_vol = 0
     prev_price = pm_ticks[0].price
 
@@ -331,22 +331,22 @@ def compute_tick_features(ticks: List[TickPrint],
     # Proxy VPIN = order imbalance (simplified bulk-volume method)
     proxy_vpin = abs(buy_vol - sell_vol) / total_vol
 
-    # ââ Large print detection âââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ── Large print detection ─────────────────────────────────────────────────
     volumes = [t.volume for t in pm_ticks]
     avg_size = statistics.mean(volumes) if volumes else 1
-    large_threshold = avg_size * 5    # 5Ã average = large print
-    dp_threshold    = avg_size * 10   # 10Ã average = very large print
+    large_threshold = avg_size * 5    # 5× average = large print
+    dp_threshold    = avg_size * 10   # 10× average = very large print
 
     large_vol = sum(t.volume for t in pm_ticks if t.volume >= large_threshold)
     dp_vol    = sum(t.volume for t in pm_ticks if t.volume >= dp_threshold)
     large_pct = large_vol / total_vol * 100
     dp_pct    = dp_vol    / total_vol * 100
 
-    # ââ Tick rate âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ── Tick rate ─────────────────────────────────────────────────────────────
     dur_min = (end_et - start_et) / 60   # PM duration in minutes
     tick_rate = len(pm_ticks) / dur_min if dur_min > 0 else 0
 
-    # ââ Price path efficiency (PM) ââââââââââââââââââââââââââââââââââââââââââââ
+    # ── Price path efficiency (PM) ────────────────────────────────────────────
     prices     = [t.price for t in pm_ticks]
     net_move   = abs(prices[-1] - prices[0])
     total_path = sum(abs(prices[i] - prices[i-1]) for i in range(1, len(prices)))
@@ -370,9 +370,9 @@ def compute_tick_features(ticks: List[TickPrint],
     )
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 # TICK SCORE ADJUSTMENT
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def apply_tick_score_adj(base_score: int,
                          tf: TickFeatures,
@@ -382,25 +382,25 @@ def apply_tick_score_adj(base_score: int,
 
     CALIBRATION STATUS: CALIBRATION_v2 (updated from report v3 harvest results)
     197-session harvest via Databento 1-min bar proxies showed:
-      - large_print_pct: ALL 197 sessions had >35% â NOT discriminating at 1-min resolution
-      - proxy_vpin:      187/197 sessions had vpin <0.3 â threshold of 0.55 fires for nobody
-      - tick_rate_pm:    constant ~330 PM bars for all sessions â no variation
+      - large_print_pct: ALL 197 sessions had >35% → NOT discriminating at 1-min resolution
+      - proxy_vpin:      187/197 sessions had vpin <0.3 → threshold of 0.55 fires for nobody
+      - tick_rate_pm:    constant ~330 PM bars for all sessions → no variation
       - running_dp_proxy: same issue as large_print (1-min bars too coarse)
 
     RETAINED (directionally confirmed):
-      buy_pressure < 35%:  A=-5.2% for sell-dominant sessions â +10 pts
-      buy_pressure > 65%:  buy-side active = stock going up = short losing â -10 pts
+      buy_pressure < 35%:  A=-5.2% for sell-dominant sessions → +10 pts
+      buy_pressure > 65%:  buy-side active = stock going up = short losing → -10 pts
 
     REMOVED (non-discriminating at 1-min bar resolution):
-      large_print > 20%:  was +8 â fires for 100% of sessions
-      proxy_vpin > 0.55:  was +6 â fires for <3% of sessions
-      proxy_vpin < 0.20:  was -5 â fires for 95% of sessions
-      tick_rate > 50:     was +5 â constant across all sessions
-      running_dp_proxy:   was +8 â same as large_print issue
+      large_print > 20%:  was +8 → fires for 100% of sessions
+      proxy_vpin > 0.55:  was +6 → fires for <3% of sessions
+      proxy_vpin < 0.20:  was -5 → fires for 95% of sessions
+      tick_rate > 50:     was +5 → constant across all sessions
+      running_dp_proxy:   was +8 → same as large_print issue
 
     NOTE: These thresholds would be valid with TRUE tick-level data (individual
     trades, not 1-min bars). The proxies break at 1-minute resolution.
-    Max tick delta: +15 (buy_press +10, tick_rate +5). Min tick delta: -15 (buy_press -10, quiet_pm -5).
+    Max tick delta: +10 (vs previous +29). Min tick delta: -10 (vs previous -15).
     """
     if not tf.ticks_available or not pm_open_valid:
         return base_score, 0, []
@@ -408,7 +408,7 @@ def apply_tick_score_adj(base_score: int,
     delta = 0
     notes = []
 
-    # ââ Buy/sell pressure (confirmed via 197-session bar-proxy harvest) âââââââââ
+    # ── Buy/sell pressure (confirmed via 197-session bar-proxy harvest) ─────────
     v = tf.buy_pressure_pct
     if v is not None:
         if v < 35.0:
@@ -418,7 +418,7 @@ def apply_tick_score_adj(base_score: int,
             delta -= 10
             notes.append(f"HIGH_BUY_PRESSURE({v:.0f}%): -10 (buy-dominant = short risky)")
 
-    # ââ Thresholds below: CALIBRATION_v1 â status UNVALIDATED for true tick data
+    # ── Thresholds below: CALIBRATION_v1 — status UNVALIDATED for true tick data
     # The 197-session harvest used 1-min bar PROXIES which proved non-discriminating
     # for vpin, large_print, and tick_rate at bar resolution.
     # However the LIVE CLASSIFIER uses TRUE Tradier tick data (interval='tick'),
@@ -426,48 +426,39 @@ def apply_tick_score_adj(base_score: int,
     # Status: retained but NOT applied to score until validated with true tick sessions.
     # To validate: accumulate 50+ live sessions with Tradier tick data and correlate
     # these features against A returns using pattern_analysis.py.
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ─────────────────────────────────────────────────────────────────────────────
     v = tf.large_print_pct
     if v is not None and v > 20.0:
-        # notes.append(f"LARGE_PRINTS({v:.0f}%): +8 â UNVALIDATED, not applied")
+        # notes.append(f"LARGE_PRINTS({v:.0f}%): +8 — UNVALIDATED, not applied")
         pass  # Not applied until validated with true ticks
 
     v = tf.proxy_vpin
     if v is not None:
         if v > 0.55:
-            # notes.append(f"HIGH_VPIN({v:.3f}): +6 â UNVALIDATED, not applied")
+            # notes.append(f"HIGH_VPIN({v:.3f}): +6 — UNVALIDATED, not applied")
             pass
         elif v < 0.20:
-            # notes.append(f"LOW_VPIN({v:.3f}): -5 â UNVALIDATED, not applied")
+            # notes.append(f"LOW_VPIN({v:.3f}): -5 — UNVALIDATED, not applied")
             pass
 
     v = tf.tick_rate_pm
-    if v is not None:
-        # Active PM (50-100 prints/min): 81% A win rate (n=51 â) from Databento harvest
-        # Quiet PM (<20 prints/min): only 45% A win rate (barely profitable)
-        # Reinstated after bar-proxy showed no variation (constant bars) but
-        # live Tradier tick data DOES vary â signal confirmed with real data.
-        if 50.0 <= v <= 150.0:   # Active sweet spot (hyper >150 less reliable)
-            delta += 5
-            notes.append(f"ACTIVE_TICK_RATE({v:.0f}/min): +5 (81% A win rate, n=51 â)")
-        elif v < 20.0:
-            delta -= 5
-            notes.append(f"QUIET_PM({v:.0f}/min): -5 (45% A win rate â quiet session)")
+    if v is not None and v > 50.0:
+        # notes.append(f"HIGH_TICK_RATE({v:.0f}/min): +5 — UNVALIDATED, not applied")
+        pass
 
     adjusted = max(0, min(150, base_score + delta))
     return adjusted, delta, notes
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-# V4 CLASSIFICATION â wraps v3 + adds tick layer
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
+# V4 CLASSIFICATION — wraps v3 + adds tick layer
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def run_classification_v4(ticker: str, bars: List[Bar],
                            ticks: List[TickPrint] = None,
                            session_date: str = None,
                            no_sec: bool = False,
-                           float_shares: int = 0,
-                           tradier_key: str = '') -> tuple:
+                           float_shares: int = 0) -> tuple:
     """
     Full v4 classification: v3 OHLCV + optional tick score adjustment.
 
@@ -483,14 +474,13 @@ def run_classification_v4(ticker: str, bars: List[Bar],
       - Tick features use PM window only (finalized at 9:30am ET)
       - No HOD-anchored tick windows used
     """
-    # ââ v3 base classification âââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ── v3 base classification ─────────────────────────────────────────────────
     sig = run_classification(ticker, bars,
                              session_date=session_date,
                              no_sec=no_sec,
-                             float_shares=float_shares,
-                             tradier_key=tradier_key)
+                             float_shares=float_shares)
 
-    # ââ Tick feature computation âââââââââââââââââââââââââââââââââââââââââââââââ
+    # ── Tick feature computation ───────────────────────────────────────────────
     if ticks:
         pm_open_price = sig.pm_open_price
         pm_open_valid = (pm_open_price is not None and pm_open_price > 0)
@@ -534,16 +524,16 @@ def run_classification_v4(ticker: str, bars: List[Bar],
     return sig, tf
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 # TICK DISPLAY
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def print_tick_features(tf: TickFeatures, ticks_attempted: bool = False):
+def print_tick_features(tf: TickFeatures):
     """Print tick layer summary row in the classifier output."""
     if not tf.ticks_available:
-        if ticks_attempted:
-            print(f"  {'─'*68}")
-            print(f"  {DIM}TICK:  no data (Tradier tick history unavailable for this date){RESET}")
+        # Only print unavailable if ticks were explicitly expected
+        # (i.e., --ticks flag was set but data didn't come back)
+        # Suppress silently when running OHLCV-only mode
         return
 
     vpin_c  = RED if (tf.proxy_vpin or 0) > 0.55 else (
@@ -555,7 +545,7 @@ def print_tick_features(tf: TickFeatures, ticks_attempted: bool = False):
     delta_c = GRN if tf.tick_score_delta > 0 else (
               RED if tf.tick_score_delta < 0 else DIM)
 
-    print(f"  {'â'*68}")
+    print(f"  {'─'*68}")
     print(f"  {CYN}TICK:{RESET}  "
           f"n={tf.tick_count_pm:>5,}  "
           f"Rate:{rate_c}{tf.tick_rate_pm or 0:.0f}/min{RESET}  "
@@ -565,23 +555,23 @@ def print_tick_features(tf: TickFeatures, ticks_attempted: bool = False):
     print(f"         LargePrint:{lp_c}{tf.large_print_pct or 0:.0f}%{RESET}  "
           f"DPproxy:{tf.running_dp_proxy or 0:.0f}%  "
           f"PathEff:{tf.price_path_eff or 0:.3f}  "
-          f"ScoreÎ:{delta_c}{tf.tick_score_delta:+d}{RESET}")
+          f"ScoreΔ:{delta_c}{tf.tick_score_delta:+d}{RESET}")
     if tf.tick_gate_notes:
         print(f"  {CYN}         {' | '.join(tf.tick_gate_notes[:3])}{RESET}")
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-# MAIN â v4 CLI (extends v3 with --ticks flag)
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN — v4 CLI (extends v3 with --ticks flag)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
     p = argparse.ArgumentParser(
-        description='Cat5ive Classifier v4.0 â OHLCV + Tick Layer')
+        description='Cat5ive Classifier v4.0 — OHLCV + Tick Layer')
     p.add_argument('tickers', nargs='+')
     p.add_argument('--date',       default=None,
-                   help='YYYY-MM-DD â historical session date')
+                   help='YYYY-MM-DD — historical session date')
     p.add_argument('--time',       default=None,
-                   help='HH:MM ET â snapshot time for backtesting '
+                   help='HH:MM ET — snapshot time for backtesting '
                         '(truncates bars to this point). '
                         'Example: --date 2026-05-06 --time 09:35 --once')
     p.add_argument('--no-sec',     action='store_true')
@@ -621,15 +611,15 @@ def main():
         src = 'Tradier' if tradier_key else 'Polygon' if polygon_key else 'yfinance'
         print(f"  Bars:     {src}")
         if tradier_key:
-            print(f"  Ticks:    Tradier (auto â same key as bars)  "
+            print(f"  Ticks:    Tradier (auto — same key as bars)  "
                   f"window={args.tick_window_start:.1f}h-{args.tick_window_end:.1f}h ET")
         elif args.ticks:
-            print(f"  Ticks:    UNAVAILABLE â no Tradier key found")
+            print(f"  Ticks:    UNAVAILABLE — no Tradier key found")
         print(f"  Interval: {args.interval}s  "
               f"Mode: {'once' if args.once else 'continuous'}")
         print(f"{BOLD}{'='*64}{RESET}\n")
 
-    # ââ Prefetch float shares ââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ── Prefetch float shares ──────────────────────────────────────────────────
     float_map = {}
     if not args.no_float:
         for tkr in tickers:
@@ -640,7 +630,7 @@ def main():
             elif not args.json:
                 print(f"  {tkr:8} float: {YEL}not found{RESET}")
 
-    # ââ Prefetch ticks (optional) ââââââââââââââââââââââââââââââââââââââââââââââ
+    # ── Prefetch ticks (optional) ──────────────────────────────────────────────
     tick_cache: Dict[str, List[TickPrint]] = {}
     if args.tick_only_once and tradier_key:  # auto-use Tradier key
         if not args.json:
@@ -665,7 +655,7 @@ def main():
 
             if not args.date and (now.hour < 4 or now.hour >= 20):
                 if not args.json:
-                    print(f"  {DIM}Outside 4am-8pm ET â sleeping{RESET}")
+                    print(f"  {DIM}Outside 4am-8pm ET — sleeping{RESET}")
                 if args.once: break
                 time.sleep(args.interval)
                 continue
@@ -679,7 +669,7 @@ def main():
 
                     # --time: truncate bars to the requested snapshot time
                     # This shows exactly what the classifier would have said
-                    # at that moment â no future data, strict temporal safety.
+                    # at that moment — no future data, strict temporal safety.
                     if args.time and bars:
                         cutoff = args.time.strip()[:5]  # 'HH:MM'
                         bars   = [b for b in bars if b.ts <= cutoff]
@@ -696,7 +686,7 @@ def main():
 
                     # Fetch ticks per-poll unless --tick-only-once
                     ticks_for_session = []
-                    # Auto-use Tradier key for ticks â same key as bars.
+                    # Auto-use Tradier key for ticks — same key as bars.
                     # --ticks flag still respected but not required.
                     _use_ticks = tradier_key and (args.ticks or tradier_key)
                     if _use_ticks:
@@ -714,7 +704,6 @@ def main():
                         session_date = session_date,
                         no_sec       = args.no_sec,
                         float_shares = fs,
-                        tradier_key  = tradier_key,
                     )
 
                     log_signal(sig, log_dir)
@@ -734,7 +723,9 @@ def main():
                         # Store tf on sig so print_signal can access it
                         sig._tick_features = tf
                         print_signal(sig, verbose=not args.quiet)
-                        print_tick_features(tf, ticks_attempted=bool(_use_ticks))
+                        # Only print ticks if print_signal hasn't already done it
+                        if tf.ticks_available and not getattr(tf, '_printed_by_print_signal', False):
+                            print_tick_features(tf)
 
                 except Exception as e:
                     if not args.json:
