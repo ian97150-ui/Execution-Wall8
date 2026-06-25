@@ -457,14 +457,15 @@ export async function refreshLiveScore(ticker: string): Promise<void> {
           .catch(err => console.warn(`[WaitUpgrade] ${upper} failed:`,
             err instanceof Error ? err.message : err));
       }
-      // Manual watch: user-initiated, no T2 requirement — fires on ANY verdict
-      // change away from WAIT (including SKIP), not just a promotion to an
-      // entry-grade signal. Works the same in safe or full mode since nothing
-      // here is gated on execution_mode - handleWaitUpgrade only attempts
-      // auto-execution when execution_mode==='full', so in safe mode this
-      // just captures the signal change and sends the notification.
+      // Manual watch: user-initiated, no T2 requirement — fires only on a
+      // promotion to an entry-grade signal. A downgrade to SKIP does not
+      // resolve the watch (it stays open until the window expires or an
+      // entry signal actually fires). Works the same in safe or full mode
+      // since nothing here is gated on execution_mode - handleWaitUpgrade
+      // only attempts auto-execution when execution_mode==='full'.
       const isManualWatch = (intent as any).manual_watch === true;
-      if (isManualWatch && watchWindowOpen && cls.signal !== 'WAIT') {
+      const ENTRY_SIGNALS = new Set(['ENTER_E', 'ENTER_A', 'HIGH_VALUE', 'LONG_OPP']);
+      if (isManualWatch && watchWindowOpen && ENTRY_SIGNALS.has(cls.signal)) {
         handleWaitUpgrade(intentId, cls, 'MANUAL_WATCH')
           .catch(err => console.warn(`[ManualWatch] ${upper} upgrade failed:`,
             err instanceof Error ? err.message : err));
