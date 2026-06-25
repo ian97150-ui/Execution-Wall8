@@ -883,8 +883,6 @@ function _computeAutoStack(
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-const ENTRY_SIGNALS = new Set(['ENTER_E', 'ENTER_A', 'HIGH_VALUE', 'LONG_OPP']);
-
 export async function computeScoreSnapshot(
   checklist: SecChecklist,
   ticker?: string,
@@ -896,7 +894,10 @@ export async function computeScoreSnapshot(
     try {
       const cls = await runClassifier(ticker, date);
       if (cls) {
-        if (onCapture && ENTRY_SIGNALS.has(cls.signal)) onCapture(cls);
+        // Fire on any verdict change away from WAIT (not just entry-grade
+        // signals) - SKIP counts too, so callers like the manual-watch
+        // threshold check can react to the classifier moving off WAIT at all.
+        if (onCapture && cls.signal !== 'WAIT') onCapture(cls);
         return _mapClassifierToSnapshot(cls);
       }
     } catch {
