@@ -490,12 +490,56 @@ router.post('/custom', async (req: Request, res: Response) => {
       }
     });
 
+    // Create or update position — same logic as /:id/execute (force-execute),
+    // applied here too so a custom order shows up in the Positions tab just
+    // like any other executed order. Tracked locally regardless of broker
+    // forward result, matching the existing /:id/execute convention.
+    const existingPosition = await prisma.position.findFirst({
+      where: { ticker: tickerUpper, closed_at: null }
+    });
+
+    let positionId: string | null = null;
+    if (existingPosition) {
+      const isLong = existingPosition.side === 'Long';
+      const newQuantity = isLong
+        ? (action === 'buy'
+            ? existingPosition.quantity + Number(quantity)
+            : existingPosition.quantity - Number(quantity))
+        : (action === 'sell'
+            ? existingPosition.quantity + Number(quantity)
+            : existingPosition.quantity - Number(quantity));
+
+      if (newQuantity <= 0) {
+        await prisma.position.update({
+          where: { id: existingPosition.id },
+          data: { closed_at: new Date() }
+        });
+      } else {
+        await prisma.position.update({
+          where: { id: existingPosition.id },
+          data: { quantity: newQuantity }
+        });
+      }
+      positionId = existingPosition.id;
+    } else {
+      const newPosition = await prisma.position.create({
+        data: {
+          ticker: tickerUpper,
+          side: dir,
+          quantity: Number(quantity),
+          entry_price: limit_price.toString()
+        }
+      });
+      positionId = newPosition.id;
+    }
+
     await prisma.auditLog.create({
       data: {
         event_type: 'custom_order_sent',
         ticker: tickerUpper,
         details: JSON.stringify({
           execution_id: execution.id,
+          position_id: positionId,
           action,
           quantity: Number(quantity),
           limit_price: Number(limit_price),
