@@ -1057,6 +1057,7 @@ export default function Dashboard() {
                   isLoading={candidatesLoading}
                   tickers={tickers}
                   tradingviewChartId={settings?.tradingview_chart_id}
+                  defaultWatchMinutes={settings?.default_watch_minutes}
                   onCreateDemo={() => createDemoWallMutation.mutate()}
                   isDemoLoading={createDemoWallMutation.isPending}
                 />
@@ -1132,6 +1133,7 @@ export default function Dashboard() {
                 onFreeze={(exec) => freezeExecutionMutation.mutate(exec)}
                 onStartWatch={({ exec, minutes }) => startWatchExecutionMutation.mutate({ exec, minutes })}
                 onStopWatch={(exec) => stopWatchExecutionMutation.mutate(exec)}
+                defaultWatchMinutes={settings?.default_watch_minutes}
                 onCreateDemo={() => createDemoMutation.mutate()}
                 isDemoLoading={createDemoMutation.isPending}
               />

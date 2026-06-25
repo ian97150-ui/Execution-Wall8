@@ -113,7 +113,8 @@ router.put('/', async (req: Request, res: Response) => {
       pushover_on_sec,
       pushover_on_mode_v_short,
       pushover_on_wait_upgrade,
-      auto_sub_mode
+      auto_sub_mode,
+      default_watch_minutes
     } = req.body;
 
     // Get existing settings or create new
@@ -162,6 +163,7 @@ router.put('/', async (req: Request, res: Response) => {
     if (pushover_on_mode_v_short !== undefined) updateData.pushover_on_mode_v_short = pushover_on_mode_v_short;
     if (pushover_on_wait_upgrade !== undefined) updateData.pushover_on_wait_upgrade = pushover_on_wait_upgrade;
     if (auto_sub_mode !== undefined) updateData.auto_sub_mode = auto_sub_mode;
+    if (default_watch_minutes !== undefined) updateData.default_watch_minutes = Math.min(Math.max(Number(default_watch_minutes) || 60, 5), 240);
 
     console.log('Updating settings with:', updateData);
 

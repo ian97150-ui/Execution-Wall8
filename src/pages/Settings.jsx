@@ -98,6 +98,7 @@ export default function Settings() {
         mode_v_notify_min_signals:    settings.mode_v_notify_min_signals    ?? 3,
         mode_v_notify_min_conf:       settings.mode_v_notify_min_conf       ?? 45,
         mode_v_notify_s2_min_signals: settings.mode_v_notify_s2_min_signals ?? 4,
+        default_watch_minutes: settings.default_watch_minutes ?? 60,
       });
     }
   }, [settings]);
@@ -789,6 +790,33 @@ export default function Settings() {
                   />
                   <p className="text-xs text-slate-500">Higher bar for S2 setups (weaker section). Default: 4</p>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Watch Until Entry Threshold — default duration */}
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white text-base">
+              <Clock className="w-5 h-5 text-cyan-400" />
+              Watch Until Entry Threshold
+            </CardTitle>
+            <p className="text-xs text-slate-400 mt-1">
+              Default duration when "Watch Until Entry Threshold" is started — from the WALL card preset picker or the one-click button on a live Execution Queue card.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {formData && (
+              <div className="space-y-1 max-w-xs">
+                <label className="text-xs font-medium text-slate-300">Default watch duration (minutes)</label>
+                <input
+                  type="number" min={5} max={240}
+                  value={formData.default_watch_minutes}
+                  onChange={e => setFormData(f => ({ ...f, default_watch_minutes: Number(e.target.value) }))}
+                  className="w-full h-8 px-2 text-sm rounded border border-slate-700 bg-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+                <p className="text-xs text-slate-500">5–240 minutes. Default: 60</p>
               </div>
             )}
           </CardContent>

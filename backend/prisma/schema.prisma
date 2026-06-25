@@ -144,6 +144,9 @@ model ExecutionSettings {
   // TradingView integration
   tradingview_chart_id String?  // Chart layout ID (e.g., "0v6Deawb")
 
+  // Manual "Watch Until Entry Threshold" default duration (WALL card + Execution Queue button)
+  default_watch_minutes Int @default(60)
+
   created_at           DateTime @default(now())
   updated_at           DateTime @updatedAt
 

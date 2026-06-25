@@ -581,7 +581,12 @@ router.post('/manual-watch', async (req: Request, res: Response) => {
 router.post('/:id/start-watch', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const minutes = Math.min(Math.max(Number(req.body.minutes) || 60, 5), 240);
+    let minutes = Number(req.body.minutes);
+    if (!minutes) {
+      const settings = await prisma.executionSettings.findFirst();
+      minutes = settings?.default_watch_minutes || 60;
+    }
+    minutes = Math.min(Math.max(minutes, 5), 240);
 
     const intent = await prisma.tradeIntent.findUnique({ where: { id } });
     if (!intent) return res.status(404).json({ error: 'Intent not found' });

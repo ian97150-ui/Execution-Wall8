@@ -28,7 +28,8 @@ export default function TradeCard({
   style = {},
   isEnabled = false,
   dayPeakMove = null,
-  tradingviewChartId
+  tradingviewChartId,
+  defaultWatchMinutes = 60
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showOverlay, setShowOverlay] = useState(null); // 'success' | 'rejected' | null
@@ -193,7 +194,7 @@ export default function TradeCard({
       <div className={cn(
         "h-full rounded-3xl flex flex-col overflow-hidden",
         "bg-gradient-to-b from-slate-800/95 to-slate-900/95",
-        "border border-slate-700/50",
+        serverWatchActive ? "border-2 border-cyan-400/70 shadow-[0_0_20px_rgba(34,211,238,0.25)]" : "border border-slate-700/50",
         "backdrop-blur-xl shadow-2xl"
       )}>
         {/* Header with side indicator — stays fixed at top */}
@@ -229,6 +230,12 @@ export default function TradeCard({
                       <span className="w-2 h-2 rounded-full bg-blue-900 animate-pulse"></span>
                       LIVE ORDER
                     </span>
+                  </span>
+                )}
+                {serverWatchActive && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/60">
+                    <Eye className="w-3 h-3" />
+                    WATCHING · {minutesLeft}m
                   </span>
                 )}
                 {dayPeakMove !== null && (
@@ -1018,11 +1025,17 @@ export default function TradeCard({
                     onClick={(e) => e.stopPropagation()}
                     className="absolute bottom-full mb-1 left-0 right-0 bg-slate-800 border border-cyan-500/40 rounded-lg p-2 z-10 flex gap-1"
                   >
-                    {[15, 30, 60, 90].map(m => (
+                    {[...new Set([15, 30, 60, 90, defaultWatchMinutes])].sort((a, b) => a - b).map(m => (
                       <button
                         key={m}
                         onClick={() => startWatch(m)}
-                        className="flex-1 py-1.5 text-xs font-mono rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                        title={m === defaultWatchMinutes ? "Default (set in Settings)" : undefined}
+                        className={cn(
+                          "flex-1 py-1.5 text-xs font-mono rounded border transition-colors",
+                          m === defaultWatchMinutes
+                            ? "border-cyan-400 text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20"
+                            : "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20"
+                        )}
                       >
                         {m}m
                       </button>

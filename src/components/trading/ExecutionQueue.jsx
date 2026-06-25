@@ -19,6 +19,7 @@ export default function ExecutionQueue({
   onFreeze,
   onStartWatch,
   onStopWatch,
+  defaultWatchMinutes = 60,
   onCreateDemo,
   isDemoLoading,
   executionMode = "safe"
@@ -98,6 +99,7 @@ export default function ExecutionQueue({
               transition={{ delay: index * 0.05 }}
               className={cn(
                 "rounded-xl border overflow-hidden",
+                isWatching ? "bg-slate-800/80 border-2 border-cyan-400/70 shadow-[0_0_20px_rgba(34,211,238,0.25)]" :
                 isFrozen ? "bg-slate-800/80 border-cyan-500/50" :
                 isActive ? "bg-slate-800/80 border-slate-600" : "bg-slate-800/40 border-slate-700/50"
               )}
@@ -122,6 +124,12 @@ export default function ExecutionQueue({
                     {exec.order_type === 'exit' && (
                       <span className="px-2 py-0.5 rounded text-xs font-bold bg-orange-500 text-orange-950">
                         EXIT
+                      </span>
+                    )}
+                    {isWatching && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/60">
+                        <Eye className="w-3 h-3" />
+                        WATCHING · {watchMinutesLeft}m
                       </span>
                     )}
                     <span className={cn(
@@ -153,8 +161,8 @@ export default function ExecutionQueue({
                     )}
                     {exec.intent_id && isActive && (
                       <button
-                        onClick={() => isWatching ? onStopWatch?.(exec) : onStartWatch?.({ exec, minutes: 60 })}
-                        title={isWatching ? "Stop watching for entry threshold" : "Watch until entry threshold (60min)"}
+                        onClick={() => isWatching ? onStopWatch?.(exec) : onStartWatch?.({ exec, minutes: defaultWatchMinutes })}
+                        title={isWatching ? "Stop watching for entry threshold" : `Watch until entry threshold (${defaultWatchMinutes}min)`}
                         className={cn(
                           "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors",
                           isWatching

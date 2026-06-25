@@ -20,6 +20,7 @@ export default function SwipeDeck({
   isLoading = false,
   tickers = [],
   tradingviewChartId,
+  defaultWatchMinutes,
   onCreateDemo,
   isDemoLoading = false
 }) {
@@ -127,6 +128,7 @@ export default function SwipeDeck({
                     isEnabled={isEnabled}
                     dayPeakMove={dayPeakMove}
                     tradingviewChartId={tradingviewChartId}
+                    defaultWatchMinutes={defaultWatchMinutes}
                     style={{
                       scale: 1 - index * 0.05,
                       y: index * 10,
