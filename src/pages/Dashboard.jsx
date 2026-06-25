@@ -377,6 +377,9 @@ export default function Dashboard() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['executions'] });
       toast.success(data.frozen ? 'Order frozen — timer paused' : 'Order unfrozen');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || 'Failed to freeze order');
     }
   });
 

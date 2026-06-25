@@ -63,6 +63,12 @@ export default function ExecutionQueue({
           const isActive = ["pending", "executing"].includes(exec.status);
           const isFailed = exec.status === "failed";
           const isFrozen = !!exec.frozen;
+          // Freezing only pauses the safe-mode delay timer (executionScheduler.ts
+          // only checks `frozen` for status==='pending' rows with a real
+          // delay_expires_at). "executing" orders have already been forwarded
+          // to the broker immediately (full mode / immediate-exit) with no
+          // delay to pause, so showing Freeze there is a no-op that looks broken.
+          const isFreezable = exec.status === "pending";
 
           // Derive strategy label from grade_snapshot or raw_payload
           let strategyLabel = null;
@@ -121,7 +127,7 @@ export default function ExecutionQueue({
                     <span className="text-xs text-slate-500">
                       {(exec.created_at || exec.created_date) && format(new Date(exec.created_at || exec.created_date), "HH:mm:ss")}
                     </span>
-                    {isActive && (
+                    {isFreezable && (
                       <button
                         onClick={() => onFreeze?.(exec)}
                         title={isFrozen ? "Unfreeze order" : "Freeze order (pause timer)"}

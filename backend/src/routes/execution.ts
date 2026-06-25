@@ -831,6 +831,14 @@ router.post('/:id/freeze', async (req: Request, res: Response) => {
     const execution = await prisma.execution.findUnique({ where: { id } });
     if (!execution) return res.status(404).json({ error: 'Execution not found' });
 
+    // frozen is only ever checked by executionScheduler.ts for status==='pending'
+    // rows with a real delay_expires_at. Orders already in 'executing' (full mode /
+    // immediate-exit) were forwarded to the broker with no delay to pause - freezing
+    // them would silently do nothing while the UI claims the timer is paused.
+    if (execution.status !== 'pending') {
+      return res.status(400).json({ error: `Cannot freeze a ${execution.status} order - no delay timer to pause` });
+    }
+
     const updated = await prisma.execution.update({
       where: { id },
       data: { frozen: !execution.frozen }
