@@ -337,7 +337,7 @@ export default function PositionsList({
                   )}
                 >
                   <Activity className="w-4 h-4 mr-1" />
-                  {isMonitoring ? 'Stop Live State' : 'Live State'}
+                  {isMonitoring ? 'Stop Momentum Live State' : 'Momentum Live State'}
                 </Button>
 
                 {/* Flatten */}
