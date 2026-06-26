@@ -138,8 +138,6 @@ model ExecutionSettings {
   pushover_on_sec           Boolean @default(true)  // Push when SEC filing found (sent by SEC scanner)
   pushover_on_mode_v_short  Boolean @default(false) // Push only for Mode V Short verified trades
   pushover_on_wait_upgrade  Boolean @default(true)  // Push when WAIT ticker upgrades to entry signal
-  pushover_on_unconfirmed   Boolean @default(true)  // Push when an executed/forwarded order gets no CONFIRMED fill within unconfirmed_alert_minutes
-  unconfirmed_alert_minutes Int     @default(30)     // How long to wait for a CONFIRMED webhook before alerting (matches the CONFIRMED-match extended window)
 
   // Time-based mode scheduling
   use_time_schedules   Boolean @default(false)
@@ -194,7 +192,6 @@ model Execution {
   filled_quantity    Int?      // Quantity filled so far (accumulates across partial fills)
   remaining_quantity Int?      // Quantity still pending fill
   error_message      String?
-  unconfirmed_alert_sent Boolean @default(false) // dedupe flag - true once the no-CONFIRMED-fill pushover alert has fired for this row
 
   // Raw payload for broker forwarding (TradingView ORDER format)
   raw_payload      String?   // JSON: original/constructed order payload

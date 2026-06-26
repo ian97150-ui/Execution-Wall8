@@ -113,8 +113,6 @@ router.put('/', async (req: Request, res: Response) => {
       pushover_on_sec,
       pushover_on_mode_v_short,
       pushover_on_wait_upgrade,
-      pushover_on_unconfirmed,
-      unconfirmed_alert_minutes,
       auto_sub_mode,
       default_watch_minutes
     } = req.body;
@@ -164,8 +162,6 @@ router.put('/', async (req: Request, res: Response) => {
     if (pushover_on_sec !== undefined) updateData.pushover_on_sec = pushover_on_sec;
     if (pushover_on_mode_v_short !== undefined) updateData.pushover_on_mode_v_short = pushover_on_mode_v_short;
     if (pushover_on_wait_upgrade !== undefined) updateData.pushover_on_wait_upgrade = pushover_on_wait_upgrade;
-    if (pushover_on_unconfirmed !== undefined) updateData.pushover_on_unconfirmed = pushover_on_unconfirmed;
-    if (unconfirmed_alert_minutes !== undefined) updateData.unconfirmed_alert_minutes = unconfirmed_alert_minutes;
     if (auto_sub_mode !== undefined) updateData.auto_sub_mode = auto_sub_mode;
     if (default_watch_minutes !== undefined) updateData.default_watch_minutes = Math.min(Math.max(Number(default_watch_minutes) || 60, 5), 240);
 

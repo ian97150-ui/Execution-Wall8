@@ -91,7 +91,6 @@ export default function Settings() {
         pushover_on_execution: settings.pushover_on_execution !== 0 && settings.pushover_on_execution !== false,
         pushover_on_exit: settings.pushover_on_exit !== 0 && settings.pushover_on_exit !== false,
         pushover_on_close: settings.pushover_on_close !== 0 && settings.pushover_on_close !== false,
-        pushover_on_unconfirmed: settings.pushover_on_unconfirmed !== 0 && settings.pushover_on_unconfirmed !== false,
         pushover_on_sec: settings.pushover_on_sec !== 0 && settings.pushover_on_sec !== false,
         pushover_on_mode_v_short: settings.pushover_on_mode_v_short !== 0 && settings.pushover_on_mode_v_short !== false,
         auto_sub_mode: settings.auto_sub_mode || null,
@@ -686,14 +685,6 @@ export default function Settings() {
                     <Switch
                       checked={formData.pushover_on_close}
                       onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_close: checked }))}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-2 rounded bg-slate-800/30" title="Alerts if an order is forwarded to the broker but no CONFIRMED fill webhook arrives within the alert window (default 30 min) - catches silent/stuck fills.">
-                    <span className="text-xs text-slate-400">No fill confirmation received</span>
-                    <Switch
-                      checked={formData.pushover_on_unconfirmed}
-                      onCheckedChange={(checked) => setFormData(f => ({ ...f, pushover_on_unconfirmed: checked }))}
                     />
                   </div>
 
