@@ -1144,6 +1144,763 @@ def print_pretrade(p: Dict):
     print()
 
 
+def replay_pretrade(ticker: str, bars: List[dict], ref_price: float = None,
+                    min_persist_bars: int = 3) -> Dict:
+    """
+    Bar-by-bar historical replay of the pre-trade snapshot. Walks the day's
+    bars chronologically, re-running assess_pretrade() on bars[:i] at each
+    step - never on the full array. This is the critical part: at step i,
+    the reference price (session low) is recomputed from bars[:i] only,
+    exactly mirroring what the live --pretrade tool would have shown in
+    real time. Using the full day's eventual low from the start would be
+    look-ahead bias - it'd show a misleadingly clean picture by knowing
+    where the bottom was before the bottom had actually been made.
+
+    Returns two logs:
+      'transitions' - every time the OFFICIAL state (the one classify_state
+        actually returns, after priority resolution) holds for at least
+        min_persist_bars consecutive bars, logged at the moment it first
+        appeared. Bar-by-bar classification is sensitive by design - built
+        for fast reaction during live monitoring - so for any reasonably
+        volatile stock, single-bar blips that revert within a bar or two
+        are common and don't represent a real regime change. Requiring
+        persistence filters those out without changing what classify_state
+        computes at any individual bar - only what counts as a transition
+        worth reporting. Set min_persist_bars=1 to see every raw change.
+      'first_met' - the first bar-time each of the seven named conditions
+        was independently true, even if a higher-priority condition had
+        already "won" that bar and was the one actually displayed. This is
+        the fuller audit trail - e.g. CONTINUATION's condition might have
+        first been satisfied several bars before it ever became the
+        displayed state, if LIQUIDITY_VACUUM was winning priority then.
+        Deliberately NOT debounced - catching even a single-bar moment a
+        condition was true is exactly what this log is for.
+    """
+    transitions, first_met, warnings, raw_states = [], {}, [], []
+    committed_state, prev_ref = None, None
+    candidate_state, candidate_since, candidate_since_idx, candidate_count, candidate_snapshot = \
+        None, None, None, 0, None
+
+    for i in range(3, len(bars) + 1):  # need >=3 bars for compute_derivatives
+        window = bars[:i]
+        p = assess_pretrade(ticker, window, ref_price=ref_price)
+        if not p:
+            continue
+        t, idx = window[-1].get('time', ''), i - 1
+        raw_states.append({'idx': idx, 'time': t, 'state': p['state']})
+
+        # ref_price is a running minimum across the whole replay - it can
+        # only ever decrease, never recover. That means a single corrupted
+        # or anomalous low tick (common in thin OTC premarket data) doesn't
+        # just distort one bar - it silently drags down the denominator for
+        # every move_pct calculation for the REST of the session, with no
+        # way to self-correct. Flag any single-step drop >25% as suspicious
+        # rather than letting it propagate invisibly.
+        if prev_ref is not None and prev_ref > 0 and p['ref_price'] < prev_ref * 0.75:
+            warnings.append({'time': t, 'type': 'ref_price_drop',
+                             'from': prev_ref, 'to': p['ref_price']})
+        prev_ref = p['ref_price']
+
+        # A single bar at >50x normal volume is either a genuine, rare
+        # event or (more often, for thin OTC names) a data artifact -
+        # flag it either way rather than silently treating it as trustworthy.
+        if p['volume_velocity'] > 50:
+            warnings.append({'time': t, 'type': 'volume_spike',
+                             'vol_vel': p['volume_velocity']})
+
+        # Persistence filter: a state change only becomes an official
+        # transition once the SAME new state has held for min_persist_bars
+        # consecutive bars. Logged at candidate_since (when it first
+        # appeared) using candidate_snapshot (the reading AT that moment),
+        # not the confirmation bar - the row should describe when and how
+        # the transition actually started, not when we became confident
+        # about it.
+        if p['state'] == committed_state:
+            candidate_state, candidate_count, candidate_snapshot = None, 0, None
+        else:
+            if p['state'] == candidate_state:
+                candidate_count += 1
+            else:
+                candidate_state, candidate_since, candidate_since_idx, candidate_count, candidate_snapshot = \
+                    p['state'], t, idx, 1, p
+            if candidate_count >= min_persist_bars:
+                transitions.append({'time': candidate_since, 'idx': candidate_since_idx,
+                                    **candidate_snapshot})
+                committed_state = candidate_state
+                candidate_state, candidate_count, candidate_snapshot = None, 0, None
+
+        for name, met in p['conditions'].items():
+            if met and name not in first_met:
+                first_met[name] = {'time': t, 'move_pct': p['move_pct']}
+
+    return {'ticker': ticker, 'transitions': transitions, 'first_met': first_met,
+           'raw_states': raw_states, 'total_bars': len(bars), 'warnings': warnings,
+           'min_persist_bars': min_persist_bars}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# "First appearance" study - for each of the five named conditions below,
+# find the first time it appears (under two different definitions of
+# "appears") and measure how cleanly price subsequently fell from there.
+# Built to answer: does FAILED_BREAKOUT's first appearance predict a
+# different quality of decline than EXHAUSTION's, ABSORPTION's, etc.?
+# Deliberately excludes LIQUIDITY_VACUUM (a data-trustworthiness flag, not
+# a directional read) and AT_SESSION_LOW/DOWNSIDE_PRESSURE (the no-move-yet
+# baseline) - those don't fit the "did the subsequent fall look clean"
+# question the same way.
+# ─────────────────────────────────────────────────────────────────────────
+
+FIRST_APPEARANCE_STATES = ('FAILED_BREAKOUT', 'DISTRIBUTION', 'ABSORPTION',
+                           'EXHAUSTION', 'CONTINUATION')
+
+
+def find_appearances(ticker: str, bars: List[dict], ref_price: float = None,
+                     min_persist_bars: int = 3,
+                     target_states=FIRST_APPEARANCE_STATES) -> Dict:
+    """
+    Finds EVERY occurrence of each target state in a session - under three
+    anchor definitions - each tagged with its occurrence number (1, 2,
+    3...) within the session.
+
+    'raw'       - the first bar of every distinct run, regardless of how
+                  long that run held (run_length is attached to each entry,
+                  so any other threshold can be sliced from this directly).
+    'blip'      - the subset of raw runs that held for exactly 1 bar before
+                  reverting to something else. A true single-bar flicker,
+                  as distinct from 'raw' which also includes longer runs
+                  that simply didn't reach confirmation. Useful for
+                  checking whether outcome quality actually degrades
+                  smoothly with run length, or whether there's a sharp
+                  cliff right at the confirmation threshold.
+    'confirmed' - the first bar of every run that held for min_persist_bars
+                  consecutive bars (same rule as --replay's transition log).
+
+    Derived entirely from a single replay_pretrade() call's own output -
+    raw_states for 'raw'/'blip', transitions for 'confirmed' - rather than
+    a separate persistence implementation. This matters concretely: an
+    earlier version of this function used its own simplified
+    consecutive-streak counter, which (proven via direct test against the
+    sequence A,A,A,B,B,A,A,A) would silently find a SECOND "confirmed A"
+    occurrence when price returns to an already-committed state after a
+    brief blip - something replay_pretrade()'s real logic correctly does
+    NOT log as a new transition, since it's still the same regime, not a
+    new event. Reusing transitions/raw_states directly here is what
+    guarantees this can't happen - there's only one implementation of
+    "what counts as a transition" left, not two that can disagree. The
+    same property holds for 'blip': it is NOT simply "raw runs of length
+    <3" mirrored against 'confirmed' - a run that's part of an
+    already-committed state returning after a brief excursion elsewhere
+    can have any raw run length without ever needing reconfirmation, so
+    'blip' and 'confirmed' are measured independently here, not derived
+    from each other.
+
+    Returns {state: {'raw': [...], 'blip': [...], 'confirmed': [...]}} -
+    each list entry is {'idx','time','price','occurrence'}, plus
+    'run_length' for 'raw' and 'blip' entries specifically (not meaningful
+    for 'confirmed', which already requires >=min_persist_bars by
+    definition), in session order.
+    """
+    rep = replay_pretrade(ticker, bars, ref_price=ref_price, min_persist_bars=min_persist_bars)
+
+    raw_runs, prev_state = [], None
+    for rs in rep['raw_states']:
+        if rs['state'] != prev_state:
+            if raw_runs:
+                raw_runs[-1]['run_length'] = rs['idx'] - raw_runs[-1]['idx']
+            raw_runs.append({**rs, 'run_length': None})
+            prev_state = rs['state']
+    if raw_runs:
+        raw_runs[-1]['run_length'] = rep['raw_states'][-1]['idx'] - raw_runs[-1]['idx'] + 1
+
+    raw_occ = {s: [] for s in target_states}
+    blip_occ = {s: [] for s in target_states}
+    for i, rs in enumerate(raw_runs):
+        if rs['state'] in target_states:
+            entry = {'idx': rs['idx'], 'time': rs['time'],
+                     'price': float(bars[rs['idx']].get('close', 0)),
+                     'run_length': rs['run_length'],
+                     'occurrence': len(raw_occ[rs['state']]) + 1}
+            raw_occ[rs['state']].append(entry)
+            # The session's LAST run is right-censored -- if it ran right up
+            # to the final available bar, we don't actually know whether it
+            # would have persisted longer given more data. Counting that as
+            # a confirmed 1-bar blip would be a measurement error, not a
+            # finding, so it's excluded from 'blip' specifically (still
+            # included in 'raw', which doesn't make any claim about how
+            # briefly something held).
+            is_last_run = (i == len(raw_runs) - 1)
+            if rs['run_length'] == 1 and not is_last_run:
+                blip_occ[rs['state']].append({**entry, 'occurrence': len(blip_occ[rs['state']]) + 1})
+
+    confirmed_occ = {s: [] for s in target_states}
+    for tr in rep['transitions']:
+        if tr['state'] in target_states:
+            confirmed_occ[tr['state']].append({
+                'idx': tr['idx'], 'time': tr['time'],
+                'price': float(bars[tr['idx']].get('close', tr.get('current', 0))),
+                'occurrence': len(confirmed_occ[tr['state']]) + 1})
+
+    return {s: {'raw': raw_occ[s], 'blip': blip_occ[s], 'confirmed': confirmed_occ[s]}
+           for s in target_states}
+
+
+def find_first_appearances(ticker: str, bars: List[dict], ref_price: float = None,
+                           min_persist_bars: int = 3,
+                           target_states=FIRST_APPEARANCE_STATES) -> Dict:
+    """
+    First-occurrence convenience wrapper around find_appearances() - just
+    occurrence #1 of each list, reshaped to match the {'raw':{...} or None,
+    'blip':{...} or None, 'confirmed':{...} or None} format the existing
+    first-appearance study expects. Kept as a thin wrapper specifically so
+    "first" can never compute anything differently than "every" does for
+    the same bar data - there is exactly one place occurrences get found.
+    """
+    every = find_appearances(ticker, bars, ref_price, min_persist_bars, target_states)
+    return {s: {'raw': (every[s]['raw'][0] if every[s]['raw'] else None),
+               'blip': (every[s]['blip'][0] if every[s]['blip'] else None),
+               'confirmed': (every[s]['confirmed'][0] if every[s]['confirmed'] else None)}
+           for s in target_states}
+
+
+def _decline_outcome_metrics(bars: List[dict], anchor_idx: int, window_end_idx: int) -> Dict:
+    """
+    "Downward resistance" metrics from an anchor bar forward to a window's
+    end (or session end, whichever comes first).
+
+    total_decline_pct: % from anchor close to the window's trough close.
+                       <=0 means price never fell below the anchor at all -
+                       tracked as no_decline=True, a real finding in its own
+                       right, not folded into efficiency as if it were 0.
+    path_efficiency:   total_decline / path_length, where path_length sums
+                       EVERY bar-to-bar move (up and down) from anchor to
+                       trough, not the net. ~1.0 = price moved almost
+                       straight down with minimal counter-bounces; lower =
+                       real back-and-forth resistance along the way even
+                       though it eventually got there. None if no_decline.
+    max_counter_bounce_pct: the single largest retracement back UP on the
+                       way to the trough, as % of the decline achieved up to
+                       that point - the more intuitive "how hard did it
+                       fight back" companion to path_efficiency.
+    time_to_trough_bars: bars from anchor to the trough.
+    """
+    if anchor_idx >= len(bars):
+        return {'no_decline': True, 'total_decline_pct': None,
+                'path_efficiency': None, 'max_counter_bounce_pct': None,
+                'time_to_trough_bars': None}
+    p0 = float(bars[anchor_idx].get('close', 0))
+    seg = bars[anchor_idx:window_end_idx + 1]
+    if len(seg) < 2 or p0 <= 0:
+        return {'no_decline': True, 'total_decline_pct': None,
+                'path_efficiency': None, 'max_counter_bounce_pct': None,
+                'time_to_trough_bars': None}
+
+    closes = [float(b.get('close', p0)) for b in seg]
+    trough = min(closes)
+    trough_idx = closes.index(trough)
+    total_decline = p0 - trough
+
+    if total_decline <= 0:
+        return {'no_decline': True, 'total_decline_pct': round((trough - p0) / p0 * 100, 2),
+                'path_efficiency': None, 'max_counter_bounce_pct': None,
+                'time_to_trough_bars': None}
+
+    path_length = sum(abs(closes[i] - closes[i - 1]) for i in range(1, trough_idx + 1))
+    path_efficiency = (total_decline / path_length) if path_length > 0 else None
+
+    running_low, max_bounce_pct = closes[0], 0.0
+    for c in closes[1:trough_idx + 1]:
+        if c < running_low:
+            running_low = c
+        else:
+            decline_so_far = p0 - running_low
+            if decline_so_far > 0:
+                max_bounce_pct = max(max_bounce_pct, (c - running_low) / decline_so_far * 100)
+
+    return {'no_decline': False,
+           'total_decline_pct': round(total_decline / p0 * 100, 2),
+           'path_efficiency': round(path_efficiency, 3) if path_efficiency is not None else None,
+           'max_counter_bounce_pct': round(max_bounce_pct, 1),
+           'time_to_trough_bars': trough_idx}
+
+
+def first_appearance_study(ticker: str, bars: List[dict], ref_price: float = None,
+                           min_persist_bars: int = 3,
+                           window_minutes=(15, 30, 60, None)) -> Dict:
+    """
+    Ties find_first_appearances() and _decline_outcome_metrics() together
+    across a set of fixed lookforward windows. window_minutes entries are
+    in minutes (assumes ~1min bars, matching this project's established
+    Tradier interval=1min pulls) - None means "to the end of the available
+    session data," i.e. through end of postmarket given bars already span
+    04:00-20:00 ET.
+
+    Returns {state: {anchor_type: None | {'anchor':..., 'windows': {label: metrics}}}}
+    """
+    anchors = find_first_appearances(ticker, bars, ref_price, min_persist_bars)
+    results = {}
+    for state, by_type in anchors.items():
+        results[state] = {}
+        for anchor_type, anchor in by_type.items():
+            if anchor is None:
+                results[state][anchor_type] = None
+                continue
+            a_idx = anchor['idx']
+            results[state][anchor_type] = {'anchor': anchor, 'windows': {}}
+            for wm in window_minutes:
+                if wm is None:
+                    end_idx, label = len(bars) - 1, 'to_session_end'
+                else:
+                    end_idx, label = min(a_idx + wm, len(bars) - 1), f'{wm}min'
+                results[state][anchor_type]['windows'][label] = \
+                    _decline_outcome_metrics(bars, a_idx, end_idx)
+    return results
+
+
+def aggregate_first_appearance(session_results: List[Dict]) -> Dict:
+    """
+    Rolls up a list of first_appearance_study() outputs (one per session)
+    into, for each (state, anchor_type, window): n, % no_decline, median
+    path_efficiency, median max_counter_bounce_pct, median time_to_trough.
+    Same sample-size discipline used everywhere else in this tool -
+    [n10-29 caution], [n<10 anecdotal] - since some states (DISTRIBUTION/ABSORPTION
+    especially, given their stricter volume requirements) may end up with
+    far fewer qualifying sessions than others even from a large batch.
+    """
+    import statistics
+    buckets = {}
+    for sr in session_results:
+        for state, by_type in sr.items():
+            for anchor_type, data in by_type.items():
+                if data is None:
+                    continue
+                for window, metrics in data['windows'].items():
+                    buckets.setdefault((state, anchor_type, window), []).append(metrics)
+
+    summary = {}
+    for key, ms in buckets.items():
+        n = len(ms)
+        eff  = [m['path_efficiency'] for m in ms if m['path_efficiency'] is not None]
+        bnc  = [m['max_counter_bounce_pct'] for m in ms if m['max_counter_bounce_pct'] is not None]
+        ttt  = [m['time_to_trough_bars'] for m in ms if m['time_to_trough_bars'] is not None]
+        nd_n = sum(1 for m in ms if m['no_decline'])
+        summary[key] = {
+            'n': n, 'flag': '*' if n < 10 else ('~' if n < 30 else ''),
+            'no_decline_pct': round(nd_n / n * 100, 1) if n else None,
+            'median_path_efficiency': round(statistics.median(eff), 3) if eff else None,
+            'median_max_counter_bounce_pct': round(statistics.median(bnc), 1) if bnc else None,
+            'median_time_to_trough_bars': statistics.median(ttt) if ttt else None,
+        }
+    return summary
+
+
+def print_first_appearance_summary(summary: Dict):
+    """Display for the aggregated study - one block per state, raw vs
+    confirmed anchor side by side, one row per window."""
+    if not summary:
+        print("  No sessions contributed any first-appearance data.")
+        return
+    print(f"\n{'='*90}")
+    print(f"{BOLD}  First-Appearance Study - downward resistance by classification{RST}")
+    print('=' * 90)
+    for state in FIRST_APPEARANCE_STATES:
+        rows = {k: v for k, v in summary.items() if k[0] == state}
+        if not rows:
+            print(f"\n  {BOLD}{state}{RST}  {DIM}- never appeared in any session in this batch{RST}")
+            continue
+        print(f"\n  {BOLD}{state}{RST}")
+        for anchor_type in ('raw', 'blip', 'confirmed'):
+            sub = {k: v for k, v in rows.items() if k[1] == anchor_type}
+            if not sub:
+                continue
+            print(f"    {DIM}{anchor_type} anchor{RST}")
+            for (st, at, window), s in sorted(sub.items(), key=lambda kv: kv[0][2]):
+                print(f"      {window:<16} n={s['n']:<4}{s['flag']:<2} "
+                      f"no_decline={s['no_decline_pct']}%  "
+                      f"path_eff={s['median_path_efficiency']}  "
+                      f"max_bounce={s['median_max_counter_bounce_pct']}%  "
+                      f"time_to_trough={s['median_time_to_trough_bars']}bars")
+    print()
+
+
+def every_appearance_study(ticker: str, bars: List[dict], ref_price: float = None,
+                           min_persist_bars: int = 3,
+                           window_minutes=(15, 30, 60, None)) -> Dict:
+    """
+    Like first_appearance_study(), but measures EVERY occurrence of each
+    target state within the session, not just the first - each tagged
+    with its occurrence number (1, 2, 3...), so results can be sliced by
+    that dimension later if "does a later occurrence behave differently
+    than the first one" turns out to matter on real data.
+
+    Built on find_appearances() - the same single source of truth as
+    first_appearance_study() now uses - so there's no separate persistence
+    logic here that could disagree with what --replay's transition log,
+    or the first-appearance study, would say about the same bars.
+
+    Returns {state: {anchor_type: [{'anchor':..., 'occurrence':N,
+    'windows':{label: metrics}}, ...]}} - a LIST per (state, anchor_type),
+    one entry per occurrence, vs. first_appearance_study()'s single
+    dict-or-None.
+    """
+    occurrences = find_appearances(ticker, bars, ref_price, min_persist_bars)
+    results = {}
+    for state, by_type in occurrences.items():
+        results[state] = {}
+        for anchor_type, occ_list in by_type.items():
+            results[state][anchor_type] = []
+            for anchor in occ_list:
+                a_idx = anchor['idx']
+                windows = {}
+                for wm in window_minutes:
+                    if wm is None:
+                        end_idx, label = len(bars) - 1, 'to_session_end'
+                    else:
+                        end_idx, label = min(a_idx + wm, len(bars) - 1), f'{wm}min'
+                    windows[label] = _decline_outcome_metrics(bars, a_idx, end_idx)
+                results[state][anchor_type].append(
+                    {'anchor': anchor, 'occurrence': anchor['occurrence'], 'windows': windows})
+    return results
+
+
+def aggregate_every_appearance(session_results: List[Dict],
+                               split_by_occurrence: bool = False) -> Dict:
+    """
+    Rolls up a list of every_appearance_study() outputs across many
+    sessions.
+
+    split_by_occurrence=False (default): pools ALL occurrences together
+    regardless of whether a given instance was a session's 1st, 2nd, or
+    5th time that state appeared - directly answering "does every
+    appearance of DISTRIBUTION predict X", not just the first one.
+
+    split_by_occurrence=True: additionally buckets by occurrence number
+    (1, 2, 3+ - later ones grouped together so the tail doesn't thin into
+    ever-smaller singleton buckets for 4th/5th/6th occurrences), so you can
+    check whether later occurrences in the same session behave differently
+    than the first. A genuinely separate question from the pooled version,
+    off by default since it splits the same underlying data further and
+    will hit small-sample territory faster - check the n/flag carefully
+    if you turn this on.
+    """
+    import statistics
+    buckets = {}
+    for sr in session_results:
+        for state, by_type in sr.items():
+            for anchor_type, occ_list in by_type.items():
+                for occ in occ_list:
+                    occ_bucket = min(occ['occurrence'], 3) if split_by_occurrence else 'all'
+                    for window, metrics in occ['windows'].items():
+                        buckets.setdefault((state, anchor_type, occ_bucket, window), []) \
+                               .append(metrics)
+
+    summary = {}
+    for key, ms in buckets.items():
+        n = len(ms)
+        eff  = [m['path_efficiency'] for m in ms if m['path_efficiency'] is not None]
+        bnc  = [m['max_counter_bounce_pct'] for m in ms if m['max_counter_bounce_pct'] is not None]
+        ttt  = [m['time_to_trough_bars'] for m in ms if m['time_to_trough_bars'] is not None]
+        nd_n = sum(1 for m in ms if m['no_decline'])
+        summary[key] = {
+            'n': n, 'flag': '*' if n < 10 else ('~' if n < 30 else ''),
+            'no_decline_pct': round(nd_n / n * 100, 1) if n else None,
+            'median_path_efficiency': round(statistics.median(eff), 3) if eff else None,
+            'median_max_counter_bounce_pct': round(statistics.median(bnc), 1) if bnc else None,
+            'median_time_to_trough_bars': statistics.median(ttt) if ttt else None,
+        }
+    return summary
+
+
+def print_every_appearance_summary(summary: Dict, split_by_occurrence: bool = False):
+    """Display for the aggregated every-occurrence study. Same row format
+    as print_first_appearance_summary(), with an extra occurrence-number
+    grouping layer when split_by_occurrence was used to build the summary."""
+    if not summary:
+        print("  No sessions contributed any data.")
+        return
+    title = ("Every-Appearance Study - split by occurrence number (1st/2nd/3rd+)"
+            if split_by_occurrence else
+            "Every-Appearance Study - downward resistance, ALL occurrences pooled")
+    print(f"\n{'='*90}")
+    print(f"{BOLD}  {title}{RST}")
+    print('=' * 90)
+    for state in FIRST_APPEARANCE_STATES:
+        rows = {k: v for k, v in summary.items() if k[0] == state}
+        if not rows:
+            print(f"\n  {BOLD}{state}{RST}  {DIM}- never appeared in any session in this batch{RST}")
+            continue
+        print(f"\n  {BOLD}{state}{RST}")
+        for anchor_type in ('raw', 'blip', 'confirmed'):
+            sub = {k: v for k, v in rows.items() if k[1] == anchor_type}
+            if not sub:
+                continue
+            print(f"    {DIM}{anchor_type} anchor{RST}")
+            occ_buckets = sorted({k[2] for k in sub}, key=lambda x: (x != 'all', x))
+            for ob in occ_buckets:
+                sub2 = {k: v for k, v in sub.items() if k[2] == ob}
+                if ob != 'all':
+                    label = f"occurrence {ob}{'+' if ob == 3 else ''}"
+                    print(f"      {DIM}{label}{RST}")
+                indent = "        " if ob != 'all' else "      "
+                for (st, at, oc, window), s in sorted(sub2.items(), key=lambda kv: kv[0][3]):
+                    print(f"{indent}{window:<16} n={s['n']:<4}{s['flag']:<2} "
+                         f"no_decline={s['no_decline_pct']}%  "
+                         f"path_eff={s['median_path_efficiency']}  "
+                         f"max_bounce={s['median_max_counter_bounce_pct']}%  "
+                         f"time_to_trough={s['median_time_to_trough_bars']}bars")
+    print()
+
+
+def categorize_first_appearance(ticker: str, bars: List[dict], ref_price: float = None,
+                                min_persist_bars: int = 3,
+                                target_states=FIRST_APPEARANCE_STATES) -> Dict:
+    """
+    For each target state, categorizes the FIRST raw occurrence in a
+    session into one of three groups, based on whether and when it
+    actually persisted:
+
+      'immediate_confirm' - the first raw occurrence WAS the first
+        confirmed occurrence (same bar index). The signal held right away,
+        no false start.
+      'late_confirm' - the first raw occurrence reverted before reaching
+        min_persist_bars, but the state DID confirm later in the same
+        session via a different occurrence. A false start, but the right
+        underlying read eventually showed up.
+      'blip_only' - the state appeared raw at least once, but never
+        confirmed anywhere in the session. A pure single-bar-or-brief blip
+        that reverted with no follow-through at all.
+
+    Built directly on find_appearances() - every confirmed occurrence's
+    index necessarily matches some raw run's starting index (a run that
+    holds 3+ bars is also a run in the raw sequence), so the first raw
+    occurrence "is" the first confirmed one exactly when their indices
+    match. This is what makes the 'raw' vs 'confirmed' split shown by
+    first_appearance_study() potentially misleading for low-confirmation-
+    rate states: if only ~2% of a state's raw occurrences ever confirm
+    (true of EXHAUSTION in real testing), the 'raw' bucket is overwhelmingly
+    blip_only by sheer numbers, not a balanced cross-section of "the state
+    in general."
+
+    Returns {state: {'category': str, 'anchor': {idx,time,price}} or None
+    if the state never appeared raw at all this session}.
+    """
+    occurrences = find_appearances(ticker, bars, ref_price, min_persist_bars, target_states)
+    result = {}
+    for state in target_states:
+        raw_list = occurrences[state]['raw']
+        confirmed_list = occurrences[state]['confirmed']
+        if not raw_list:
+            result[state] = None
+            continue
+        first_raw = raw_list[0]
+        if confirmed_list and first_raw['idx'] == confirmed_list[0]['idx']:
+            category = 'immediate_confirm'
+        elif confirmed_list:
+            category = 'late_confirm'
+        else:
+            category = 'blip_only'
+        result[state] = {'category': category, 'anchor': first_raw}
+    return result
+
+
+def blip_vs_confirmed_study(ticker: str, bars: List[dict], ref_price: float = None,
+                            min_persist_bars: int = 3,
+                            window_minutes=(15, 30, 60, None)) -> Dict:
+    """
+    Ties categorize_first_appearance() to the same _decline_outcome_metrics()
+    used everywhere else in this study, anchored at the first raw
+    occurrence in every case (the category just describes what happened to
+    that same occurrence afterward - the anchor point itself never moves).
+
+    Returns {state: None | {'category': str, 'windows': {label: metrics}}}
+    """
+    cats = categorize_first_appearance(ticker, bars, ref_price, min_persist_bars)
+    results = {}
+    for state, info in cats.items():
+        if info is None:
+            results[state] = None
+            continue
+        a_idx = info['anchor']['idx']
+        windows = {}
+        for wm in window_minutes:
+            if wm is None:
+                end_idx, label = len(bars) - 1, 'to_session_end'
+            else:
+                end_idx, label = min(a_idx + wm, len(bars) - 1), f'{wm}min'
+            windows[label] = _decline_outcome_metrics(bars, a_idx, end_idx)
+        results[state] = {'category': info['category'], 'windows': windows}
+    return results
+
+
+def aggregate_blip_vs_confirmed(session_results: List[Dict]) -> Dict:
+    """
+    Rolls up a list of blip_vs_confirmed_study() outputs across many
+    sessions, bucketed by (state, category, window). Same n/flag/median
+    discipline as every other aggregation in this study - expect
+    blip_only and late_confirm to be thin for high-confirmation-rate
+    states like FAILED_BREAKOUT (where almost everything is
+    immediate_confirm), and immediate_confirm to be thin for
+    low-confirmation-rate states like EXHAUSTION.
+    """
+    import statistics
+    buckets = {}
+    for sr in session_results:
+        for state, data in sr.items():
+            if data is None:
+                continue
+            for window, metrics in data['windows'].items():
+                buckets.setdefault((state, data['category'], window), []).append(metrics)
+
+    summary = {}
+    for key, ms in buckets.items():
+        n = len(ms)
+        eff  = [m['path_efficiency'] for m in ms if m['path_efficiency'] is not None]
+        bnc  = [m['max_counter_bounce_pct'] for m in ms if m['max_counter_bounce_pct'] is not None]
+        ttt  = [m['time_to_trough_bars'] for m in ms if m['time_to_trough_bars'] is not None]
+        nd_n = sum(1 for m in ms if m['no_decline'])
+        summary[key] = {
+            'n': n, 'flag': '*' if n < 10 else ('~' if n < 30 else ''),
+            'no_decline_pct': round(nd_n / n * 100, 1) if n else None,
+            'median_path_efficiency': round(statistics.median(eff), 3) if eff else None,
+            'median_max_counter_bounce_pct': round(statistics.median(bnc), 1) if bnc else None,
+            'median_time_to_trough_bars': statistics.median(ttt) if ttt else None,
+        }
+    return summary
+
+
+def print_blip_vs_confirmed_summary(summary: Dict):
+    """Display for the blip-vs-confirmed study."""
+    if not summary:
+        print("  No sessions contributed any data.")
+        return
+    print(f"\n{'='*90}")
+    print(f"{BOLD}  Blip vs Confirmed - does the first occurrence's eventual fate change the read?{RST}")
+    print('=' * 90)
+    for state in FIRST_APPEARANCE_STATES:
+        rows = {k: v for k, v in summary.items() if k[0] == state}
+        if not rows:
+            print(f"\n  {BOLD}{state}{RST}  {DIM}- never appeared in any session in this batch{RST}")
+            continue
+        print(f"\n  {BOLD}{state}{RST}")
+        for category in ('immediate_confirm', 'late_confirm', 'blip_only'):
+            sub = {k: v for k, v in rows.items() if k[1] == category}
+            if not sub:
+                print(f"    {DIM}{category}: no sessions in this category{RST}")
+                continue
+            print(f"    {DIM}{category}{RST}")
+            for (st, cat, window), s in sorted(sub.items(), key=lambda kv: kv[0][2]):
+                print(f"      {window:<16} n={s['n']:<4}{s['flag']:<2} "
+                     f"no_decline={s['no_decline_pct']}%  "
+                     f"path_eff={s['median_path_efficiency']}  "
+                     f"max_bounce={s['median_max_counter_bounce_pct']}%  "
+                     f"time_to_trough={s['median_time_to_trough_bars']}bars")
+    print()
+
+
+def print_replay(r: Dict):
+    """Display for --pretrade --replay - a compact transition log, not a
+    printout of every bar."""
+    if not r:
+        print("  No data to replay.")
+        return
+    if not r['transitions']:
+        n_evaluable = max(0, r['total_bars'] - 2)  # loop starts at i=3
+        if n_evaluable < r.get('min_persist_bars', 3):
+            print(f"  Only {n_evaluable} evaluable bar(s) - too few to ever reach "
+                  f"the {r.get('min_persist_bars',3)}-bar persistence threshold. "
+                  f"Try --min-persist 1, or check first_met for the raw (undebounced) signal:")
+            for name, fm in r['first_met'].items():
+                print(f"    {name:<18} first true at {_extract_hhmm(fm['time'])}")
+        else:
+            print("  No state held long enough to count as a transition "
+                  "(check first_met below, or try a lower --min-persist).")
+        return
+    print(f"\n{'='*78}")
+    print(f"{BOLD}  {r['ticker']} - pre-trade replay  "
+          f"({len(r['transitions'])} state changes across {r['total_bars']} bars, "
+          f"min {r.get('min_persist_bars',3)} bars to count as a transition){RST}")
+
+    if r.get('warnings'):
+        print('=' * 78)
+        print(f"  {RED}WARNING - {len(r['warnings'])} anomaly(ies) detected.{RST}")
+        print(f"  {DIM}ref_price is a running minimum across the whole replay - it can only "
+              f"decrease, never recover. A single bad tick here silently distorts every "
+              f"move% calculation for the rest of the session. Treat numbers after the "
+              f"first warning below with real skepticism.{RST}")
+        for w in r['warnings'][:10]:
+            if w['type'] == 'ref_price_drop':
+                pct = (1 - w['to']/w['from'])*100 if w['from'] else 0
+                print(f"    {w['time']:<22} ref_price dropped {pct:.0f}% in one step "
+                      f"(${w['from']:.3f} -> ${w['to']:.3f})")
+            else:
+                print(f"    {w['time']:<22} volume spike: {w['vol_vel']:.1f}x normal in one bar")
+        if len(r['warnings']) > 10:
+            print(f"    ... and {len(r['warnings'])-10} more")
+
+    print('=' * 78)
+    print(f"  {'Time':<8} {'State':<18} {'Move%':>8} {'PriceVel%/min':>14} {'VolVel':>8}")
+    for t in r['transitions']:
+        state_col = {'CONTINUATION':RED2,'EXHAUSTION':GRN,'ABSORPTION':GRN,
+                    'FAILED_BREAKOUT':GRN2,'DISTRIBUTION':GRN,
+                    'LIQUIDITY_VACUUM':YEL,'SPIKE_INITIATION':YEL,
+                    'AT_SESSION_LOW':DIM}.get(t['state'], DIM)
+        pv_pct = (t['price_velocity']/t['current']*100) if t['current'] else 0
+        print(f"  {t['time']:<8} {state_col}{t['state']:<18}{RST} "
+              f"{t['move_pct']:>7.2f}% {pv_pct:>13.3f}% {t['volume_velocity']:>7.2f}x")
+
+    print(f"\n  {BOLD}First moment each condition was independently satisfied{RST}")
+    print(f"  {DIM}(may be earlier than the transition log above, if a higher-"
+          f"priority condition was already winning that bar){RST}")
+    for name in ('AT_SESSION_LOW','LIQUIDITY_VACUUM','DISTRIBUTION','FAILED_BREAKOUT',
+                'ABSORPTION','EXHAUSTION','CONTINUATION'):
+        fm = r['first_met'].get(name)
+        if fm:
+            print(f"    {name:<18} first true at {_extract_hhmm(fm['time']):<8} (move was {fm['move_pct']:+.2f}%)")
+        else:
+            print(f"    {DIM}{name:<18} never satisfied this session{RST}")
+    print()
+
+
+def _count_trailing_state_run(bars: List[dict], entry_price: float,
+                              entry_time: str, target_state: str,
+                              ticker: str = '',
+                              max_check: int = 5) -> int:
+    """
+    Count how many consecutive trailing bars have been classified as
+    target_state, by re-running assess_pretrade() on the last max_check
+    subwindows of bars. Caps at max_check since we only care whether we've
+    reached the 3-bar confirmation threshold - no reason to scan further.
+
+    Used exclusively for the DISTRIBUTION forming/confirmed distinction in
+    the live monitor. The first-appearance study found DISTRIBUTION confirmed
+    (3+ bars) has a qualitatively different outcome profile from blip/raw
+    (path efficiency 0.68 vs 0.455 at 15min, no-decline 2.7% vs 21.5%) -
+    the only classification where the blip-to-confirmed gap is wide enough
+    to meaningfully change the action recommendation. EXHAUSTION/ABSORPTION
+    don't need this because the data showed their raw and blip populations
+    are nearly identical anyway, so confirmation rarely adds information.
+
+    ticker is passed through purely for consistency with assess_pretrade()'s
+    return dict - it has no effect on the state classification.
+
+    Runs assess_pretrade() on the most recent subwindow first, then works
+    backward - stops as soon as the state changes. Performance is negligible
+    for a live monitor polling every 30 seconds (max 5 small assess calls).
+    Note: assess_pretrade() only computes state_run_length for DISTRIBUTION,
+    so there is no recursive cost here when target_state == 'DISTRIBUTION'.
+    """
+    if not bars:
+        return 0
+    count = 0
+    for lookback in range(0, min(max_check, len(bars))):
+        window = bars[:len(bars) - lookback]
+        p = assess_pretrade(ticker or target_state, window, ref_price=entry_price)
+        if p and p.get('state') == target_state:
+            count += 1
+        else:
+            break
+    return count
+
+
 def assess(ticker: str, entry_price: float,
            bars: List[dict], entry_time: str,
            profiles: Dict, rows: List[dict],
@@ -1541,10 +2298,20 @@ def main():
                         help='Pre-trade snapshot (Layer 4/5 only) - no --entry needed')
     parser.add_argument('--ref-price',   type=float,
                         help='Override reference price for --pretrade')
+    parser.add_argument('--replay',      action='store_true',
+                        help='Bar-by-bar historical replay of the session so far '
+                             '(use with --pretrade) - state transition log + first_met, '
+                             'instead of just the current-moment snapshot')
+    parser.add_argument('--min-persist', type=int, default=3,
+                        help='Bars a state must hold before counting as a transition '
+                             'in --replay (default: 3)')
     parser.add_argument('--json',        action='store_true',
                         help='Emit a single JSON object instead of colored CLI text '
                              '(combine with --once for a single snapshot)')
     args = parser.parse_args()
+
+    if args.replay and not args.pretrade:
+        print("ERROR: --replay requires --pretrade"); sys.exit(1)
 
     tradier_key = ''
     db_key = args.db_key or os.environ.get('DATABENTO_KEY','')
@@ -1598,6 +2365,21 @@ def main():
                 ts = datetime.now().strftime('%H:%M:%S')
                 print(f"\n[poll {poll}] {ts} ET")
             bars = fetch_bars(args.ticker, tradier_key, args.date, args.time)
+
+            if args.pretrade and args.replay:
+                if bars:
+                    rep = replay_pretrade(args.ticker, bars, ref_price=args.ref_price,
+                                          min_persist_bars=args.min_persist)
+                    if args.json:
+                        print(json.dumps(rep))
+                    else:
+                        print_replay(rep)
+                else:
+                    if args.json:
+                        print(json.dumps({}))
+                    else:
+                        print(f"  [!] No bars for {args.ticker}")
+                break  # --replay is always a single historical pass, regardless of --once
 
             if args.pretrade:
                 if bars:

@@ -511,9 +511,11 @@ router.get('/pretrade-state', async (req: Request, res: Response) => {
     try { res.write(`event: done\ndata: {}\n\n`); res.end(); } catch {}
   };
 
-  const ticker = (req.query.ticker as string | undefined)?.trim().toUpperCase();
-  const date   = (req.query.date   as string | undefined)?.trim();
-  const time   = (req.query.time   as string | undefined)?.trim();
+  const ticker  = (req.query.ticker as string | undefined)?.trim().toUpperCase();
+  const date    = (req.query.date   as string | undefined)?.trim();
+  const time    = (req.query.time   as string | undefined)?.trim();
+  const history = req.query.history === 'true';
+  const minPersist = (req.query.minPersist as string | undefined)?.trim();
 
   if (!ticker || !date) {
     send('error', { message: 'ticker and date query params are required' });
@@ -570,7 +572,45 @@ router.get('/pretrade-state', async (req: Request, res: Response) => {
     send('result', parsed);
   } catch {
     send('error', { message: 'Failed to parse classifier output' });
+    finish();
+    return;
   }
+
+  // Optional historic pass — bar-by-bar replay of the session so far
+  // (status_inquisit.py --replay), giving the state-transition timeline
+  // instead of just the current-moment snapshot already sent above.
+  // Single extra subprocess call, only when requested, so the common
+  // case (live snapshot only) doesn't pay for it.
+  if (history && !aborted) {
+    const replayArgs = [
+      STATUS_INQUISIT_PATH,
+      '--ticker', ticker,
+      '--pretrade', '--replay',
+      '--date', date,
+      ...(time ? ['--time', time] : []),
+      ...(minPersist ? ['--min-persist', minPersist] : []),
+      '--once', '--json',
+    ];
+    const replayOutput = await new Promise<string>((resolve) => {
+      let buf = '';
+      const proc = spawn(PYTHON_BIN, replayArgs, {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
+               TRADIER_API_KEY: tradierKey },
+      });
+      proc.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+      proc.stderr.on('data', () => {});
+      proc.on('close', () => resolve(buf));
+      setTimeout(() => { proc.kill(); resolve(buf); }, 30_000);
+    });
+    if (!aborted) {
+      const replayJsonLine = replayOutput.trim().split('\n').reverse()
+        .find((l: string) => l.trimStart().startsWith('{'));
+      if (replayJsonLine) {
+        try { send('replay', JSON.parse(replayJsonLine)); } catch {}
+      }
+    }
+  }
+
   finish();
 });
 

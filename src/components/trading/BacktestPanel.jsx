@@ -62,7 +62,9 @@ export function BacktestPanel() {
   const scanEsRef = useRef(null);
   const [pretradeRunning, setPretradeRunning] = useState(false);
   const [pretradeResult,  setPretradeResult]  = useState(null);
+  const [pretradeReplay,  setPretradeReplay]  = useState(null);
   const [pretradeError,   setPretradeError]   = useState('');
+  const [pretradeHistory, setPretradeHistory] = useState(false);
   const pretradeEsRef = useRef(null);
   const esRef   = useRef(null);
   const termRef = useRef(null);
@@ -150,18 +152,23 @@ export function BacktestPanel() {
     if (pretradeRunning) { stopPretradeState(); return; }
     if (!selected) return;
     setPretradeResult(null);
+    setPretradeReplay(null);
     setPretradeError('');
     setPretradeRunning(true);
     setActivePanel('pretrade-state');
 
     const params = new URLSearchParams({ ticker: selected.ticker, date: selected.spike_date });
     if (snapTime.trim()) params.set('time', normalizeSnapTime(snapTime));
+    if (pretradeHistory) params.set('history', 'true');
 
     const es = new EventSource(`${API}/pretrade-state?${params}`);
     pretradeEsRef.current = es;
 
     es.addEventListener('result', (e) => {
       try { setPretradeResult(JSON.parse(e.data)); } catch {}
+    });
+    es.addEventListener('replay', (e) => {
+      try { setPretradeReplay(JSON.parse(e.data)); } catch {}
     });
     es.addEventListener('error', (e) => {
       try { setPretradeError(JSON.parse(e.data).message); } catch {}
@@ -174,7 +181,7 @@ export function BacktestPanel() {
       es.close(); pretradeEsRef.current = null;
       setPretradeRunning(false);
     };
-  }, [pretradeRunning, stopPretradeState, selected, snapTime]);
+  }, [pretradeRunning, stopPretradeState, selected, snapTime, pretradeHistory]);
 
   useEffect(() => () => stopPretradeState(), [stopPretradeState]);
 
@@ -445,6 +452,7 @@ export function BacktestPanel() {
           ) : activePanel === 'pretrade-state' ? (
             <PretradeStatePanel
               result={pretradeResult}
+              replay={pretradeReplay}
               error={pretradeError}
               running={pretradeRunning}
               ticker={selected?.ticker}
@@ -489,6 +497,19 @@ export function BacktestPanel() {
                   maxLength={5}
                   className="h-6 w-20 px-2 text-xs font-mono rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
                 />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">&nbsp;</label>
+                <label className="flex items-center gap-1.5 h-6 text-xs text-muted-foreground cursor-pointer"
+                  title="Adds the bar-by-bar state-transition history for this session to Pretrade State (one extra subprocess call)">
+                  <input
+                    type="checkbox"
+                    checked={pretradeHistory}
+                    onChange={e => setPretradeHistory(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Include history
+                </label>
               </div>
             </div>
 
@@ -836,7 +857,7 @@ const PRETRADE_CONDITION_NAMES = [
   'FAILED_BREAKOUT', 'ABSORPTION', 'EXHAUSTION', 'CONTINUATION',
 ];
 
-function PretradeStatePanel({ ticker, date, time, running, error, result }) {
+function PretradeStatePanel({ ticker, date, time, running, error, result, replay }) {
   if (!running && !error && !result) {
     return (
       <div className="px-3 py-4 text-slate-500 text-xs">
@@ -937,6 +958,39 @@ function PretradeStatePanel({ ticker, date, time, running, error, result }) {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {replay && (
+            <div className="pt-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
+                State history this session ({replay.transitions?.length || 0} transition{replay.transitions?.length === 1 ? '' : 's'},
+                min {replay.min_persist_bars ?? 3} bars to confirm)
+              </div>
+              {replay.warnings?.length > 0 && (
+                <div className="px-2 py-1 mb-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px]">
+                  {replay.warnings.length} data quality warning{replay.warnings.length === 1 ? '' : 's'} (ref-price drop or volume spike) — treat numbers after the first one with skepticism
+                </div>
+              )}
+              {!replay.transitions?.length ? (
+                <div className="text-slate-600 text-[10px]">No state held long enough to confirm a transition.</div>
+              ) : (
+                <div className="flex flex-col gap-0.5">
+                  {replay.transitions.map((t, i) => (
+                    <div key={i} className="flex items-center justify-between text-[10px]">
+                      <span className="font-mono text-slate-500">{t.time?.slice(11, 16) || t.time}</span>
+                      <span className={`px-1.5 py-0.5 rounded font-semibold border ${
+                        PRETRADE_STATE_COLOR[t.state] || 'text-slate-400 bg-slate-700/30 border-slate-600/40'
+                      }`}>
+                        {t.state}
+                      </span>
+                      <span className="font-mono text-slate-400">
+                        {t.move_pct >= 0 ? '+' : ''}{t.move_pct?.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
