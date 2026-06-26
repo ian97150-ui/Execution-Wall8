@@ -11,7 +11,8 @@ export type PushoverEventType =
   | 'sec_filing_found'
   | 'spike_detected'
   | 'mode_v_short_signal'
-  | 'wait_upgrade_signal';
+  | 'wait_upgrade_signal'
+  | 'unconfirmed_order';
 
 // Pushover priority levels
 // -2 = no notification, -1 = quiet, 0 = normal, 1 = high, 2 = emergency (requires ack)
@@ -98,7 +99,8 @@ async function shouldSendPushover(eventType: PushoverEventType): Promise<{
     'sec_filing_found': 'pushover_on_sec',
     'spike_detected': 'pushover_on_sec',
     'mode_v_short_signal': 'pushover_on_mode_v_short',
-    'wait_upgrade_signal': 'pushover_on_wait_upgrade'
+    'wait_upgrade_signal': 'pushover_on_wait_upgrade',
+    'unconfirmed_order': 'pushover_on_unconfirmed'
   };
 
   const settingKey = eventSettingMap[eventType];
@@ -129,7 +131,8 @@ function getTitle(eventType: PushoverEventType, ticker: string, details?: Record
     'sec_filing_found':    `SEC FILING: ${ticker}`,
     'spike_detected':      `📡 SPIKE: ${ticker}`,
     'mode_v_short_signal': `⚡ MODE V SHORT: ${ticker}${strat}`,
-    'wait_upgrade_signal': `🔁 UPGRADED: ${ticker}`
+    'wait_upgrade_signal': `🔁 UPGRADED: ${ticker}`,
+    'unconfirmed_order': `⚠️ NO FILL CONFIRM: ${ticker}`
   };
   return titles[eventType];
 }
@@ -162,6 +165,9 @@ function getMessage(eventType: PushoverEventType, ticker: string, details: Recor
   // Wait upgrade specific fields
   if (details.was_t2) parts.push(`was ${details.was_t2}`);
   if (details.size_note) parts.push(details.size_note);
+  // Unconfirmed order specific fields
+  if (details.minutes_elapsed) parts.push(`${details.minutes_elapsed}min with no CONFIRMED webhook`);
+  if (details.order_action) parts.push(details.order_action.toUpperCase());
 
   return parts.join(' | ') || eventType.replace(/_/g, ' ');
 }
@@ -180,7 +186,8 @@ function getDefaultPriority(eventType: PushoverEventType): PushoverPriority {
     'sec_filing_found': 1,
     'spike_detected': 0,
     'mode_v_short_signal': 1,
-    'wait_upgrade_signal': 1
+    'wait_upgrade_signal': 1,
+    'unconfirmed_order': 1
   };
   return priorities[eventType];
 }
@@ -199,7 +206,8 @@ function getSound(eventType: PushoverEventType): string {
     'sec_filing_found': 'magic',
     'spike_detected': 'pushover',
     'mode_v_short_signal': 'siren',
-    'wait_upgrade_signal': 'siren'
+    'wait_upgrade_signal': 'siren',
+    'unconfirmed_order': 'siren'
   };
   return sounds[eventType];
 }
@@ -339,5 +347,8 @@ export const PushoverNotifications = {
     sendPushoverNotification({ eventType: 'mode_v_short_signal', ticker, details, priority: 1 }),
 
   waitUpgradeSignal: (ticker: string, details: Record<string, any>) =>
-    sendPushoverNotification({ eventType: 'wait_upgrade_signal', ticker, details, priority: 1 })
+    sendPushoverNotification({ eventType: 'wait_upgrade_signal', ticker, details, priority: 1 }),
+
+  unconfirmedOrder: (ticker: string, details: Record<string, any>) =>
+    sendPushoverNotification({ eventType: 'unconfirmed_order', ticker, details, priority: 1 })
 };

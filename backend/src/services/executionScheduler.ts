@@ -77,6 +77,9 @@ function deactivateToIdle(): void {
         console.log('🔔 Idle heartbeat detected pending work — activating scheduler');
         activateScheduler();
       }
+      // Stale unconfirmed orders don't count as "pending work" for active/idle
+      // purposes, but still need to be caught even while idle.
+      await processUnconfirmedOrders();
     } catch (err: any) {
       console.error('❌ Idle heartbeat check error:', err.message);
     }
@@ -541,6 +544,69 @@ async function processExpiredBlocks() {
 }
 
 /**
+ * Check for forwarded orders that never got a CONFIRMED fill webhook back.
+ * 'executed'/'partially_filled' is set the moment we forward to the broker
+ * (see handleOrderSignal/handleExitSignal) - it does NOT mean the broker
+ * confirmed the fill. If no CONFIRMED webhook arrives within the alert
+ * window, this is the only thing that surfaces it - otherwise the row just
+ * sits there silently (and eventually gets deleted by the retention sweep).
+ */
+async function processUnconfirmedOrders() {
+  try {
+    const settings = await getSettingsSafe();
+    const pushoverOn = (settings as any)?.pushover_on_unconfirmed;
+    if (pushoverOn === false) return; // explicit opt-out; undefined/missing defaults to on
+
+    const alertMinutes = (settings as any)?.unconfirmed_alert_minutes ?? 30;
+    const cutoff = new Date(Date.now() - alertMinutes * 60 * 1000);
+
+    const staleExecutions = await prisma.execution.findMany({
+      where: {
+        status: { in: ['executed', 'partially_filled'] },
+        confirmed_at: null,
+        unconfirmed_alert_sent: false,
+        created_at: { lte: cutoff }
+      }
+    });
+
+    if (staleExecutions.length === 0) return;
+
+    for (const execution of staleExecutions) {
+      const minutesElapsed = Math.round((Date.now() - execution.created_at.getTime()) / 60000);
+
+      PushoverNotifications.unconfirmedOrder(execution.ticker, {
+        order_action: execution.order_action,
+        quantity: execution.quantity,
+        limit_price: execution.limit_price,
+        minutes_elapsed: minutesElapsed,
+        status: execution.status,
+      }).catch(err => console.error('Pushover notification error:', err));
+
+      await prisma.execution.update({
+        where: { id: execution.id },
+        data: { unconfirmed_alert_sent: true }
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          event_type: 'unconfirmed_order_alert',
+          ticker: execution.ticker,
+          details: JSON.stringify({
+            execution_id: execution.id,
+            status: execution.status,
+            minutes_elapsed: minutesElapsed
+          })
+        }
+      });
+
+      console.log(`⚠️ ${execution.ticker} execution ${execution.id} still unconfirmed after ${minutesElapsed}min — alerted`);
+    }
+  } catch (error: any) {
+    console.error('❌ Unconfirmed order check error:', error.message);
+  }
+}
+
+/**
  * Combined scheduler tick — runs all periodic checks.
  * After processing, checks if any work remains.
  * If nothing is left, drops back to IDLE mode automatically.
@@ -548,6 +614,7 @@ async function processExpiredBlocks() {
 async function runSchedulerTick() {
   await processExpiredDelays();
   await processExpiredBlocks();
+  await processUnconfirmedOrders();
 
   // Only check for deactivation when in active mode
   if (currentMode === 'active') {
