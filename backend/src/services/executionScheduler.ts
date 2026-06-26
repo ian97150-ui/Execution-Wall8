@@ -11,6 +11,25 @@ function isWeekendET(): boolean {
   return day === 'Sat' || day === 'Sun';
 }
 
+// Same extended window as secWatchScanner.ts's isLiveScoreWindowET (weekdays,
+// 04:00-18:00 ET). The active-mode tick previously ran every 10s around the
+// clock as long as any pending execution/blocked ticker existed, with no
+// time-of-day awareness - this kept Neon compute from ever scaling to zero
+// outside trading hours. TradingView doesn't send webhooks outside this
+// window, so there's nothing for the scheduler to react to anyway.
+function isTradingWindowET(): boolean {
+  if (isWeekendET()) return false;
+  const etHHMM = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const [h, m] = etHHMM.split(':').map(Number);
+  const totalMin = h * 60 + m;
+  return totalMin >= 240 && totalMin < 1080;
+}
+
 // Smart scheduler state: two modes
 // IDLE  — cheap COUNT query every 60s (near-zero CPU when no trades active)
 // ACTIVE — full logic every 10s (when pending orders or blocked tickers exist)
@@ -67,10 +86,11 @@ function deactivateToIdle(): void {
   currentMode = 'idle';
   console.log('💤 Execution scheduler IDLE (5min heartbeat)');
 
-  // Safety heartbeat: re-activate if work appears (catches any missed webhook activations).
-  // Skips on weekends — no trading activity, keeps Neon from staying awake unnecessarily.
+  // Safety heartbeat: re-activate if work appears (catches any missed webhook activations -
+  // real new pending work normally calls activateScheduler() directly from webhookController).
+  // Skips outside the trading window entirely — keeps Neon from staying awake unnecessarily.
   idleInterval = setInterval(async () => {
-    if (isWeekendET()) return;
+    if (!isTradingWindowET()) return;
     try {
       const hasPending = await checkHasPendingWork();
       if (hasPending) {
@@ -546,6 +566,14 @@ async function processExpiredBlocks() {
  * If nothing is left, drops back to IDLE mode automatically.
  */
 async function runSchedulerTick() {
+  // Nothing to do outside the trading window - TradingView isn't sending
+  // webhooks, so no new pending work can appear. Drop straight to idle
+  // rather than spending a DB round-trip every 10s confirming that.
+  if (!isTradingWindowET()) {
+    if (currentMode === 'active') deactivateToIdle();
+    return;
+  }
+
   await processExpiredDelays();
   await processExpiredBlocks();
 

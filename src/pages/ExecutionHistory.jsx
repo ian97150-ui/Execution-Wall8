@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { format, differenceInDays } from "date-fns";
 import api from "@/api/apiClient";
+import { tradingWindowRefetchInterval } from "@/lib/marketHours";
 
 const PRE_FALL_COLORS = {
   HIGH: "text-red-400",
@@ -72,7 +73,7 @@ export default function ExecutionHistory() {
       const response = await api.get('/executions', { params });
       return response.data || [];
     },
-    refetchInterval: 10000
+    refetchInterval: tradingWindowRefetchInterval(10000, 60000)
   });
 
   const { data: dbStats } = useQuery({

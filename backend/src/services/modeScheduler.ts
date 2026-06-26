@@ -61,6 +61,13 @@ function isWeekendET(): boolean {
   return day === 'Sat' || day === 'Sun';
 }
 
+// Caches a confirmed-disabled use_time_schedules flag for a few minutes so
+// the 60s tick doesn't hit the DB every single minute for users who don't
+// use time-based mode scheduling at all (the common case). Only the
+// "disabled" state is cached - once schedules are active we recheck live
+// every tick so mode changes still land within a minute as intended.
+let scheduleDisabledUntil = 0;
+
 /**
  * Check schedules and update execution mode if needed
  */
@@ -68,11 +75,14 @@ async function checkAndUpdateMode() {
   // Skip on weekends — no schedules apply, avoids unnecessary DB query
   if (isWeekendET()) return;
 
+  if (Date.now() < scheduleDisabledUntil) return;
+
   try {
     const settings = await prisma.executionSettings.findFirst();
 
     // Skip if time schedules are disabled
     if (!settings?.use_time_schedules) {
+      scheduleDisabledUntil = Date.now() + 5 * 60 * 1000;
       return;
     }
 

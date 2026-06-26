@@ -11,6 +11,7 @@ import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import api from "@/api/apiClient";
+import { tradingWindowRefetchInterval } from "@/lib/marketHours";
 
 export default function WebhookLogs() {
   const [statusFilter, setStatusFilter] = useState("all");
@@ -28,7 +29,7 @@ export default function WebhookLogs() {
       const response = await api.get(`/webhook/logs?${params.toString()}`);
       return response.data;
     },
-    refetchInterval: 30000
+    refetchInterval: tradingWindowRefetchInterval(30000, 120000)
   });
 
   const logs = data?.logs || [];

@@ -15,6 +15,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { tradingWindowRefetchInterval } from "@/lib/marketHours";
 
 import ExecutionModeToggle from "../components/trading/ExecutionModeToggle";
 import ScheduleList from "../components/settings/ScheduleList";
@@ -55,8 +56,8 @@ export default function Settings() {
         throw error;
       }
     },
-    // Refetch every 30 seconds to pick up mode changes from scheduler
-    refetchInterval: 30000
+    // Refetch every 30 seconds to pick up mode changes from scheduler (slower off-hours)
+    refetchInterval: tradingWindowRefetchInterval(30000, 120000)
   });
 
   const [formData, setFormData] = useState(null);

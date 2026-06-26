@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { tradingWindowRefetchInterval } from "@/lib/marketHours";
 
 import SwipeDeck from "../components/trading/SwipeDeck";
 import ExecutionQueue from "../components/trading/ExecutionQueue";
@@ -90,7 +91,7 @@ export default function Dashboard() {
       });
     },
     enabled: !!settings,
-    refetchInterval: 15000
+    refetchInterval: tradingWindowRefetchInterval(15000)
   });
 
   // Fetch blocked intents (swiped_off status - for revive section)
@@ -108,7 +109,7 @@ export default function Dashboard() {
       return (response.data || []).filter(intent => new Date(intent.created_date) > oneDayAgo);
     },
     enabled: !!settings,
-    refetchInterval: 10000
+    refetchInterval: tradingWindowRefetchInterval(10000)
   });
 
   // Fetch SEC watch intents
@@ -119,7 +120,7 @@ export default function Dashboard() {
       return response.data || [];
     },
     enabled: !!settings,
-    refetchInterval: 120000
+    refetchInterval: tradingWindowRefetchInterval(120000)
   });
 
   // Fetch executions from the Execution table (only pending/executing - active queue)
@@ -131,7 +132,7 @@ export default function Dashboard() {
       });
       return response.data || [];
     },
-    refetchInterval: 10000
+    refetchInterval: tradingWindowRefetchInterval(10000, 60000)
   });
 
   // Force execute an order
@@ -173,7 +174,7 @@ export default function Dashboard() {
         details: typeof log.details === 'string' ? JSON.parse(log.details) : log.details
       }));
     },
-    refetchInterval: 10000
+    refetchInterval: tradingWindowRefetchInterval(10000, 60000)
   });
 
   // Fetch open positions
@@ -185,7 +186,7 @@ export default function Dashboard() {
       });
       return response.data || [];
     },
-    refetchInterval: 15000
+    refetchInterval: tradingWindowRefetchInterval(15000, 60000)
   });
 
   // Calculate stats
