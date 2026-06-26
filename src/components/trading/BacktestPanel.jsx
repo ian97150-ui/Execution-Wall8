@@ -852,6 +852,10 @@ const PRETRADE_STATE_COLOR = {
   AT_SESSION_LOW:    'text-slate-400 bg-slate-700/30 border-slate-600/40',
 };
 
+// Order matches _STATE_PRIORITY in status_inquisit.py - classify_state()
+// picks the first true one here as the headline `state`. Conditions lower
+// in this list can still be true underneath a higher-priority headline;
+// the "all conditions" panel shows those too.
 const PRETRADE_CONDITION_NAMES = [
   'AT_SESSION_LOW', 'LIQUIDITY_VACUUM', 'DISTRIBUTION',
   'FAILED_BREAKOUT', 'ABSORPTION', 'EXHAUSTION', 'CONTINUATION',
@@ -902,6 +906,12 @@ function PretradeStatePanel({ ticker, date, time, running, error, result, replay
             </div>
           )}
 
+          {result.local_swing_pct != null && (
+            <div className="text-slate-400" title="The ≥5%/≥8% size gates below use this rolling-window swing, not the 'off low' % above - it stays meaningful even after the session low has drifted far behind.">
+              Swing gate (recent window): <span className="text-slate-200">{result.local_swing_pct.toFixed(2)}%</span>
+            </div>
+          )}
+
           {result.price_velocity != null && (
             <div className="text-slate-400">
               Velocity: <span className="text-slate-200">{result.price_velocity >= 0 ? '+' : ''}{result.price_velocity.toFixed(4)}$/min</span>
@@ -912,7 +922,9 @@ function PretradeStatePanel({ ticker, date, time, running, error, result, replay
 
           {result.conditions && (
             <div className="pt-1">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">All conditions, right now</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1" title="Listed in priority order - the headline state above is whichever lit condition comes first in this list. Others lit below it are also true this bar, just out-prioritized.">
+                All conditions, right now <span className="text-slate-600">(priority order →)</span>
+              </div>
               <div className="flex flex-wrap gap-1">
                 {PRETRADE_CONDITION_NAMES.map(name => {
                   const met = !!result.conditions[name];

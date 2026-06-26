@@ -1038,6 +1038,7 @@ def assess_pretrade(ticker: str, bars: List[dict], ref_price: float = None) -> D
         'ticker': ticker, 'ref_price': ref, 'current': current,
         'move_pct': lm['spike_pct'], 'bars_since_low': len(lm.get('bars_post', bars)),
         'hwm_pct': lm['hwm_pct'], 'hwm_drawdown': lm['hwm_drawdown'],
+        'local_swing_pct': lm.get('local_swing_pct', rhwm_pct),
         'price_velocity': deriv['price_vel'], 'price_accel': deriv['price_accel'],
         'volume_velocity': deriv['vol_vel'], 'volume_accel': deriv['vol_accel'],
         'state': state, 'conditions': conds, 'state_run_length': state_run,
