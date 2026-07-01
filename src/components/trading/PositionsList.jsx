@@ -142,6 +142,14 @@ export default function PositionsList({
     }
   };
 
+  const calcTtpPnl = (position, price) => {
+    const entry = Number(position.avg_entry_price) || 0;
+    const qty = Number(position.quantity) || 0;
+    const isLong = position.side === "long";
+    const diff = isLong ? (price - entry) : (entry - price);
+    return diff * qty;
+  };
+
   const handleTtpPriceChange = (position, rawValue) => {
     setTtpInputValue(prev => ({ ...prev, [position.id]: rawValue }));
     const entry = Number(position.avg_entry_price) || 0;
@@ -243,20 +251,29 @@ export default function PositionsList({
               )}
 
               {/* TTP Exit SL status */}
-              {hasTTP && (
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
-                    <Target className="w-3 h-3" />
-                    TTP ${Number(position.ttp_exit_price).toFixed(2)} — SL Active
-                  </span>
-                  <button
-                    onClick={() => onClearTTP?.(position)}
-                    className="text-[10px] text-slate-500 hover:text-red-400 transition-colors flex items-center gap-0.5"
-                  >
-                    <X className="w-3 h-3" /> Clear
-                  </button>
-                </div>
-              )}
+              {hasTTP && (() => {
+                const ttpPnl = calcTtpPnl(position, Number(position.ttp_exit_price));
+                return (
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                      <Target className="w-3 h-3" />
+                      TTP ${Number(position.ttp_exit_price).toFixed(2)} — SL Active
+                    </span>
+                    <span className={cn(
+                      "text-[10px] font-mono font-bold",
+                      ttpPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                    )}>
+                      {ttpPnl >= 0 ? '+' : '-'}${Math.abs(ttpPnl).toFixed(2)}
+                    </span>
+                    <button
+                      onClick={() => onClearTTP?.(position)}
+                      className="text-[10px] text-slate-500 hover:text-red-400 transition-colors flex items-center gap-0.5"
+                    >
+                      <X className="w-3 h-3" /> Clear
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Live spike-state panel */}
               {isMonitoring && (
@@ -326,7 +343,10 @@ export default function PositionsList({
               )}
 
               {/* TTP inline price input + percentage picker */}
-              {isTtpInputOpen && (
+              {isTtpInputOpen && (() => {
+                const previewPrice = parseFloat(ttpInputValue[position.id]) || 0;
+                const previewPnl = calcTtpPnl(position, previewPrice);
+                return (
                 <div className="mb-3 p-3 rounded-lg bg-slate-900/50 border border-amber-500/30 space-y-3">
                   <div className="flex justify-between text-[11px] text-slate-500">
                     <span>-50%</span>
@@ -386,8 +406,15 @@ export default function PositionsList({
                       Cancel
                     </button>
                   </div>
+                  <p className={cn(
+                    "text-xs font-mono font-bold text-center",
+                    previewPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                  )}>
+                    {previewPnl >= 0 ? 'Gain' : 'Loss'} if triggered: {previewPnl >= 0 ? '+' : '-'}${Math.abs(previewPnl).toFixed(2)}
+                  </p>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Action buttons */}
               <div className="space-y-2">
