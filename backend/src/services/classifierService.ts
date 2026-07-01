@@ -106,7 +106,7 @@ export interface ClassifierSignal {
 }
 
 /**
- * Spawn cat5ive_classifier.py for a single ticker and return the parsed signal.
+ * Spawn cat5ive_classifier_v4.py for a single ticker and return the parsed signal.
  * Returns null if the process fails, times out, or produces no JSON output.
  */
 export async function runClassifier(
@@ -114,7 +114,7 @@ export async function runClassifier(
   date?: string
 ): Promise<ClassifierSignal | null> {
   return new Promise((resolve) => {
-    const args: string[] = [SCRIPT, ticker.toUpperCase(), '--json', '--once', '--no-float'];
+    const args: string[] = [SCRIPT_V4, ticker.toUpperCase(), '--json', '--once', '--no-float', '--tick-only-once'];
     if (date) args.push('--date', date);
 
     const tradierKey = process.env.TRADIER_API_KEY;
@@ -142,14 +142,22 @@ export async function runClassifier(
       // Pick the last line that looks like a JSON object
       const jsonLine = output.trim().split('\n').reverse().find(l => l.trimStart().startsWith('{'));
       if (!jsonLine) { done(null); return; }
-      try { done(JSON.parse(jsonLine) as ClassifierSignal); }
-      catch { done(null); }
+      try {
+        const full = JSON.parse(jsonLine);
+        const tf: Record<string, unknown> = (full.tick_features as Record<string, unknown>) ?? {};
+        const sig = full as ClassifierSignal;
+        // Hoist tick feature fields onto the signal (v4 wraps v3 + tick layer)
+        sig.tick_rate_pm     = typeof tf.tick_rate_pm     === 'number'  ? tf.tick_rate_pm     : undefined;
+        sig.buy_pressure_pct = typeof tf.buy_pressure_pct === 'number'  ? tf.buy_pressure_pct : undefined;
+        sig.ticks_available  = typeof tf.ticks_available  === 'boolean' ? tf.ticks_available  : false;
+        done(sig);
+      } catch { done(null); }
     });
 
     proc.on('error', () => done(null));
 
-    // Hard timeout: kill process if it takes longer than 45s
-    const timer = setTimeout(() => { proc.kill(); done(null); }, 45_000);
+    // v4 adds tick fetching on top of v3 scoring — allow 90s (was 45s under base script)
+    const timer = setTimeout(() => { proc.kill(); done(null); }, 90_000);
     proc.on('close', () => clearTimeout(timer));
   });
 }
