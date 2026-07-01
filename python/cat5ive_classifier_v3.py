@@ -1383,6 +1383,15 @@ class ClassifierSignal:
     close_vs_pm_open_pct:  float = 0.0   # (pm_open - close) / pm_open * 100 at entry
     chop_entry_zone:        dict  = None  # chop-adjusted entry rec from compute_chop_adjusted_entry()
 
+    # ── App-consumed fields (parity with base cat5ive_classifier.py) ────────
+    t2_entry_type:          str   = 'NOT_QUALIFIED'  # ON_TIME/SLIGHTLY_EARLY/EARLY/VERY_EARLY/PREMATURE_RISK/NOT_QUALIFIED
+    last_bar_time:          str   = ''    # HH:MM of newest bar processed
+    sec_cache_age_hrs:      float = 0.0   # hours since EDGAR cache last refreshed
+    wc_score:               int   = 0     # 0-7 Winners Circle gates passed
+    wc_tier:                str   = ''    # WINNERS_CIRCLE/QUALIFYING/DEVELOPING/NOT_QUALIFYING
+    bp_score:               int   = 0     # 0-5 BLUEPR8NT gates passed
+    bp_tier:                str   = ''    # BLUEPR8NT/BLUEPR8NT_CANDIDATE/BP_WATCH/NOT_BP
+
 
 SIG_COLOR = {'HIGH_VALUE':GRN+BOLD,'ENTER_E':GRN,'ENTER_A':CYN,
              'LONG_OPP':MAG,'WAIT':YEL,'SKIP':DIM}
@@ -1716,6 +1725,7 @@ def fetch_sec_filings(ticker: str, session_date: str) -> dict:
                'LATE_PHASE': s_lat},
             score_boost=boost,
             regime_override='DILUTION_DUMP' if s424 else None,
+            cache_age_hrs=round((datetime.now().timestamp() - cache.get(f'filings_ts_{ticker.upper()}', datetime.now().timestamp())) / 3600, 2),
         )
     except Exception:
         return empty
@@ -1783,18 +1793,39 @@ def evaluate_gates(sig: 'ClassifierSignal') -> tuple:
     g2 = sig.tier in ('HIGH', 'MEDIUM')
     g3 = bias in ('MAX_CONVICTION', 'HIGH_CONVICTION')
     g4 = sig.section == 'S1'
-    g5 = sig.confidence_norm >= 0.55   # v3: tightened from 0.65 to 0.55
+    conf_norm = sig.confidence_norm
+    g5_standard       = conf_norm >= 0.55
+    g5_slightly_early = (0.50 <= conf_norm < 0.55
+                         and sig.signal_tier in ('TIER_1', 'TIER_2')
+                         and sig.section == 'S1')
+    g5_early          = (0.45 <= conf_norm < 0.50 and sig.section == 'S1')
+    g5_very_early     = (0.40 <= conf_norm < 0.45
+                         and sig.signal_tier == 'TIER_1'
+                         and sig.section == 'S1')
+    g5 = g5_standard or g5_slightly_early
+    if any('PREMATURE_RISK' in d for d in disqualifiers):
+        t2 = 'PREMATURE_RISK'
+    elif g5_standard:
+        t2 = 'ON_TIME'
+    elif g5_slightly_early:
+        t2 = 'SLIGHTLY_EARLY'
+    elif g5_early:
+        t2 = 'EARLY'
+    elif g5_very_early:
+        t2 = 'VERY_EARLY'
+    else:
+        t2 = 'NOT_QUALIFIED'
 
     gate_detail = [
         f"G1:disqualifiers={'PASS' if g1 else 'FAIL('+','.join(disqualifiers)+')'}",
         f"G2:tier={sig.tier}={'PASS' if g2 else 'FAIL(need HIGH or MEDIUM)'}",
         f"G3:bias={bias}={'PASS' if g3 else 'FAIL(need MAX or HIGH conviction)'}",
         f"G4:section={sig.section}={'PASS' if g4 else 'FAIL(need S1)'}",
-        f"G5:conf={sig.confidence_norm:.2f}={'PASS' if g5 else 'FAIL(need>=0.55)'}",
+        f"G5:conf={conf_norm:.2f}={'PASS('+t2+')' if g5 else ('WATCH('+t2+')' if t2 in ('EARLY','VERY_EARLY') else 'FAIL')}",
     ]
 
     gates_passed = sum([g1, g2, g3, g4, g5])
-    return gates_passed, gate_detail, disqualifiers, bias
+    return gates_passed, gate_detail, disqualifiers, bias, t2
 
 
 def run_classification(ticker: str, bars: List[Bar],
@@ -2019,15 +2050,22 @@ def run_classification(ticker: str, bars: List[Bar],
             contested_day=signals.get('CONTESTED_SESSION', False),
             close_vs_pm_open_pct=close_vs_pm_open,
             chop_entry_zone=chop_entry,
+            last_bar_time=bars[-1].ts[:5] if bars else '',
+            sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
         )
         sig.quality_score    = calc_quality(sig)
         sig.confidence_norm  = round(sig.confidence / 100.0, 4)
         sig.pre_fall_tier    = sig.tier
-        gp, gd, dq, bv       = evaluate_gates(sig)
+        gp, gd, dq, bv, t2   = evaluate_gates(sig)
         sig.gates_passed     = gp
         sig.gate_detail      = gd
         sig.disqualifiers    = dq
         sig.bias             = bv
+        sig.t2_entry_type    = t2
+        _wc = evaluate_winners_circle(sig)
+        sig.wc_score = _wc['score'];  sig.wc_tier = _wc['tier']
+        _bp = evaluate_bluepr8nt(sig)
+        sig.bp_score = _bp['score'];  sig.bp_tier = _bp['tier']
         return sig
 
     # ── Build reasons / warnings ──────────────────────────────────────────────
@@ -2194,15 +2232,29 @@ def run_classification(ticker: str, bars: List[Bar],
         momentum_decay_rate=mom_dec,
         hod_set_pct=hod_sp,
         v3_gate_notes=ext.get('v3_gate_notes', []),
+        near_miss_count=near_miss_ct,
+        run_day=run_day_val,
+        price_path_efficiency=path_eff,
+        margin_lean=margin_lean_val,
+        contested_day=signals.get('CONTESTED_SESSION', False),
+        close_vs_pm_open_pct=close_vs_pm_open,
+        chop_entry_zone=chop_entry,
+        last_bar_time=bars[-1].ts[:5] if bars else '',
+        sec_cache_age_hrs=sec.get('cache_age_hrs', 0.0),
     )
     sig.quality_score    = calc_quality(sig)
     sig.confidence_norm  = round(sig.confidence / 100.0, 4)
     sig.pre_fall_tier    = sig.tier
-    gp, gd, dq, bv       = evaluate_gates(sig)
+    gp, gd, dq, bv, t2   = evaluate_gates(sig)
     sig.gates_passed     = gp
     sig.gate_detail      = gd
     sig.disqualifiers    = dq
     sig.bias             = bv
+    sig.t2_entry_type    = t2
+    _wc = evaluate_winners_circle(sig)
+    sig.wc_score = _wc['score'];  sig.wc_tier = _wc['tier']
+    _bp = evaluate_bluepr8nt(sig)
+    sig.bp_score = _bp['score'];  sig.bp_tier = _bp['tier']
     return sig
 
 
