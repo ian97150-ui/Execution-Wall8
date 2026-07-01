@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, ShieldOff, Shield, Flag, Target, X, Activity, FlaskConical, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { format } from "date-fns";
 
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')) + '/positions';
@@ -38,6 +39,7 @@ export default function PositionsList({
   const [cooldownTimers, setCooldownTimers] = React.useState({});
   const [ttpInputOpen, setTtpInputOpen] = React.useState({});
   const [ttpInputValue, setTtpInputValue] = React.useState({});
+  const [ttpPercent, setTtpPercent] = React.useState({});
   const [monitoring, setMonitoring] = React.useState({});       // { [positionId]: true }
   const [liveState, setLiveState] = React.useState({});         // { [positionId]: parsed update }
   const esRefs = React.useRef({});                              // { [positionId]: EventSource }
@@ -110,12 +112,43 @@ export default function PositionsList({
       onSetTTP?.(position, val);
       setTtpInputOpen(prev => ({ ...prev, [position.id]: false }));
       setTtpInputValue(prev => ({ ...prev, [position.id]: '' }));
+      setTtpPercent(prev => ({ ...prev, [position.id]: 0 }));
     }
   };
 
   const closeTtpInput = (id) => {
     setTtpInputOpen(prev => ({ ...prev, [id]: false }));
     setTtpInputValue(prev => ({ ...prev, [id]: '' }));
+    setTtpPercent(prev => ({ ...prev, [id]: 0 }));
+  };
+
+  const openTtpInput = (position) => {
+    const isLong = position.side === "long";
+    const defaultPercent = isLong ? -5 : 5;
+    const entry = Number(position.avg_entry_price) || 0;
+    setTtpInputOpen(prev => ({ ...prev, [position.id]: true }));
+    setTtpPercent(prev => ({ ...prev, [position.id]: defaultPercent }));
+    setTtpInputValue(prev => ({
+      ...prev,
+      [position.id]: entry > 0 ? (entry * (1 + defaultPercent / 100)).toFixed(2) : ''
+    }));
+  };
+
+  const handleTtpPercentChange = (position, percent) => {
+    const entry = Number(position.avg_entry_price) || 0;
+    setTtpPercent(prev => ({ ...prev, [position.id]: percent }));
+    if (entry > 0) {
+      setTtpInputValue(prev => ({ ...prev, [position.id]: (entry * (1 + percent / 100)).toFixed(2) }));
+    }
+  };
+
+  const handleTtpPriceChange = (position, rawValue) => {
+    setTtpInputValue(prev => ({ ...prev, [position.id]: rawValue }));
+    const entry = Number(position.avg_entry_price) || 0;
+    const price = parseFloat(rawValue);
+    if (entry > 0 && !isNaN(price)) {
+      setTtpPercent(prev => ({ ...prev, [position.id]: ((price - entry) / entry) * 100 }));
+    }
   };
 
   const demoButton = onCreateDemo && (
@@ -292,33 +325,67 @@ export default function PositionsList({
                 </div>
               )}
 
-              {/* TTP inline price input */}
+              {/* TTP inline price input + percentage picker */}
               {isTtpInputOpen && (
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs text-slate-400">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-24 bg-slate-800 border border-amber-500/40 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-amber-400"
-                    value={ttpInputValue[position.id] || ''}
-                    onChange={e => setTtpInputValue(prev => ({ ...prev, [position.id]: e.target.value }))}
-                    placeholder="0.00"
-                    autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') handleSetTTP(position); if (e.key === 'Escape') closeTtpInput(position.id); }}
+                <div className="mb-3 p-3 rounded-lg bg-slate-900/50 border border-amber-500/30 space-y-3">
+                  <div className="flex justify-between text-[11px] text-slate-500">
+                    <span>-50%</span>
+                    <span className={cn(
+                      "font-mono font-bold",
+                      (ttpPercent[position.id] || 0) === 0 ? "text-slate-400" :
+                        (ttpPercent[position.id] || 0) > 0 ? "text-emerald-400" : "text-rose-400"
+                    )}>
+                      {(ttpPercent[position.id] || 0) > 0 ? '+' : ''}{Number(ttpPercent[position.id] || 0).toFixed(2)}% from entry
+                    </span>
+                    <span>+50%</span>
+                  </div>
+                  <Slider
+                    value={[ttpPercent[position.id] || 0]}
+                    min={-50}
+                    max={50}
+                    step={0.1}
+                    onValueChange={(v) => handleTtpPercentChange(position, v[0])}
                   />
-                  <button
-                    onClick={() => handleSetTTP(position)}
-                    className="text-xs text-amber-400 hover:text-amber-300 font-medium transition-colors"
-                  >
-                    Set
-                  </button>
-                  <button
-                    onClick={() => closeTtpInput(position.id)}
-                    className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
-                  >
-                    Cancel
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[2, 5, 10, 20].map(pct => {
+                      const isLong = position.side === "long";
+                      const signed = isLong ? -pct : pct;
+                      return (
+                        <button
+                          key={pct}
+                          onClick={() => handleTtpPercentChange(position, signed)}
+                          className="text-[10px] px-1.5 py-0.5 rounded border border-slate-600/50 text-slate-400 hover:border-amber-500/50 hover:text-amber-400 transition-colors"
+                        >
+                          {signed > 0 ? '+' : ''}{signed}%
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-24 bg-slate-800 border border-amber-500/40 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                      value={ttpInputValue[position.id] || ''}
+                      onChange={e => handleTtpPriceChange(position, e.target.value)}
+                      placeholder="0.00"
+                      onKeyDown={e => { if (e.key === 'Enter') handleSetTTP(position); if (e.key === 'Escape') closeTtpInput(position.id); }}
+                    />
+                    <button
+                      onClick={() => handleSetTTP(position)}
+                      className="text-xs text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                    >
+                      Set
+                    </button>
+                    <button
+                      onClick={() => closeTtpInput(position.id)}
+                      className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -358,7 +425,7 @@ export default function PositionsList({
                 {/* TTP Exit SL button — only shown when TTP not already set and input not open */}
                 {!hasTTP && !isTtpInputOpen && (
                   <Button
-                    onClick={() => setTtpInputOpen(prev => ({ ...prev, [position.id]: true }))}
+                    onClick={() => openTtpInput(position)}
                     variant="outline"
                     size="sm"
                     className="w-full border-amber-500/40 text-amber-400 hover:bg-amber-500/15 transition-all"
